@@ -141,8 +141,8 @@ function MoniepointHome() {
           {/* mt 16px, px 16px */}
           <div className="px-4 mt-4">
             <div className="flex justify-between items-center mb-2.5">
-              <span className="text-[14px] font-semibold text-[#111]">Services</span>
-              <button className="text-[#2563EB] text-[13px] font-semibold">Edit</button>
+              <span className="text-[12px] font-semibold text-[#111]">Services</span>
+              <button className="text-[#2563EB] text-[11px] font-semibold">Edit</button>
             </div>
 
             {/* grid: 4 cols, gap 8px; tile h ~85px */}
