@@ -64,15 +64,15 @@ const services = [
 function MoniepointHome() {
   const [balanceHidden, setBalanceHidden] = useState(false);
   return (
-    <div className="min-h-[100dvh] w-full flex justify-center bg-[#F2F3F5]">
+    <div className="fixed inset-0 flex justify-center bg-[#F2F3F5]">
       <div
-        className="w-full max-w-[390px] bg-[#F2F3F5] flex flex-col relative h-[100dvh] overflow-hidden"
+        className="w-full max-w-[390px] bg-[#F2F3F5] flex flex-col relative h-full overflow-hidden"
         style={{ fontFamily: "'Inter', sans-serif" }}
       >
 
         {/* ── Status bar ──────────────────────────────────────────────── */}
         {/* height ~38px; px 16px; font 12px */}
-        <div className="flex-none flex justify-between items-center px-4 pt-3 pb-1 text-[12px] font-medium text-black bg-white">
+        <div className="flex-none flex justify-between items-center px-4 pb-1 text-[12px] font-medium text-black bg-white" style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
           <div className="flex items-center gap-1.5">
             <span className="font-bold tracking-wide text-[13px]">5:16</span>
             {/* small $ badge */}
