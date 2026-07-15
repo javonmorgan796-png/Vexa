@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import {
-  Headphones, Bell, Copy, EyeOff, Clock,
+  Headphones, Bell, Copy, EyeOff, Eye, Clock,
   ArrowLeftRight, PhoneCall, Tablet, Target,
   PiggyBank, BookOpen, FileText, LayoutGrid,
   Trophy, CreditCard, Home, ArrowDown,
@@ -62,6 +62,7 @@ const services = [
 ];
 
 function MoniepointHome() {
+  const [balanceHidden, setBalanceHidden] = useState(false);
   return (
     <div className="min-h-[100dvh] w-full flex justify-center bg-[#F2F3F5]">
       <div
@@ -152,8 +153,15 @@ function MoniepointHome() {
 
             {/* balance */}
             <div className="flex items-center gap-2.5 mb-1">
-              <span className="text-[22px] font-bold tracking-tight leading-none">₦1,000.00</span>
-              <EyeOff className="w-[18px] h-[18px] text-white/60 mt-0.5" strokeWidth={2} />
+              <span className="text-[22px] font-bold tracking-tight leading-none">
+                {balanceHidden ? '* * * * *' : '₦1,000.00'}
+              </span>
+              <button onClick={() => setBalanceHidden(v => !v)} className="focus:outline-none">
+                {balanceHidden
+                  ? <Eye className="w-[18px] h-[18px] text-white/60 mt-0.5" strokeWidth={2} />
+                  : <EyeOff className="w-[18px] h-[18px] text-white/60 mt-0.5" strokeWidth={2} />
+                }
+              </button>
             </div>
 
             {/* last updated */}
