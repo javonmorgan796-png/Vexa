@@ -152,7 +152,7 @@ function MoniepointHome() {
 
             {/* balance */}
             <div className="flex items-center gap-2.5 mb-1">
-              <span className="text-[30px] font-bold tracking-tight leading-none">₦1,000.00</span>
+              <span className="text-[16px] font-bold tracking-tight leading-none">₦1,000.00</span>
               <EyeOff className="w-[18px] h-[18px] text-white/60 mt-0.5" strokeWidth={2} />
             </div>
 
