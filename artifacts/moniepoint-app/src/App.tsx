@@ -101,7 +101,7 @@ function MoniepointHome() {
           <div className="mx-3 mt-3 bg-[#162353] rounded-[20px] p-5 text-white">
 
             {/* account number row */}
-            <div className="flex items-center gap-1.5 text-[12px] font-normal text-white/50 mb-4">
+            <div className="flex items-center gap-1.5 text-[12px] font-normal text-white mb-4">
               <span>9067212032 | Chibuzor Emmanuel Dike</span>
               <Copy className="w-3.5 h-3.5 text-white/60 shrink-0" />
             </div>
@@ -120,7 +120,7 @@ function MoniepointHome() {
             </div>
 
             {/* last updated */}
-            <p className="text-[11px] text-white/50 font-normal mb-5">
+            <p className="text-[11px] text-white font-normal mb-5">
               Last updated 4 minutes ago
             </p>
 
