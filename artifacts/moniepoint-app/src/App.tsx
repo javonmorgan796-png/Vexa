@@ -292,8 +292,6 @@ function MoniepointHome() {
               <span className="text-[11px] font-medium text-[#9CA3AF]">Rewards</span>
             </button>
           </div>
-          {/* iOS home indicator */}
-          <div className="mt-2 mx-auto w-28 h-[5px] bg-black/20 rounded-full" />
         </div>
 
       </div>
