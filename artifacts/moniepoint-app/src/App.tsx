@@ -64,9 +64,9 @@ const services = [
 function MoniepointHome() {
   const [balanceHidden, setBalanceHidden] = useState(false);
   return (
-    <div className="fixed inset-0 flex justify-center bg-[#F2F3F5]">
+    <div className="fixed inset-0 bg-[#F2F3F5]">
       <div
-        className="w-full max-w-[390px] bg-[#F2F3F5] flex flex-col relative h-full overflow-hidden"
+        className="w-full h-full bg-[#F2F3F5] flex flex-col relative overflow-hidden"
         style={{ fontFamily: "'Inter', sans-serif" }}
       >
 
