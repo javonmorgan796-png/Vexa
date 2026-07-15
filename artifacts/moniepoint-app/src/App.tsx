@@ -194,8 +194,8 @@ function MoniepointHome() {
           {/* mt 16px, px 16px */}
           <div className="px-4 mt-4">
             <div className="flex justify-between items-center mb-2.5">
-              <span className="text-[14px] font-semibold text-[#111]">Recent transactions</span>
-              <button className="text-[#2563EB] text-[13px] font-semibold">View All</button>
+              <span className="text-[12px] font-semibold text-[#111]">Recent transactions</span>
+              <button className="text-[#2563EB] text-[11px] font-semibold">View All</button>
             </div>
 
             <div className="bg-white rounded-xl p-4 border border-[#F0F0F0] flex items-center justify-between">
