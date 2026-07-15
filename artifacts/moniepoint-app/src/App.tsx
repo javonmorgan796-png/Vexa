@@ -152,7 +152,7 @@ function MoniepointHome() {
 
             {/* balance */}
             <div className="flex items-center gap-2.5 mb-1">
-              <span className="text-[16px] font-bold tracking-tight leading-none">₦1,000.00</span>
+              <span className="text-[28px] font-bold tracking-tight leading-none">₦1,000.00</span>
               <EyeOff className="w-[18px] h-[18px] text-white/60 mt-0.5" strokeWidth={2} />
             </div>
 
@@ -161,17 +161,14 @@ function MoniepointHome() {
               Last updated 4 minutes ago
             </p>
 
-            {/* action buttons */}
-            {/* in screenshot: dark pill buttons ~40px tall, gap 12px */}
+            {/* action buttons — content-width pills, left-aligned */}
             <div className="flex gap-3">
-              <button className="flex-1 bg-[#0D1B40] rounded-full h-[42px] flex items-center justify-center gap-2 text-[13px] font-semibold text-white">
-                <div className="w-4 h-4 rounded-full border-[1.5px] border-white flex items-center justify-center">
-                  <span className="text-[11px] leading-none">+</span>
-                </div>
+              <button className="bg-[#0D1B40] rounded-full h-[36px] px-5 flex items-center gap-2 text-[13px] font-semibold text-white">
+                <span className="text-[16px] leading-none font-light">+</span>
                 Add Money
               </button>
-              <button className="flex-1 bg-[#0D1B40] rounded-full h-[42px] flex items-center justify-center gap-2 text-[13px] font-semibold text-white">
-                <Clock className="w-4 h-4" strokeWidth={2} />
+              <button className="bg-[#0D1B40] rounded-full h-[36px] px-5 flex items-center gap-2 text-[13px] font-semibold text-white">
+                <Clock className="w-3.5 h-3.5" strokeWidth={2} />
                 History
               </button>
             </div>
