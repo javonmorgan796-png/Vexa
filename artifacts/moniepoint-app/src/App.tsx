@@ -70,53 +70,8 @@ function MoniepointHome() {
         style={{ fontFamily: "'Inter', sans-serif" }}
       >
 
-        {/* ── Status bar ──────────────────────────────────────────────── */}
-        {/* height ~38px; px 16px; font 12px */}
-        <div className="flex-none flex justify-between items-center px-4 pb-1 text-[12px] font-medium text-black bg-white" style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
-          <div className="flex items-center gap-1.5">
-            <span className="font-bold tracking-wide text-[13px]">5:16</span>
-            {/* small $ badge */}
-            <div className="bg-[#111] text-white rounded-[3px] w-[13px] h-[13px] flex items-center justify-center text-[8px] font-bold leading-none">
-              $
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 text-[11px] font-medium">
-            <span>0.00 KB/s</span>
-            {/* 4G + signal bars */}
-            <div className="flex items-center gap-0.5">
-              <span className="font-semibold">4G</span>
-              <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor">
-                <rect x="0" y="6" width="2.5" height="5" rx="0.5"/>
-                <rect x="4" y="4" width="2.5" height="7" rx="0.5"/>
-                <rect x="8" y="2" width="2.5" height="9" rx="0.5"/>
-                <rect x="11.5" y="0" width="2.5" height="11" rx="0.5" opacity="0.3"/>
-              </svg>
-            </div>
-            {/* 45G + signal bars */}
-            <div className="flex items-center gap-0.5">
-              <span className="font-semibold">45G</span>
-              <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor">
-                <rect x="0" y="6" width="2.5" height="5" rx="0.5"/>
-                <rect x="4" y="4" width="2.5" height="7" rx="0.5"/>
-                <rect x="8" y="2" width="2.5" height="9" rx="0.5"/>
-                <rect x="11.5" y="0" width="2.5" height="11" rx="0.5"/>
-              </svg>
-            </div>
-            {/* battery */}
-            <div className="flex items-center gap-0.5">
-              <span className="font-semibold">81%</span>
-              <svg width="18" height="11" viewBox="0 0 18 11" fill="none">
-                <rect x="0.5" y="0.5" width="14" height="10" rx="1.5" stroke="currentColor" strokeWidth="1"/>
-                <rect x="2" y="2" width="9.6" height="7" rx="0.75" fill="currentColor"/>
-                <path d="M15.5 3.5v4a1 1 0 000-4z" fill="currentColor"/>
-              </svg>
-            </div>
-          </div>
-        </div>
-
         {/* ── Header ──────────────────────────────────────────────────── */}
-        {/* py ~10px; same white bg as status bar; thin bottom line  */}
-        <div className="flex-none flex justify-between items-center px-4 py-2.5 bg-white border-b border-[#E8EBF0]">
+        <div className="flex-none flex justify-between items-center px-4 pb-2.5 bg-white border-b border-[#E8EBF0]" style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
           <div className="flex items-center gap-2.5">
             {/* avatar: 40×40, dark circle, letter C */}
             <div className="w-10 h-10 rounded-full bg-[#3A3530] flex items-center justify-center text-white text-[15px] font-bold shrink-0">
