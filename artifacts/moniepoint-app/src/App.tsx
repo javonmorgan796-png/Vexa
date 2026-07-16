@@ -98,16 +98,16 @@ function MoniepointHome() {
 
           {/* ── Account card ────────────────────────────────────────── */}
           {/* mx 12px, mt 12px, rounded-2xl (20px), p-5 */}
-          <div className="mx-3 mt-3 bg-[#162353] rounded-[20px] p-5 text-white">
+          <div className="mx-3 mt-3 bg-[#162353] rounded-[20px] px-4 py-3 text-white">
 
             {/* account number row */}
-            <div className="flex items-center gap-1.5 text-[12px] font-normal text-white mb-4">
+            <div className="flex items-center gap-1.5 text-[12px] font-normal text-white mb-2">
               <span>9067212032 | Chibuzor Emmanuel Dike</span>
               <Copy className="w-3.5 h-3.5 text-white/60 shrink-0" />
             </div>
 
             {/* balance */}
-            <div className="flex items-center gap-2.5 mb-1">
+            <div className="flex items-center gap-2.5 mb-0.5">
               <span className="text-[22px] font-bold tracking-tight leading-none">
                 {balanceHidden ? '* * * * *' : '₦1,000.00'}
               </span>
@@ -120,7 +120,7 @@ function MoniepointHome() {
             </div>
 
             {/* last updated */}
-            <p className="text-[11px] text-white font-normal mb-5">
+            <p className="text-[11px] text-white font-normal mb-3">
               Last updated 4 minutes ago
             </p>
 
