@@ -374,6 +374,17 @@ function MoniepointHome() {
 function DepositPage() {
   const [, navigate] = useLocation();
   const [amount, setAmount] = useState('');
+
+  function handleAmountChange(e: React.ChangeEvent<HTMLInputElement>) {
+    // Strip everything except digits and one decimal point
+    const raw = e.target.value.replace(/,/g, '').replace(/[^0-9.]/g, '');
+    const parts = raw.split('.');
+    const intPart = parts[0];
+    const decPart = parts.length > 1 ? '.' + parts[1] : '';
+    // Add commas to integer part if > 999
+    const formatted = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    setAmount(formatted + decPart);
+  }
   const [copied, setCopied] = useState(false);
 
   const accountNumber = '9067212032';
@@ -424,7 +435,7 @@ function DepositPage() {
               <p className="text-[11px] text-[#888] mb-0.5">Bank</p>
               <p className="text-[14px] font-semibold text-[#111]">{bankName}</p>
             </div>
-            <div className="w-10 h-10 bg-[#162353] rounded-full flex items-center justify-center text-white text-[13px] font-bold">V</div>
+            <img src="/vexa-icon.png" alt="Vexa" className="w-10 h-10 rounded-full object-cover" />
           </div>
 
           <div className="h-px bg-[#F0F0F0] mb-4" />
@@ -464,10 +475,11 @@ function DepositPage() {
           <div className="flex items-center gap-2 border border-[#E0E0E0] rounded-xl px-4 py-3 focus-within:border-[#2563EB] transition-colors">
             <span className="text-[18px] font-bold text-[#444]">₦</span>
             <input
-              type="number"
+              type="text"
+              inputMode="decimal"
               placeholder="0.00"
               value={amount}
-              onChange={e => setAmount(e.target.value)}
+              onChange={handleAmountChange}
               className="flex-1 text-[18px] font-semibold text-[#111] outline-none bg-transparent placeholder:text-[#CCC]"
             />
           </div>
