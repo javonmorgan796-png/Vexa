@@ -26,8 +26,9 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 flex items-center justify-center bg-black z-50"
+      className="fixed inset-0 flex items-center justify-center z-50"
       style={{
+        backgroundColor: '#07245A',
         transition: 'opacity 0.6s ease',
         opacity: fadeOut ? 0 : 1,
         pointerEvents: fadeOut ? 'none' : 'auto',
