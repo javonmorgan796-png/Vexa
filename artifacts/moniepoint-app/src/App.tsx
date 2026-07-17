@@ -198,7 +198,7 @@ function MoniepointHome() {
             <div className="flex gap-3">
               <button className="bg-[#1E3A6E] rounded-full h-[30px] px-4 flex items-center gap-1.5 text-[11px] font-semibold text-white">
                 <span className="text-[14px] leading-none font-light">+</span>
-                Add Money
+                Deposit
               </button>
               <button className="bg-[#1E3A6E] rounded-full h-[30px] px-4 flex items-center gap-1.5 text-[11px] font-semibold text-white">
                 <Clock className="w-3 h-3" strokeWidth={2} />
