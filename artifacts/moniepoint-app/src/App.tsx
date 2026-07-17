@@ -4,7 +4,9 @@ import {
   Headphones, Bell, Copy, EyeOff, Eye, Clock,
   ArrowLeftRight, PhoneCall, Tablet, Target,
   PiggyBank, BookOpen, FileText, LayoutGrid,
-  Trophy, CreditCard, Home, ArrowDown,
+  Trophy, CreditCard, Home, ArrowDown, Settings,
+  ArrowUp, ChevronRight, Shield, Fingerprint,
+  BellRing, HelpCircle, Info, LogOut, User, Lock,
 } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
@@ -201,7 +203,7 @@ function MoniepointHome() {
                 <span className="text-[14px] leading-none font-light">+</span>
                 Deposit
               </button>
-              <button className="bg-[#1E3A6E] rounded-full h-[30px] px-4 flex items-center gap-1.5 text-[11px] font-semibold text-white">
+              <button onClick={() => navigate('/history')} className="bg-[#1E3A6E] rounded-full h-[30px] px-4 flex items-center gap-1.5 text-[11px] font-semibold text-white">
                 <Clock className="w-3 h-3" strokeWidth={2} />
                 History
               </button>
@@ -358,14 +360,212 @@ function MoniepointHome() {
               <LayoutGrid className="w-6 h-6 text-[#9CA3AF]" strokeWidth={1.75} />
               <span className="text-[11px] font-medium text-[#9CA3AF]">Services</span>
             </button>
-            {/* Rewards */}
-            <button className="flex flex-col items-center gap-1 min-w-[56px]">
-              <Trophy className="w-6 h-6 text-[#9CA3AF]" strokeWidth={1.75} />
-              <span className="text-[11px] font-medium text-[#9CA3AF]">Rewards</span>
+            {/* Settings */}
+            <button onClick={() => navigate('/settings')} className="flex flex-col items-center gap-1 min-w-[56px]">
+              <Settings className="w-6 h-6 text-[#9CA3AF]" strokeWidth={1.75} />
+              <span className="text-[11px] font-medium text-[#9CA3AF]">Settings</span>
             </button>
           </div>
         </div>
 
+      </div>
+    </div>
+  );
+}
+
+/* ─── History Page ───────────────────────────────────────────────────── */
+const ALL_TRANSACTIONS = [
+  { id: 1, type: 'in',  name: 'Chibuzor Emmanuel Dike', date: '17 Jul, 09:12 AM', amount: '1,000.00',  note: 'Salary' },
+  { id: 2, type: 'out', name: 'Ada Okonkwo',             date: '16 Jul, 07:44 PM', amount: '5,500.00',  note: 'Transfer' },
+  { id: 3, type: 'out', name: 'Emeka Nwosu',             date: '15 Jul, 02:30 PM', amount: '2,000.00',  note: 'Data subscription' },
+  { id: 4, type: 'in',  name: 'Tunde Bakare',            date: '14 Jul, 06:39 PM', amount: '10,000.00', note: 'Payment received' },
+  { id: 5, type: 'out', name: 'MTN Nigeria',             date: '13 Jul, 11:05 AM', amount: '500.00',    note: 'Airtime' },
+  { id: 6, type: 'in',  name: 'Vexa Cashback',           date: '12 Jul, 08:00 AM', amount: '150.00',    note: 'Cashback reward' },
+  { id: 7, type: 'out', name: 'Bet9ja',                  date: '11 Jul, 04:22 PM', amount: '3,000.00',  note: 'Betting' },
+  { id: 8, type: 'in',  name: 'Oluwaseun Adeyemi',       date: '10 Jul, 01:17 PM', amount: '7,500.00',  note: 'Refund' },
+  { id: 9, type: 'out', name: 'EKEDC',                   date: '09 Jul, 10:00 AM', amount: '4,200.00',  note: 'Electricity bill' },
+  { id: 10,type: 'in',  name: 'Freelance Client',        date: '08 Jul, 05:50 PM', amount: '25,000.00', note: 'Design payment' },
+];
+
+type TxFilter = 'all' | 'in' | 'out';
+
+function HistoryPage() {
+  const [, navigate] = useLocation();
+  const [filter, setFilter] = useState<TxFilter>('all');
+  const [search, setSearch] = useState('');
+
+  const filtered = ALL_TRANSACTIONS.filter(tx => {
+    const matchFilter = filter === 'all' || tx.type === filter;
+    const matchSearch = tx.name.toLowerCase().includes(search.toLowerCase()) || tx.note.toLowerCase().includes(search.toLowerCase());
+    return matchFilter && matchSearch;
+  });
+
+  return (
+    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+      {/* Header */}
+      <div className="flex-none bg-white border-b border-[#E8EBF0]" style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
+        <div className="flex items-center gap-3 px-4 pb-3">
+          <button onClick={() => navigate('/')} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          </button>
+          <span className="text-[16px] font-bold text-[#111]">Transaction History</span>
+        </div>
+
+        {/* Search */}
+        <div className="px-4 pb-3">
+          <div className="flex items-center gap-2 bg-[#F2F3F5] rounded-xl px-3 py-2.5">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" placeholder="Search transactions…" value={search} onChange={e => setSearch(e.target.value)}
+              className="flex-1 text-[13px] text-[#111] outline-none bg-transparent placeholder:text-[#9CA3AF]" />
+          </div>
+        </div>
+
+        {/* Filter tabs */}
+        <div className="flex gap-2 px-4 pb-3">
+          {(['all','in','out'] as TxFilter[]).map(f => (
+            <button key={f} onClick={() => setFilter(f)}
+              className={`px-4 py-1.5 rounded-full text-[12px] font-semibold transition-all ${filter === f ? 'bg-[#162353] text-white' : 'bg-[#F2F3F5] text-[#555]'}`}>
+              {f === 'all' ? 'All' : f === 'in' ? 'Money In' : 'Money Out'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Transaction list */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2" style={{ scrollbarWidth: 'none' }}>
+        {filtered.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-16 text-[#888]">
+            <Clock className="w-10 h-10 mb-3 opacity-30" />
+            <p className="text-[13px]">No transactions found</p>
+          </div>
+        )}
+        {filtered.map(tx => (
+          <div key={tx.id} className="bg-white rounded-2xl px-4 py-3.5 border border-[#F0F0F0] flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${tx.type === 'in' ? 'bg-[#DCFCE7]' : 'bg-[#FEE2E2]'}`}>
+              {tx.type === 'in'
+                ? <ArrowDown className="w-4 h-4 text-[#16A34A]" strokeWidth={2.5} />
+                : <ArrowUp   className="w-4 h-4 text-[#DC2626]" strokeWidth={2.5} />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-semibold text-[#111] truncate">{tx.name}</p>
+              <p className="text-[11px] text-[#888] mt-0.5">{tx.note} · {tx.date}</p>
+            </div>
+            <span className={`text-[13px] font-bold shrink-0 ${tx.type === 'in' ? 'text-[#16A34A]' : 'text-[#DC2626]'}`}>
+              {tx.type === 'in' ? '+' : '-'}₦{tx.amount}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Settings Page ──────────────────────────────────────────────────── */
+type SettingsSection = { heading: string; items: { icon: React.ReactNode; label: string; sub?: string; danger?: boolean; action?: () => void }[] };
+
+function SettingsPage() {
+  const [, navigate] = useLocation();
+  const [biometrics, setBiometrics] = useState(true);
+  const [notifs, setNotifs] = useState(true);
+
+  const sections: SettingsSection[] = [
+    {
+      heading: 'Account',
+      items: [
+        { icon: <User className="w-5 h-5" />,    label: 'Profile',              sub: 'Chibuzor Emmanuel Dike' },
+        { icon: <Shield className="w-5 h-5" />,  label: 'Limits & Verification',sub: 'Level 3 · Verified' },
+      ],
+    },
+    {
+      heading: 'Security',
+      items: [
+        { icon: <Lock className="w-5 h-5" />,        label: 'Change Transaction PIN' },
+        { icon: <Fingerprint className="w-5 h-5" />, label: 'Biometric Login',   sub: biometrics ? 'On' : 'Off' },
+        { icon: <Lock className="w-5 h-5" />,        label: 'Change Password' },
+      ],
+    },
+    {
+      heading: 'Preferences',
+      items: [
+        { icon: <BellRing className="w-5 h-5" />, label: 'Notifications', sub: notifs ? 'Enabled' : 'Disabled' },
+      ],
+    },
+    {
+      heading: 'Support',
+      items: [
+        { icon: <HelpCircle className="w-5 h-5" />, label: 'Help & Support' },
+        { icon: <Info className="w-5 h-5" />,        label: 'About Vexa',   sub: 'Version 1.0.0' },
+      ],
+    },
+    {
+      heading: '',
+      items: [
+        { icon: <LogOut className="w-5 h-5" />, label: 'Log Out', danger: true },
+      ],
+    },
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+      {/* Header */}
+      <div className="flex-none flex items-center gap-3 px-4 pb-3 bg-white border-b border-[#E8EBF0]"
+        style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
+        <button onClick={() => navigate('/')} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        </button>
+        <span className="text-[16px] font-bold text-[#111]">Settings</span>
+      </div>
+
+      <div className="flex-1 overflow-y-auto py-4 px-4 space-y-4" style={{ scrollbarWidth: 'none' }}>
+
+        {/* Profile hero card */}
+        <div className="bg-[#162353] rounded-2xl px-5 py-4 flex items-center gap-4">
+          <div className="w-14 h-14 rounded-full bg-[#3A3530] flex items-center justify-center text-white text-[20px] font-bold shrink-0">C</div>
+          <div>
+            <p className="text-white font-bold text-[15px]">Chibuzor Emmanuel Dike</p>
+            <p className="text-white/60 text-[12px] mt-0.5">9067212032 · Vexa Bank</p>
+            <span className="inline-block mt-1.5 bg-white/20 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full">✓ Verified</span>
+          </div>
+        </div>
+
+        {/* Settings sections */}
+        {sections.map((section, si) => (
+          <div key={si}>
+            {section.heading && <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide mb-2 px-1">{section.heading}</p>}
+            <div className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
+              {section.items.map((item, ii) => {
+                const isBio  = item.label === 'Biometric Login';
+                const isNot  = item.label === 'Notifications';
+                return (
+                  <button key={ii}
+                    onClick={() => {
+                      if (isBio) setBiometrics(v => !v);
+                      else if (isNot) setNotifs(v => !v);
+                      else if (item.action) item.action();
+                    }}
+                    className={`w-full flex items-center gap-3.5 px-4 py-4 text-left transition-colors hover:bg-[#F8F9FB] ${ii < section.items.length - 1 ? 'border-b border-[#F5F5F5]' : ''}`}
+                  >
+                    <span className={item.danger ? 'text-red-500' : 'text-[#555]'}>{item.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-[14px] font-semibold ${item.danger ? 'text-red-500' : 'text-[#111]'}`}>{item.label}</p>
+                      {item.sub && <p className="text-[11px] text-[#888] mt-0.5">{item.sub}</p>}
+                    </div>
+                    {(isBio || isNot) ? (
+                      /* Toggle */
+                      <div className={`w-11 h-6 rounded-full transition-colors relative ${(isBio ? biometrics : notifs) ? 'bg-[#162353]' : 'bg-[#D1D5DB]'}`}>
+                        <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${(isBio ? biometrics : notifs) ? 'left-5' : 'left-0.5'}`} />
+                      </div>
+                    ) : !item.danger ? (
+                      <ChevronRight className="w-4 h-4 text-[#CBD5E1] shrink-0" />
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+
+        <p className="text-center text-[11px] text-[#CCC] pb-2">Vexa Bank · v1.0.0</p>
       </div>
     </div>
   );
@@ -909,6 +1109,8 @@ function Router() {
       <Route path="/" component={MoniepointHome} />
       <Route path="/deposit" component={DepositPage} />
       <Route path="/transfer" component={TransferPage} />
+      <Route path="/history" component={HistoryPage} />
+      <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />
     </Switch>
   );
