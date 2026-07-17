@@ -140,6 +140,15 @@ function MoniepointHome() {
             <div className="w-10 h-10 rounded-full bg-[#3A3530] flex items-center justify-center text-white text-[15px] font-bold shrink-0">
               C
             </div>
+            {/* dynamic greeting */}
+            <span className="text-[13px] font-semibold text-[#444]">
+              {(() => {
+                const h = new Date().getHours();
+                if (h < 12) return 'Good Morning ☀️';
+                if (h < 17) return 'Good Afternoon 🌤️';
+                return 'Good Evening 🌙';
+              })()}
+            </span>
           </div>
           <div className="flex items-center gap-4">
             <Headphones className="w-6 h-6 text-[#222]" strokeWidth={1.75} />
