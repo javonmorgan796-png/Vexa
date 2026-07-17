@@ -69,7 +69,7 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
         <img
           src="/vexa-logo.png"
           alt="Vexa"
-          className="vexa-logo w-[220px]"
+          className="vexa-logo w-[320px]"
         />
       </div>
     </div>
