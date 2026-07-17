@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import {
   Headphones, Bell, Copy, EyeOff, Eye, Clock,
@@ -12,6 +12,71 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 
 const queryClient = new QueryClient();
+
+/* ─── Splash / Loading screen ───────────────────────────────────────── */
+function SplashScreen({ onDone }: { onDone: () => void }) {
+  const [fadeOut, setFadeOut] = useState(false);
+
+  useEffect(() => {
+    // Start fade-out after 2.2s, call onDone after fade completes
+    const fadeTimer = setTimeout(() => setFadeOut(true), 2200);
+    const doneTimer = setTimeout(() => onDone(), 2800);
+    return () => { clearTimeout(fadeTimer); clearTimeout(doneTimer); };
+  }, [onDone]);
+
+  return (
+    <div
+      className="fixed inset-0 flex items-center justify-center bg-black z-50"
+      style={{
+        transition: 'opacity 0.6s ease',
+        opacity: fadeOut ? 0 : 1,
+        pointerEvents: fadeOut ? 'none' : 'auto',
+      }}
+    >
+      <style>{`
+        @keyframes vexaPulse {
+          0%   { transform: scale(0.82); opacity: 0; }
+          40%  { transform: scale(1.06); opacity: 1; }
+          60%  { transform: scale(0.97); opacity: 1; }
+          80%  { transform: scale(1.03); opacity: 1; }
+          100% { transform: scale(1);   opacity: 1; }
+        }
+        @keyframes vexaGlow {
+          0%, 100% { filter: drop-shadow(0 0 0px #00c6ff); }
+          50%       { filter: drop-shadow(0 0 22px #00c6ff) drop-shadow(0 0 40px #0072ff88); }
+        }
+        @keyframes vexaShimmer {
+          0%   { background-position: -200% center; }
+          100% { background-position:  200% center; }
+        }
+        .vexa-logo {
+          animation: vexaPulse 1s cubic-bezier(.22,.61,.36,1) forwards,
+                     vexaGlow   2s ease-in-out 0.8s infinite;
+        }
+        .vexa-tagline {
+          animation: vexaPulse 1s cubic-bezier(.22,.61,.36,1) 0.3s both;
+          background: linear-gradient(90deg, #ffffff 0%, #00c6ff 40%, #ffffff 60%, #ffffff 100%);
+          background-size: 200% auto;
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          animation: vexaPulse 1s cubic-bezier(.22,.61,.36,1) 0.3s both,
+                     vexaShimmer 1.8s linear 1s infinite;
+        }
+      `}</style>
+
+      <div className="flex flex-col items-center gap-5">
+        <img
+          src="/vexa-logo.png"
+          alt="Vexa"
+          className="vexa-logo w-[220px]"
+        />
+        <p className="vexa-tagline text-[13px] font-semibold tracking-[0.18em] uppercase text-white/80">
+          Your money, your way
+        </p>
+      </div>
+    </div>
+  );
+}
 
 /* ─── tiny SVG icons that exactly match the screenshot ──────────────── */
 
@@ -309,9 +374,12 @@ function Router() {
 }
 
 function App() {
+  const [showSplash, setShowSplash] = useState(true);
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
+        {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
           <Router />
         </WouterRouter>
