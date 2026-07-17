@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Route, Switch, Router as WouterRouter } from 'wouter';
+import { Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
 import {
   Headphones, Bell, Copy, EyeOff, Eye, Clock,
   ArrowLeftRight, PhoneCall, Tablet, Target,
@@ -126,6 +126,7 @@ const services = [
 
 function MoniepointHome() {
   const [balanceHidden, setBalanceHidden] = useState(false);
+  const [, navigate] = useLocation();
   return (
     <div className="fixed inset-0 bg-[#F2F3F5]">
       <div
@@ -196,7 +197,7 @@ function MoniepointHome() {
 
             {/* action buttons — content-width pills, left-aligned */}
             <div className="flex gap-3">
-              <button className="bg-[#1E3A6E] rounded-full h-[30px] px-4 flex items-center gap-1.5 text-[11px] font-semibold text-white">
+              <button onClick={() => navigate('/deposit')} className="bg-[#1E3A6E] rounded-full h-[30px] px-4 flex items-center gap-1.5 text-[11px] font-semibold text-white">
                 <span className="text-[14px] leading-none font-light">+</span>
                 Deposit
               </button>
@@ -369,10 +370,129 @@ function MoniepointHome() {
   );
 }
 
+/* ─── Deposit Page ───────────────────────────────────────────────────── */
+function DepositPage() {
+  const [, navigate] = useLocation();
+  const [amount, setAmount] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  const accountNumber = '9067212032';
+  const accountName   = 'Chibuzor Emmanuel Dike';
+  const bankName      = 'Vexa Bank';
+
+  function copyAccount() {
+    navigator.clipboard.writeText(accountNumber).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+
+      {/* Header */}
+      <div
+        className="flex-none flex items-center gap-3 px-4 pb-3 bg-white border-b border-[#E8EBF0]"
+        style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}
+      >
+        <button onClick={() => navigate('/')} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 5l-7 7 7 7"/>
+          </svg>
+        </button>
+        <span className="text-[16px] font-bold text-[#111]">Deposit</span>
+      </div>
+
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto px-4 py-5" style={{ scrollbarWidth: 'none' }}>
+
+        {/* Info banner */}
+        <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 mb-5 flex items-start gap-2.5">
+          <svg className="shrink-0 mt-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <p className="text-[12px] text-blue-700 leading-relaxed">
+            Transfer money to the account below from any bank. Your balance will be credited instantly.
+          </p>
+        </div>
+
+        {/* Account card */}
+        <div className="bg-white rounded-2xl p-5 mb-4 shadow-sm border border-[#F0F0F0]">
+          <p className="text-[11px] font-medium text-[#888] mb-3 uppercase tracking-wide">Your Deposit Account</p>
+
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-[11px] text-[#888] mb-0.5">Bank</p>
+              <p className="text-[14px] font-semibold text-[#111]">{bankName}</p>
+            </div>
+            <div className="w-10 h-10 bg-[#162353] rounded-full flex items-center justify-center text-white text-[13px] font-bold">V</div>
+          </div>
+
+          <div className="h-px bg-[#F0F0F0] mb-4" />
+
+          <div className="mb-4">
+            <p className="text-[11px] text-[#888] mb-0.5">Account Number</p>
+            <div className="flex items-center justify-between">
+              <p className="text-[22px] font-bold text-[#111] tracking-widest">{accountNumber}</p>
+              <button
+                onClick={copyAccount}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all ${copied ? 'bg-green-100 text-green-600' : 'bg-[#EEF2FF] text-[#2563EB]'}`}
+              >
+                {copied ? (
+                  <>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                    Copy
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <p className="text-[11px] text-[#888] mb-0.5">Account Name</p>
+            <p className="text-[14px] font-semibold text-[#111]">{accountName}</p>
+          </div>
+        </div>
+
+        {/* Amount input (optional) */}
+        <div className="bg-white rounded-2xl p-5 mb-5 shadow-sm border border-[#F0F0F0]">
+          <p className="text-[12px] font-semibold text-[#444] mb-3">Enter Amount <span className="text-[#888] font-normal">(optional)</span></p>
+          <div className="flex items-center gap-2 border border-[#E0E0E0] rounded-xl px-4 py-3 focus-within:border-[#2563EB] transition-colors">
+            <span className="text-[18px] font-bold text-[#444]">₦</span>
+            <input
+              type="number"
+              placeholder="0.00"
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+              className="flex-1 text-[18px] font-semibold text-[#111] outline-none bg-transparent placeholder:text-[#CCC]"
+            />
+          </div>
+          <p className="text-[11px] text-[#888] mt-2">Enter a specific amount to share with the sender.</p>
+        </div>
+
+        {/* Share button */}
+        <button className="w-full bg-[#162353] rounded-xl h-[50px] flex items-center justify-center gap-2 text-[14px] font-semibold text-white">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+          </svg>
+          Share Account Details
+        </button>
+
+      </div>
+    </div>
+  );
+}
+
 function Router() {
   return (
     <Switch>
       <Route path="/" component={MoniepointHome} />
+      <Route path="/deposit" component={DepositPage} />
       <Route component={NotFound} />
     </Switch>
   );
