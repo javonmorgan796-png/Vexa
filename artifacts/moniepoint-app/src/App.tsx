@@ -19,8 +19,8 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
 
   useEffect(() => {
     // Start fade-out after 2.2s, call onDone after fade completes
-    const fadeTimer = setTimeout(() => setFadeOut(true), 2200);
-    const doneTimer = setTimeout(() => onDone(), 2800);
+    const fadeTimer = setTimeout(() => setFadeOut(true), 6800);
+    const doneTimer = setTimeout(() => onDone(), 7400);
     return () => { clearTimeout(fadeTimer); clearTimeout(doneTimer); };
   }, [onDone]);
 
@@ -70,9 +70,6 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
           alt="Vexa"
           className="vexa-logo w-[220px]"
         />
-        <p className="vexa-tagline text-[13px] font-semibold tracking-[0.18em] uppercase text-white/80">
-          Your money, your way
-        </p>
       </div>
     </div>
   );
