@@ -220,17 +220,23 @@ function MoniepointHome() {
 
             {/* grid: 4 cols, gap 8px; tile h ~85px */}
             <div className="grid grid-cols-4 gap-2">
-              {services.map(({ label, Icon }) => (
-                <button
-                  key={label}
-                  onClick={() => { if (label === 'Transfer') navigate('/transfer'); }}
-                  className="bg-white rounded-xl py-3.5 px-1 flex flex-col items-center justify-center gap-2 border border-[#F0F0F0]"
-                >
-                  {/* icon: plain dark gray, 22px, no circle */}
-                  <Icon className="text-[#1a1a1a]" size={22} strokeWidth={1.75} />
-                  <span className="text-[11px] font-medium text-[#333] text-center leading-tight">{label}</span>
-                </button>
-              ))}
+              {services.map(({ label, Icon }) => {
+                const routes: Record<string,string> = {
+                  Transfer:'/transfer', Airtime:'/airtime', Data:'/data',
+                  Betting:'/betting', Savings:'/savings', Education:'/education',
+                  Statement:'/statement', More:'/more',
+                };
+                return (
+                  <button
+                    key={label}
+                    onClick={() => navigate(routes[label] ?? '/')}
+                    className="bg-white rounded-xl py-3.5 px-1 flex flex-col items-center justify-center gap-2 border border-[#F0F0F0] active:bg-[#F2F3F5]"
+                  >
+                    <Icon className="text-[#1a1a1a]" size={22} strokeWidth={1.75} />
+                    <span className="text-[11px] font-medium text-[#333] text-center leading-tight">{label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -269,7 +275,7 @@ function MoniepointHome() {
           <div className="px-4 mt-4">
             <div className="flex justify-between items-center mb-2.5">
               <span className="text-[12px] font-semibold text-[#111]">Recent transactions</span>
-              <button className="text-[#2563EB] text-[11px] font-semibold">View All</button>
+              <button onClick={() => navigate('/history')} className="text-[#2563EB] text-[11px] font-semibold">View All</button>
             </div>
 
             <div className="bg-white rounded-xl p-4 border border-[#F0F0F0] flex items-center justify-between">
@@ -351,12 +357,12 @@ function MoniepointHome() {
               <span className="text-[11px] font-semibold text-[#2563EB]">Home</span>
             </button>
             {/* Card */}
-            <button className="flex flex-col items-center gap-1 min-w-[56px]">
+            <button onClick={() => navigate('/card')} className="flex flex-col items-center gap-1 min-w-[56px]">
               <CreditCard className="w-6 h-6 text-[#9CA3AF]" strokeWidth={1.75} />
               <span className="text-[11px] font-medium text-[#9CA3AF]">Card</span>
             </button>
             {/* Services */}
-            <button className="flex flex-col items-center gap-1 min-w-[56px]">
+            <button onClick={() => navigate('/services')} className="flex flex-col items-center gap-1 min-w-[56px]">
               <LayoutGrid className="w-6 h-6 text-[#9CA3AF]" strokeWidth={1.75} />
               <span className="text-[11px] font-medium text-[#9CA3AF]">Services</span>
             </button>
@@ -1103,6 +1109,718 @@ function TransferPage() {
   );
 }
 
+/* ─── Shared helpers ────────────────────────────────────────────────── */
+function PageShell({ title, back, children }: { title: string; back: string; children: React.ReactNode }) {
+  const [, navigate] = useLocation();
+  return (
+    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+      <div className="flex-none flex items-center gap-3 px-4 pb-3 bg-white border-b border-[#E8EBF0]"
+        style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
+        <button onClick={() => navigate(back)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        </button>
+        <span className="text-[16px] font-bold text-[#111]">{title}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function PinModal({ amount, label, onSuccess, onClose }: { amount: string; label: string; onSuccess: () => void; onClose: () => void }) {
+  const [pin, setPin] = useState('');
+  const [processing, setProcessing] = useState(false);
+  function submit() {
+    if (pin.length < 4) return;
+    setProcessing(true);
+    setTimeout(() => { setProcessing(false); onSuccess(); }, 1500);
+  }
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+      <div className="bg-white w-full rounded-t-3xl px-6 pt-6 pb-8">
+        <div className="flex items-center justify-between mb-5">
+          <p className="text-[16px] font-bold text-[#111]">Confirm with PIN</p>
+          <button onClick={onClose} className="text-[#888]">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div className="bg-[#F8F9FB] rounded-xl p-3 text-center mb-5">
+          <p className="text-[11px] text-[#888]">{label}</p>
+          <p className="text-[22px] font-extrabold text-[#111]">₦{amount}</p>
+        </div>
+        <div className="flex justify-center gap-5 mb-6">
+          {[0,1,2,3].map(i => (
+            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${i < pin.length ? 'bg-[#162353] border-[#162353]' : 'border-[#CBD5E1]'}`} />
+          ))}
+        </div>
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          {['1','2','3','4','5','6','7','8','9'].map(k => (
+            <button key={k} onClick={() => pin.length < 4 && setPin(p => p + k)}
+              className="h-13 py-3.5 rounded-2xl bg-[#F2F3F5] text-[20px] font-semibold text-[#111] active:bg-[#E2E5EA]">{k}</button>
+          ))}
+          <div />
+          <button onClick={() => pin.length < 4 && setPin(p => p + '0')}
+            className="h-13 py-3.5 rounded-2xl bg-[#F2F3F5] text-[20px] font-semibold text-[#111] active:bg-[#E2E5EA]">0</button>
+          <button onClick={() => setPin(p => p.slice(0, -1))}
+            className="h-13 py-3.5 rounded-2xl bg-[#F2F3F5] flex items-center justify-center active:bg-[#E2E5EA]">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12H9M15 6l-6 6 6 6"/></svg>
+          </button>
+        </div>
+        <button onClick={submit} disabled={pin.length < 4 || processing}
+          className={`w-full h-[50px] rounded-xl text-[14px] font-semibold text-white ${pin.length === 4 && !processing ? 'bg-[#162353]' : 'bg-[#162353]/40'}`}>
+          {processing ? 'Processing…' : 'Pay Now'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SuccessBanner({ title, sub, onHome }: { title: string; sub: string; onHome: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-white flex flex-col items-center justify-center px-6" style={{ fontFamily: "'Inter', sans-serif" }}>
+      <div className="w-20 h-20 rounded-full bg-green-50 flex items-center justify-center mb-5">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <p className="text-[20px] font-bold text-[#111] mb-1">{title}</p>
+      <p className="text-[13px] text-[#888] text-center mb-8">{sub}</p>
+      <button onClick={onHome} className="w-full max-w-xs bg-[#162353] rounded-xl h-[50px] text-[14px] font-semibold text-white">Back to Home</button>
+    </div>
+  );
+}
+
+/* ─── Airtime Page ───────────────────────────────────────────────────── */
+const NETWORKS = [
+  { id: 'mtn',    name: 'MTN',     color: '#FFD700', text: '#000' },
+  { id: 'airtel', name: 'Airtel',  color: '#DC2626', text: '#fff' },
+  { id: 'glo',    name: 'Glo',     color: '#16A34A', text: '#fff' },
+  { id: '9mobile',name: '9mobile', color: '#1D7F3E', text: '#fff' },
+];
+const AIRTIME_AMOUNTS = ['100','200','500','1,000','2,000','5,000'];
+
+function AirtimePage() {
+  const [, navigate] = useLocation();
+  const [network, setNetwork] = useState('');
+  const [phone, setPhone] = useState('');
+  const [amount, setAmount] = useState('');
+  const [showPin, setShowPin] = useState(false);
+  const [done, setDone] = useState(false);
+
+  if (done) return <SuccessBanner title="Airtime Purchased!" sub={`₦${amount} airtime sent to ${phone}`} onHome={() => navigate('/')} />;
+
+  const canProceed = network && phone.length >= 10 && amount;
+
+  return (
+    <PageShell title="Buy Airtime" back="/">
+      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4" style={{ scrollbarWidth: 'none' }}>
+        {/* Network */}
+        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
+          <p className="text-[12px] font-semibold text-[#444] mb-3">Select Network</p>
+          <div className="grid grid-cols-4 gap-2">
+            {NETWORKS.map(n => (
+              <button key={n.id} onClick={() => setNetwork(n.id)}
+                className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 transition-all ${network === n.id ? 'border-[#162353]' : 'border-[#F0F0F0]'}`}>
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-black" style={{ background: n.color, color: n.text }}>{n.name.slice(0,3)}</div>
+                <span className="text-[10px] text-[#555] font-medium">{n.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        {/* Phone */}
+        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
+          <p className="text-[12px] font-semibold text-[#444] mb-3">Phone Number</p>
+          <input type="tel" inputMode="tel" placeholder="08012345678" value={phone}
+            onChange={e => setPhone(e.target.value.replace(/\D/g,'').slice(0,11))}
+            className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[16px] font-semibold tracking-wider outline-none focus:border-[#2563EB] transition-colors placeholder:text-[#CCC] placeholder:font-normal placeholder:tracking-normal" />
+        </div>
+        {/* Amount */}
+        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
+          <p className="text-[12px] font-semibold text-[#444] mb-3">Amount</p>
+          <div className="flex items-center gap-2 border border-[#E0E0E0] rounded-xl px-4 py-3 focus-within:border-[#2563EB] mb-3">
+            <span className="text-[18px] font-bold text-[#444]">₦</span>
+            <input type="text" inputMode="numeric" placeholder="0" value={amount}
+              onChange={e => setAmount(formatAmt(e.target.value))}
+              className="flex-1 text-[18px] font-semibold text-[#111] outline-none bg-transparent placeholder:text-[#CCC]" />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {AIRTIME_AMOUNTS.map(a => (
+              <button key={a} onClick={() => setAmount(a)}
+                className={`py-2 rounded-xl text-[12px] font-semibold border transition-all ${amount===a ? 'bg-[#162353] text-white border-[#162353]' : 'border-[#E0E0E0] text-[#444]'}`}>
+                ₦{a}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="flex-none px-4 pb-6 pt-2">
+        <button onClick={() => canProceed && setShowPin(true)} disabled={!canProceed}
+          className={`w-full h-[50px] rounded-xl text-[14px] font-semibold text-white ${canProceed ? 'bg-[#162353]' : 'bg-[#162353]/40'}`}>
+          Continue
+        </button>
+      </div>
+      {showPin && <PinModal amount={amount} label={`Airtime for ${phone}`} onSuccess={() => { setShowPin(false); setDone(true); }} onClose={() => setShowPin(false)} />}
+    </PageShell>
+  );
+}
+
+/* ─── Data Page ──────────────────────────────────────────────────────── */
+const DATA_PLANS: Record<string, {size:string; price:string; validity:string}[]> = {
+  mtn:    [{size:'100MB',price:'100',validity:'1 day'},{size:'500MB',price:'300',validity:'7 days'},{size:'1GB',price:'500',validity:'30 days'},{size:'2GB',price:'1,000',validity:'30 days'},{size:'5GB',price:'2,000',validity:'30 days'},{size:'10GB',price:'3,000',validity:'30 days'}],
+  airtel: [{size:'150MB',price:'100',validity:'1 day'},{size:'750MB',price:'300',validity:'7 days'},{size:'1.5GB',price:'500',validity:'30 days'},{size:'3GB',price:'1,000',validity:'30 days'},{size:'6GB',price:'2,000',validity:'30 days'},{size:'15GB',price:'3,500',validity:'30 days'}],
+  glo:    [{size:'200MB',price:'100',validity:'1 day'},{size:'1GB',price:'300',validity:'7 days'},{size:'2GB',price:'500',validity:'30 days'},{size:'5GB',price:'1,000',validity:'30 days'},{size:'10GB',price:'2,000',validity:'30 days'},{size:'20GB',price:'4,000',validity:'30 days'}],
+  '9mobile':[{size:'50MB',price:'50',validity:'1 day'},{size:'500MB',price:'200',validity:'7 days'},{size:'1GB',price:'400',validity:'30 days'},{size:'2.5GB',price:'1,000',validity:'30 days'},{size:'5GB',price:'2,000',validity:'30 days'},{size:'11.5GB',price:'3,000',validity:'30 days'}],
+};
+
+function DataPage() {
+  const [, navigate] = useLocation();
+  const [network, setNetwork] = useState('');
+  const [phone, setPhone]     = useState('');
+  const [plan, setPlan]       = useState('');
+  const [showPin, setShowPin] = useState(false);
+  const [done, setDone]       = useState(false);
+
+  if (done) return <SuccessBanner title="Data Activated!" sub={`${plan} sent to ${phone}`} onHome={() => navigate('/')} />;
+
+  const plans = network ? DATA_PLANS[network] : [];
+  const selectedPlan = plans.find(p => p.size === plan);
+  const canProceed = network && phone.length >= 10 && plan;
+
+  return (
+    <PageShell title="Buy Data" back="/">
+      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4" style={{ scrollbarWidth: 'none' }}>
+        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
+          <p className="text-[12px] font-semibold text-[#444] mb-3">Select Network</p>
+          <div className="grid grid-cols-4 gap-2">
+            {NETWORKS.map(n => (
+              <button key={n.id} onClick={() => { setNetwork(n.id); setPlan(''); }}
+                className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 transition-all ${network===n.id ? 'border-[#162353]' : 'border-[#F0F0F0]'}`}>
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-black" style={{ background: n.color, color: n.text }}>{n.name.slice(0,3)}</div>
+                <span className="text-[10px] text-[#555] font-medium">{n.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
+          <p className="text-[12px] font-semibold text-[#444] mb-3">Phone Number</p>
+          <input type="tel" inputMode="tel" placeholder="08012345678" value={phone}
+            onChange={e => setPhone(e.target.value.replace(/\D/g,'').slice(0,11))}
+            className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[16px] font-semibold tracking-wider outline-none focus:border-[#2563EB] transition-colors placeholder:text-[#CCC] placeholder:font-normal placeholder:tracking-normal" />
+        </div>
+        {network && (
+          <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
+            <p className="text-[12px] font-semibold text-[#444] mb-3">Select Plan</p>
+            <div className="space-y-2">
+              {plans.map(p => (
+                <button key={p.size} onClick={() => setPlan(p.size)}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all ${plan===p.size ? 'border-[#162353] bg-[#EEF2FF]' : 'border-[#F0F0F0]'}`}>
+                  <div className="text-left">
+                    <p className="text-[14px] font-bold text-[#111]">{p.size}</p>
+                    <p className="text-[11px] text-[#888]">Valid for {p.validity}</p>
+                  </div>
+                  <p className="text-[14px] font-bold text-[#162353]">₦{p.price}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="flex-none px-4 pb-6 pt-2">
+        <button onClick={() => canProceed && setShowPin(true)} disabled={!canProceed}
+          className={`w-full h-[50px] rounded-xl text-[14px] font-semibold text-white ${canProceed ? 'bg-[#162353]' : 'bg-[#162353]/40'}`}>
+          Continue
+        </button>
+      </div>
+      {showPin && selectedPlan && (
+        <PinModal amount={selectedPlan.price} label={`${plan} data for ${phone}`}
+          onSuccess={() => { setShowPin(false); setDone(true); }} onClose={() => setShowPin(false)} />
+      )}
+    </PageShell>
+  );
+}
+
+/* ─── Betting Page ───────────────────────────────────────────────────── */
+const BETTING_PLATFORMS = [
+  { id:'bet9ja',   name:'Bet9ja',    color:'#006400' },
+  { id:'sporty',   name:'SportyBet', color:'#1D4ED8' },
+  { id:'betking',  name:'BetKing',   color:'#7C3AED' },
+  { id:'1xbet',    name:'1xBet',     color:'#EF4444' },
+  { id:'nairabet', name:'NairaBet',  color:'#F59E0B' },
+  { id:'msport',   name:'MSport',    color:'#0EA5E9'  },
+];
+
+function BettingPage() {
+  const [, navigate] = useLocation();
+  const [platform, setPlatform] = useState('');
+  const [userId, setUserId]     = useState('');
+  const [amount, setAmount]     = useState('');
+  const [showPin, setShowPin]   = useState(false);
+  const [done, setDone]         = useState(false);
+
+  if (done) return <SuccessBanner title="Wallet Funded!" sub={`₦${amount} added to ${platform} account ${userId}`} onHome={() => navigate('/')} />;
+
+  const canProceed = platform && userId && parseFloat(amount.replace(/,/g,'')) > 0;
+
+  return (
+    <PageShell title="Betting" back="/">
+      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4" style={{ scrollbarWidth: 'none' }}>
+        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
+          <p className="text-[12px] font-semibold text-[#444] mb-3">Select Platform</p>
+          <div className="grid grid-cols-3 gap-2">
+            {BETTING_PLATFORMS.map(b => (
+              <button key={b.id} onClick={() => setPlatform(b.name)}
+                className={`py-3 rounded-xl border-2 text-[12px] font-bold transition-all ${platform===b.name ? 'border-[#162353]' : 'border-[#F0F0F0]'}`}
+                style={{ color: b.color }}>
+                {b.name}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
+          <p className="text-[12px] font-semibold text-[#444] mb-3">User ID / Username</p>
+          <input type="text" placeholder="Enter your betting user ID" value={userId}
+            onChange={e => setUserId(e.target.value)}
+            className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#2563EB] transition-colors placeholder:text-[#CCC]" />
+        </div>
+        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
+          <p className="text-[12px] font-semibold text-[#444] mb-3">Amount</p>
+          <div className="flex items-center gap-2 border border-[#E0E0E0] rounded-xl px-4 py-3 focus-within:border-[#2563EB] mb-3">
+            <span className="text-[18px] font-bold text-[#444]">₦</span>
+            <input type="text" inputMode="numeric" placeholder="0.00" value={amount}
+              onChange={e => setAmount(formatAmt(e.target.value))}
+              className="flex-1 text-[18px] font-semibold text-[#111] outline-none bg-transparent placeholder:text-[#CCC]" />
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {['500','1,000','2,000','5,000','10,000'].map(a => (
+              <button key={a} onClick={() => setAmount(a)}
+                className={`px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-all ${amount===a ? 'bg-[#162353] text-white border-[#162353]' : 'border-[#E0E0E0] text-[#444]'}`}>
+                ₦{a}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="flex-none px-4 pb-6 pt-2">
+        <button onClick={() => canProceed && setShowPin(true)} disabled={!canProceed}
+          className={`w-full h-[50px] rounded-xl text-[14px] font-semibold text-white ${canProceed ? 'bg-[#162353]' : 'bg-[#162353]/40'}`}>
+          Fund Wallet
+        </button>
+      </div>
+      {showPin && <PinModal amount={amount} label={`Fund ${platform} · ${userId}`} onSuccess={() => { setShowPin(false); setDone(true); }} onClose={() => setShowPin(false)} />}
+    </PageShell>
+  );
+}
+
+/* ─── Savings Page ───────────────────────────────────────────────────── */
+const SAVINGS_GOALS = [
+  { name: 'Emergency Fund', target: '200,000', saved: '45,000',  pct: 22, emoji: '🛡️' },
+  { name: 'New Laptop',     target: '350,000', saved: '120,000', pct: 34, emoji: '💻' },
+];
+
+function SavingsPage() {
+  const [, navigate] = useLocation();
+  const [showCreate, setShowCreate] = useState(false);
+  const [goalName, setGoalName]     = useState('');
+  const [goalAmt, setGoalAmt]       = useState('');
+  const [frequency, setFreq]        = useState('Weekly');
+  const [created, setCreated]       = useState(false);
+
+  if (created) return <SuccessBanner title="Savings Goal Created!" sub={`You're saving ₦${goalAmt} towards ${goalName}`} onHome={() => navigate('/')} />;
+
+  return (
+    <PageShell title="Savings" back="/">
+      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4" style={{ scrollbarWidth: 'none' }}>
+        {/* Total saved */}
+        <div className="bg-[#162353] rounded-2xl px-5 py-4 text-white">
+          <p className="text-[12px] text-white/60 mb-1">Total Saved</p>
+          <p className="text-[28px] font-extrabold">₦165,000.00</p>
+          <p className="text-[11px] text-white/60 mt-1">Across {SAVINGS_GOALS.length} goals</p>
+        </div>
+        {/* Goals */}
+        {SAVINGS_GOALS.map(g => (
+          <div key={g.name} className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-2xl">{g.emoji}</span>
+              <div className="flex-1">
+                <p className="text-[14px] font-semibold text-[#111]">{g.name}</p>
+                <p className="text-[11px] text-[#888]">₦{g.saved} of ₦{g.target}</p>
+              </div>
+              <span className="text-[13px] font-bold text-[#162353]">{g.pct}%</span>
+            </div>
+            <div className="h-2 bg-[#F0F0F0] rounded-full overflow-hidden">
+              <div className="h-full bg-[#162353] rounded-full" style={{ width: `${g.pct}%` }} />
+            </div>
+          </div>
+        ))}
+        {/* Create new */}
+        {showCreate && (
+          <div className="bg-white rounded-2xl p-5 border border-[#162353] space-y-3">
+            <p className="text-[13px] font-bold text-[#111]">New Savings Goal</p>
+            <input type="text" placeholder="Goal name (e.g. Vacation)" value={goalName} onChange={e => setGoalName(e.target.value)}
+              className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#2563EB] placeholder:text-[#CCC]" />
+            <div className="flex items-center gap-2 border border-[#E0E0E0] rounded-xl px-4 py-3 focus-within:border-[#2563EB]">
+              <span className="text-[16px] font-bold text-[#444]">₦</span>
+              <input type="text" inputMode="numeric" placeholder="Target amount" value={goalAmt} onChange={e => setGoalAmt(formatAmt(e.target.value))}
+                className="flex-1 text-[16px] font-semibold text-[#111] outline-none bg-transparent placeholder:text-[#CCC] placeholder:font-normal" />
+            </div>
+            <div className="flex gap-2">
+              {['Daily','Weekly','Monthly'].map(f => (
+                <button key={f} onClick={() => setFreq(f)}
+                  className={`flex-1 py-2 rounded-xl text-[12px] font-semibold border transition-all ${frequency===f ? 'bg-[#162353] text-white border-[#162353]' : 'border-[#E0E0E0] text-[#444]'}`}>
+                  {f}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => goalName && goalAmt && setCreated(true)}
+              className="w-full h-[44px] bg-[#162353] rounded-xl text-[14px] font-semibold text-white">
+              Create Goal
+            </button>
+          </div>
+        )}
+      </div>
+      <div className="flex-none px-4 pb-6 pt-2">
+        <button onClick={() => setShowCreate(v => !v)}
+          className="w-full h-[50px] rounded-xl text-[14px] font-semibold text-white bg-[#162353]">
+          {showCreate ? 'Cancel' : '+ Create New Goal'}
+        </button>
+      </div>
+    </PageShell>
+  );
+}
+
+/* ─── Education Page ─────────────────────────────────────────────────── */
+const EDU_TYPES = ['University','Polytechnic','Secondary School','Primary School','Nursery'];
+function EducationPage() {
+  const [, navigate] = useLocation();
+  const [type, setType]       = useState('');
+  const [school, setSchool]   = useState('');
+  const [studentId, setId]    = useState('');
+  const [amount, setAmount]   = useState('');
+  const [showPin, setShowPin] = useState(false);
+  const [done, setDone]       = useState(false);
+
+  if (done) return <SuccessBanner title="Payment Successful!" sub={`School fees paid for ${studentId} at ${school}`} onHome={() => navigate('/')} />;
+
+  const canProceed = type && school && studentId && parseFloat(amount.replace(/,/g,'')) > 0;
+
+  return (
+    <PageShell title="Education" back="/">
+      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4" style={{ scrollbarWidth: 'none' }}>
+        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
+          <p className="text-[12px] font-semibold text-[#444] mb-3">Institution Type</p>
+          <div className="space-y-2">
+            {EDU_TYPES.map(t => (
+              <button key={t} onClick={() => setType(t)}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 text-[14px] font-medium transition-all ${type===t ? 'border-[#162353] bg-[#EEF2FF] text-[#162353]' : 'border-[#F0F0F0] text-[#333]'}`}>
+                {t}
+                {type===t && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0] space-y-3">
+          <div>
+            <p className="text-[12px] font-semibold text-[#444] mb-2">School Name</p>
+            <input type="text" placeholder="Enter school / institution name" value={school} onChange={e => setSchool(e.target.value)}
+              className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#2563EB] placeholder:text-[#CCC]" />
+          </div>
+          <div>
+            <p className="text-[12px] font-semibold text-[#444] mb-2">Student / Matric No.</p>
+            <input type="text" placeholder="e.g. UNI/2021/0042" value={studentId} onChange={e => setId(e.target.value)}
+              className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#2563EB] placeholder:text-[#CCC]" />
+          </div>
+          <div>
+            <p className="text-[12px] font-semibold text-[#444] mb-2">Amount</p>
+            <div className="flex items-center gap-2 border border-[#E0E0E0] rounded-xl px-4 py-3 focus-within:border-[#2563EB]">
+              <span className="text-[18px] font-bold text-[#444]">₦</span>
+              <input type="text" inputMode="numeric" placeholder="0.00" value={amount} onChange={e => setAmount(formatAmt(e.target.value))}
+                className="flex-1 text-[18px] font-semibold text-[#111] outline-none bg-transparent placeholder:text-[#CCC]" />
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="flex-none px-4 pb-6 pt-2">
+        <button onClick={() => canProceed && setShowPin(true)} disabled={!canProceed}
+          className={`w-full h-[50px] rounded-xl text-[14px] font-semibold text-white ${canProceed ? 'bg-[#162353]' : 'bg-[#162353]/40'}`}>
+          Pay School Fees
+        </button>
+      </div>
+      {showPin && <PinModal amount={amount} label={`Fees for ${studentId}`} onSuccess={() => { setShowPin(false); setDone(true); }} onClose={() => setShowPin(false)} />}
+    </PageShell>
+  );
+}
+
+/* ─── Statement Page ─────────────────────────────────────────────────── */
+const STMT_PERIODS = ['Last 7 days','Last 30 days','Last 3 months','Last 6 months','Custom'];
+function StatementPage() {
+  const [, navigate] = useLocation();
+  const [period, setPeriod]   = useState('Last 30 days');
+  const [format, setFormat]   = useState('PDF');
+  const [email, setEmail]     = useState('chibuzor@vexa.com');
+  const [generating, setGen]  = useState(false);
+  const [done, setDone]       = useState(false);
+
+  function generate() {
+    setGen(true);
+    setTimeout(() => { setGen(false); setDone(true); }, 2000);
+  }
+
+  return (
+    <PageShell title="Account Statement" back="/">
+      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4" style={{ scrollbarWidth: 'none' }}>
+        {done && (
+          <div className="bg-green-50 border border-green-200 rounded-2xl px-4 py-3 flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            <p className="text-[12px] text-green-700 font-semibold">Statement sent to {email}</p>
+          </div>
+        )}
+        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
+          <p className="text-[12px] font-semibold text-[#444] mb-3">Period</p>
+          <div className="space-y-2">
+            {STMT_PERIODS.map(p => (
+              <button key={p} onClick={() => setPeriod(p)}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 text-[14px] font-medium transition-all ${period===p ? 'border-[#162353] bg-[#EEF2FF] text-[#162353]' : 'border-[#F0F0F0] text-[#333]'}`}>
+                {p}
+                {period===p && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
+          <p className="text-[12px] font-semibold text-[#444] mb-3">Format</p>
+          <div className="flex gap-2">
+            {['PDF','Excel','CSV'].map(f => (
+              <button key={f} onClick={() => setFormat(f)}
+                className={`flex-1 py-3 rounded-xl text-[13px] font-semibold border-2 transition-all ${format===f ? 'bg-[#162353] text-white border-[#162353]' : 'border-[#E0E0E0] text-[#444]'}`}>
+                {f}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
+          <p className="text-[12px] font-semibold text-[#444] mb-2">Send to Email</p>
+          <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+            className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#2563EB] placeholder:text-[#CCC]" />
+        </div>
+        {/* Recent statements */}
+        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
+          <p className="text-[12px] font-semibold text-[#444] mb-3">Recent Statements</p>
+          {[
+            { label:'June 2026 Statement', date:'01 Jul 2026', fmt:'PDF' },
+            { label:'May 2026 Statement',  date:'01 Jun 2026', fmt:'PDF' },
+          ].map(s => (
+            <div key={s.label} className="flex items-center justify-between py-3 border-b border-[#F5F5F5] last:border-0">
+              <div>
+                <p className="text-[13px] font-semibold text-[#111]">{s.label}</p>
+                <p className="text-[11px] text-[#888]">Generated {s.date} · {s.fmt}</p>
+              </div>
+              <button className="text-[#2563EB] text-[12px] font-semibold">Download</button>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="flex-none px-4 pb-6 pt-2">
+        <button onClick={generate} disabled={generating}
+          className="w-full h-[50px] rounded-xl text-[14px] font-semibold text-white bg-[#162353] disabled:opacity-60">
+          {generating ? 'Generating…' : 'Generate Statement'}
+        </button>
+      </div>
+    </PageShell>
+  );
+}
+
+/* ─── More Services Page ─────────────────────────────────────────────── */
+const MORE_SERVICES = [
+  { label:'Transfer',  emoji:'↔️',  path:'/transfer'  },
+  { label:'Airtime',   emoji:'📱',  path:'/airtime'   },
+  { label:'Data',      emoji:'📶',  path:'/data'      },
+  { label:'Betting',   emoji:'🎯',  path:'/betting'   },
+  { label:'Savings',   emoji:'🐷',  path:'/savings'   },
+  { label:'Education', emoji:'📚',  path:'/education' },
+  { label:'Statement', emoji:'📄',  path:'/statement' },
+  { label:'Deposit',   emoji:'💰',  path:'/deposit'   },
+  { label:'History',   emoji:'🕐',  path:'/history'   },
+  { label:'Settings',  emoji:'⚙️',  path:'/settings'  },
+  { label:'Card',      emoji:'💳',  path:'/card'      },
+];
+
+function MorePage() {
+  const [, navigate] = useLocation();
+  return (
+    <PageShell title="All Services" back="/">
+      <div className="flex-1 overflow-y-auto px-4 py-5" style={{ scrollbarWidth: 'none' }}>
+        <div className="grid grid-cols-4 gap-3">
+          {MORE_SERVICES.map(s => (
+            <button key={s.label} onClick={() => navigate(s.path)}
+              className="bg-white rounded-xl py-4 px-1 flex flex-col items-center justify-center gap-2 border border-[#F0F0F0] active:bg-[#F2F3F5]">
+              <span className="text-[26px] leading-none">{s.emoji}</span>
+              <span className="text-[10px] font-medium text-[#333] text-center leading-tight">{s.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </PageShell>
+  );
+}
+
+/* ─── Card Page ──────────────────────────────────────────────────────── */
+function CardPage() {
+  const [, navigate] = useLocation();
+  const [frozen, setFrozen]   = useState(false);
+  const [showNum, setShowNum] = useState(false);
+
+  return (
+    <PageShell title="My Card" back="/">
+      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4" style={{ scrollbarWidth: 'none' }}>
+        {/* Card visual */}
+        <div className="rounded-3xl p-5 text-white relative overflow-hidden" style={{ background: 'linear-gradient(135deg,#162353 0%,#1E3A6E 60%,#0a4fa3 100%)', minHeight: 190 }}>
+          <div className="flex justify-between items-start mb-8">
+            <div>
+              <p className="text-[11px] text-white/60 mb-0.5">Virtual Card</p>
+              <p className="text-[13px] font-bold">Vexa Bank</p>
+            </div>
+            <img src="/vexa-icon.png" alt="Vexa" className="w-9 h-9 rounded-full" />
+          </div>
+          <p className="text-[20px] font-bold tracking-[4px] mb-5">
+            {showNum ? '5399 1234 5678 9012' : '•••• •••• •••• 9012'}
+          </p>
+          <div className="flex items-end justify-between">
+            <div>
+              <p className="text-[10px] text-white/50">CARD HOLDER</p>
+              <p className="text-[13px] font-semibold">CHIBUZOR E DIKE</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-white/50">EXPIRES</p>
+              <p className="text-[13px] font-semibold">08/29</p>
+            </div>
+            <div className="flex gap-1">
+              <div className="w-8 h-8 rounded-full bg-red-500/80" />
+              <div className="w-8 h-8 rounded-full bg-yellow-400/80 -ml-4" />
+            </div>
+          </div>
+          {frozen && (
+            <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-3xl">
+              <div className="text-center">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-1"><path d="M12 2v20M4.93 4.93l14.14 14.14M2 12h20M4.93 19.07l14.14-14.14"/></svg>
+                <p className="text-white font-bold text-[13px]">Card Frozen</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Card actions */}
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: showNum ? 'Hide Number' : 'Show Number', icon:'👁️', action: () => setShowNum(v=>!v) },
+            { label: frozen ? 'Unfreeze' : 'Freeze Card', icon: frozen ? '🔓' : '🧊', action: () => setFrozen(v=>!v) },
+            { label:'Change PIN', icon:'🔑', action: () => {} },
+          ].map(a => (
+            <button key={a.label} onClick={a.action}
+              className="bg-white rounded-2xl py-4 flex flex-col items-center gap-2 border border-[#F0F0F0] active:bg-[#F2F3F5]">
+              <span className="text-2xl">{a.icon}</span>
+              <span className="text-[11px] font-medium text-[#333] text-center leading-tight">{a.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Card details */}
+        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0] space-y-3">
+          <p className="text-[12px] font-semibold text-[#444]">Card Details</p>
+          {[
+            { label:'Card Type',    val:'Mastercard Virtual' },
+            { label:'Card Status',  val: frozen ? '❄️ Frozen' : '✅ Active' },
+            { label:'Daily Limit',  val:'₦500,000' },
+            { label:'Billing Address', val:'Lagos, Nigeria' },
+          ].map(d => (
+            <div key={d.label} className="flex justify-between text-[13px] py-2 border-b border-[#F5F5F5] last:border-0">
+              <span className="text-[#888]">{d.label}</span>
+              <span className="font-semibold text-[#111]">{d.val}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Request physical card */}
+        <div className="bg-[#EEF2FF] rounded-2xl p-4 flex items-center justify-between border border-[#C7D7F5]">
+          <div>
+            <p className="text-[13px] font-bold text-[#162353]">Get a Physical Card</p>
+            <p className="text-[11px] text-[#555]">Delivered to you in 3–5 business days</p>
+          </div>
+          <button className="bg-[#162353] text-white text-[11px] font-semibold px-3 py-2 rounded-xl">Request</button>
+        </div>
+      </div>
+    </PageShell>
+  );
+}
+
+/* ─── Services Tab Page ──────────────────────────────────────────────── */
+const SERVICE_GROUPS = [
+  { heading:'Payments', items:[
+    { label:'Transfer',  emoji:'↔️',  path:'/transfer'  },
+    { label:'Deposit',   emoji:'💰',  path:'/deposit'   },
+    { label:'History',   emoji:'🕐',  path:'/history'   },
+  ]},
+  { heading:'Top Up', items:[
+    { label:'Airtime',   emoji:'📱',  path:'/airtime'   },
+    { label:'Data',      emoji:'📶',  path:'/data'      },
+    { label:'Betting',   emoji:'🎯',  path:'/betting'   },
+  ]},
+  { heading:'Lifestyle', items:[
+    { label:'Education', emoji:'📚',  path:'/education' },
+    { label:'Savings',   emoji:'🐷',  path:'/savings'   },
+  ]},
+  { heading:'Account', items:[
+    { label:'Statement', emoji:'📄',  path:'/statement' },
+    { label:'Card',      emoji:'💳',  path:'/card'      },
+    { label:'Settings',  emoji:'⚙️',  path:'/settings'  },
+  ]},
+];
+
+function ServicesTabPage() {
+  const [, navigate] = useLocation();
+  return (
+    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+      <div className="flex-none px-4 pb-3 bg-white border-b border-[#E8EBF0]"
+        style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
+        <p className="text-[18px] font-extrabold text-[#111]">Services</p>
+      </div>
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5 pb-24" style={{ scrollbarWidth: 'none' }}>
+        {SERVICE_GROUPS.map(g => (
+          <div key={g.heading}>
+            <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide mb-2 px-1">{g.heading}</p>
+            <div className="grid grid-cols-4 gap-3">
+              {g.items.map(s => (
+                <button key={s.label} onClick={() => navigate(s.path)}
+                  className="bg-white rounded-xl py-4 flex flex-col items-center gap-2 border border-[#F0F0F0] active:bg-[#F2F3F5]">
+                  <span className="text-[24px] leading-none">{s.emoji}</span>
+                  <span className="text-[10px] font-medium text-[#333] text-center leading-tight">{s.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      {/* Bottom tab bar */}
+      <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-[#E8EBF0] pt-2.5 pb-5 z-20">
+        <div className="flex justify-around items-center px-4">
+          <button onClick={() => navigate('/')} className="flex flex-col items-center gap-1 min-w-[56px]">
+            <Home className="w-6 h-6 text-[#9CA3AF]" strokeWidth={1.75} />
+            <span className="text-[11px] font-medium text-[#9CA3AF]">Home</span>
+          </button>
+          <button onClick={() => navigate('/card')} className="flex flex-col items-center gap-1 min-w-[56px]">
+            <CreditCard className="w-6 h-6 text-[#9CA3AF]" strokeWidth={1.75} />
+            <span className="text-[11px] font-medium text-[#9CA3AF]">Card</span>
+          </button>
+          <button className="flex flex-col items-center gap-1 min-w-[56px]">
+            <LayoutGrid className="w-6 h-6 text-[#2563EB]" strokeWidth={2} />
+            <span className="text-[11px] font-semibold text-[#2563EB]">Services</span>
+          </button>
+          <button onClick={() => navigate('/settings')} className="flex flex-col items-center gap-1 min-w-[56px]">
+            <Settings className="w-6 h-6 text-[#9CA3AF]" strokeWidth={1.75} />
+            <span className="text-[11px] font-medium text-[#9CA3AF]">Settings</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Router() {
   return (
     <Switch>
@@ -1111,6 +1829,15 @@ function Router() {
       <Route path="/transfer" component={TransferPage} />
       <Route path="/history" component={HistoryPage} />
       <Route path="/settings" component={SettingsPage} />
+      <Route path="/airtime" component={AirtimePage} />
+      <Route path="/data" component={DataPage} />
+      <Route path="/betting" component={BettingPage} />
+      <Route path="/savings" component={SavingsPage} />
+      <Route path="/education" component={EducationPage} />
+      <Route path="/statement" component={StatementPage} />
+      <Route path="/more" component={MorePage} />
+      <Route path="/card" component={CardPage} />
+      <Route path="/services" component={ServicesTabPage} />
       <Route component={NotFound} />
     </Switch>
   );
