@@ -12,6 +12,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
+import SignInPage from '@/pages/auth/SignInPage';
+import SignUpPage from '@/pages/auth/SignUpPage';
+import ProfilePage from '@/pages/settings/ProfilePage';
+import LimitsPage from '@/pages/settings/LimitsPage';
+import ChangePinPage from '@/pages/settings/ChangePinPage';
+import ChangePasswordPage from '@/pages/settings/ChangePasswordPage';
 
 const queryClient = new QueryClient();
 
@@ -129,6 +136,10 @@ const services = [
 function MoniepointHome() {
   const [balanceHidden, setBalanceHidden] = useState(false);
   const [, navigate] = useLocation();
+  const { user } = useAuth();
+  const initials = (user?.name ?? 'C').split(' ').map((p: string) => p[0]).slice(0, 2).join('').toUpperCase();
+  const displayName = user?.name ?? 'Chibuzor Emmanuel Dike';
+  const accountNumber = user?.accountNumber ?? '9067212032';
   return (
     <div className="fixed inset-0 bg-[#F2F3F5]">
       <div
@@ -139,9 +150,9 @@ function MoniepointHome() {
         {/* ── Header ──────────────────────────────────────────────────── */}
         <div className="flex-none flex justify-between items-center px-4 pb-2.5 bg-white border-b border-[#E8EBF0]" style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
           <div className="flex items-center gap-2.5">
-            {/* avatar: 40×40, dark circle, letter C */}
+            {/* avatar */}
             <div className="w-10 h-10 rounded-full bg-[#3A3530] flex items-center justify-center text-white text-[15px] font-bold shrink-0">
-              C
+              {initials}
             </div>
             {/* dynamic greeting */}
             <span className="text-[13px] font-semibold text-[#444]">
@@ -175,7 +186,7 @@ function MoniepointHome() {
 
             {/* account number row */}
             <div className="flex items-center gap-1.5 text-[12px] font-normal text-white mb-2">
-              <span>9067212032 | Chibuzor Emmanuel Dike</span>
+              <span>{accountNumber} | {displayName}</span>
               <Copy className="w-3.5 h-3.5 text-white/60 shrink-0" />
             </div>
 
@@ -471,23 +482,29 @@ type SettingsSection = { heading: string; items: { icon: React.ReactNode; label:
 
 function SettingsPage() {
   const [, navigate] = useLocation();
+  const { user, signOut } = useAuth();
   const [biometrics, setBiometrics] = useState(true);
   const [notifs, setNotifs] = useState(true);
+
+  const userName = user?.name ?? 'Chibuzor Emmanuel Dike';
+  const accountNumber = user?.accountNumber ?? '9067212032';
+  const levelLabel = user ? `Level ${user.level} · ${user.verified ? 'Verified' : 'Unverified'}` : 'Level 3 · Verified';
+  const initials = userName.split(' ').map((p: string) => p[0]).slice(0, 2).join('').toUpperCase();
 
   const sections: SettingsSection[] = [
     {
       heading: 'Account',
       items: [
-        { icon: <User className="w-5 h-5" />,    label: 'Profile',              sub: 'Chibuzor Emmanuel Dike' },
-        { icon: <Shield className="w-5 h-5" />,  label: 'Limits & Verification',sub: 'Level 3 · Verified' },
+        { icon: <User className="w-5 h-5" />,   label: 'Profile',               sub: userName,    action: () => navigate('/profile') },
+        { icon: <Shield className="w-5 h-5" />, label: 'Limits & Verification', sub: levelLabel,  action: () => navigate('/limits') },
       ],
     },
     {
       heading: 'Security',
       items: [
-        { icon: <Lock className="w-5 h-5" />,        label: 'Change Transaction PIN' },
+        { icon: <Lock className="w-5 h-5" />,        label: 'Change Transaction PIN', action: () => navigate('/change-pin') },
         { icon: <Fingerprint className="w-5 h-5" />, label: 'Biometric Login',   sub: biometrics ? 'On' : 'Off' },
-        { icon: <Lock className="w-5 h-5" />,        label: 'Change Password' },
+        { icon: <Lock className="w-5 h-5" />,        label: 'Change Password',        action: () => navigate('/change-password') },
       ],
     },
     {
@@ -506,7 +523,7 @@ function SettingsPage() {
     {
       heading: '',
       items: [
-        { icon: <LogOut className="w-5 h-5" />, label: 'Log Out', danger: true },
+        { icon: <LogOut className="w-5 h-5" />, label: 'Log Out', danger: true, action: () => { signOut(); navigate('/signin'); } },
       ],
     },
   ];
@@ -526,11 +543,11 @@ function SettingsPage() {
 
         {/* Profile hero card */}
         <div className="bg-[#162353] rounded-2xl px-5 py-4 flex items-center gap-4">
-          <div className="w-14 h-14 rounded-full bg-[#3A3530] flex items-center justify-center text-white text-[20px] font-bold shrink-0">C</div>
+          <div className="w-14 h-14 rounded-full bg-[#3A3530] flex items-center justify-center text-white text-[20px] font-bold shrink-0">{initials}</div>
           <div>
-            <p className="text-white font-bold text-[15px]">Chibuzor Emmanuel Dike</p>
-            <p className="text-white/60 text-[12px] mt-0.5">9067212032 · Vexa Bank</p>
-            <span className="inline-block mt-1.5 bg-white/20 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full">✓ Verified</span>
+            <p className="text-white font-bold text-[15px]">{userName}</p>
+            <p className="text-white/60 text-[12px] mt-0.5">{accountNumber} · Vexa Bank</p>
+            {user?.verified && <span className="inline-block mt-1.5 bg-white/20 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full">✓ Verified</span>}
           </div>
         </div>
 
@@ -554,10 +571,9 @@ function SettingsPage() {
                     <span className={item.danger ? 'text-red-500' : 'text-[#555]'}>{item.icon}</span>
                     <div className="flex-1 min-w-0">
                       <p className={`text-[14px] font-semibold ${item.danger ? 'text-red-500' : 'text-[#111]'}`}>{item.label}</p>
-                      {item.sub && <p className="text-[11px] text-[#888] mt-0.5">{item.sub}</p>}
+                      {item.sub && <p className="text-[11px] text-[#888] mt-0.5 truncate">{item.sub}</p>}
                     </div>
                     {(isBio || isNot) ? (
-                      /* Toggle */
                       <div className={`w-11 h-6 rounded-full transition-colors relative ${(isBio ? biometrics : notifs) ? 'bg-[#162353]' : 'bg-[#D1D5DB]'}`}>
                         <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${(isBio ? biometrics : notifs) ? 'left-5' : 'left-0.5'}`} />
                       </div>
@@ -768,9 +784,9 @@ function TransferPage() {
         setLookingUp(false);
       }, 1200);
       return () => clearTimeout(t);
-    } else {
-      setResolvedName('');
     }
+    setResolvedName('');
+    return undefined;
   }, [acctNo, bank]);
 
   function handlePinKey(k: string) {
@@ -1838,23 +1854,56 @@ function Router() {
       <Route path="/more" component={MorePage} />
       <Route path="/card" component={CardPage} />
       <Route path="/services" component={ServicesTabPage} />
+      {/* Auth routes */}
+      <Route path="/signin" component={SignInPage} />
+      <Route path="/signup" component={SignUpPage} />
+      {/* Settings sub-pages */}
+      <Route path="/profile" component={ProfilePage} />
+      <Route path="/limits" component={LimitsPage} />
+      <Route path="/change-pin" component={ChangePinPage} />
+      <Route path="/change-password" component={ChangePasswordPage} />
       <Route component={NotFound} />
     </Switch>
   );
 }
 
-function App() {
+/* Handles post-splash redirect — must live inside WouterRouter + AuthProvider */
+function AppShell() {
   const [showSplash, setShowSplash] = useState(true);
+  const [splashDone, setSplashDone] = useState(false);
+  const { isAuthenticated } = useAuth();
+  const [, navigate] = useLocation();
+
+  useEffect(() => {
+    if (splashDone && !isAuthenticated) {
+      navigate('/signin');
+    }
+  }, [splashDone, isAuthenticated]);
 
   return (
+    <>
+      {showSplash && (
+        <SplashScreen onDone={() => {
+          setShowSplash(false);
+          setSplashDone(true);
+        }} />
+      )}
+      <Router />
+    </>
+  );
+}
+
+function App() {
+  return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
+      <AuthProvider>
+        <TooltipProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+            <AppShell />
+          </WouterRouter>
+          <Toaster />
+        </TooltipProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }
