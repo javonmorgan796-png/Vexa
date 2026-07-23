@@ -1,30 +1,69 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useLocation } from 'wouter';
-import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 export default function SignInPage() {
   const [, navigate] = useLocation();
   const { signIn } = useAuth();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPass, setShowPass] = useState(false);
+  const [phone, setPhone] = useState('');
+  const [passcode, setPasscode] = useState(['', '', '', '', '', '']);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  function handleDigit(idx: number, val: string) {
+    const digit = val.replace(/\D/g, '').slice(-1);
+    const next = [...passcode];
+    next[idx] = digit;
+    setPasscode(next);
+    setError('');
+    if (digit && idx < 5) {
+      inputRefs.current[idx + 1]?.focus();
+    }
+  }
+
+  function handleKeyDown(idx: number, e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Backspace') {
+      if (passcode[idx]) {
+        const next = [...passcode];
+        next[idx] = '';
+        setPasscode(next);
+      } else if (idx > 0) {
+        inputRefs.current[idx - 1]?.focus();
+        const next = [...passcode];
+        next[idx - 1] = '';
+        setPasscode(next);
+      }
+    }
+  }
+
+  function handlePaste(e: React.ClipboardEvent) {
+    e.preventDefault();
+    const text = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    const next = ['', '', '', '', '', ''];
+    text.split('').forEach((ch, i) => { next[i] = ch; });
+    setPasscode(next);
+    const focusIdx = Math.min(text.length, 5);
+    inputRefs.current[focusIdx]?.focus();
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-    if (!email.trim()) { setError('Please enter your email'); return; }
-    if (!password) { setError('Please enter your password'); return; }
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.length < 10) { setError('Enter a valid phone number'); return; }
+    const code = passcode.join('');
+    if (code.length < 6) { setError('Enter your 6-digit passcode'); return; }
     setLoading(true);
     setTimeout(() => {
-      const res = signIn(email.trim(), password);
+      const res = signIn(phone, code);
       setLoading(false);
       if (res.success) navigate('/');
       else setError(res.error ?? 'Sign in failed');
     }, 900);
   }
+
+  const passcodeComplete = passcode.every(d => d !== '');
 
   return (
     <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
@@ -45,47 +84,53 @@ export default function SignInPage() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Email */}
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Phone Number */}
           <div>
-            <label className="text-[12px] font-semibold text-[#444] mb-1.5 block">Email Address</label>
+            <label className="text-[12px] font-semibold text-[#444] mb-1.5 block">Phone Number</label>
             <input
-              type="email"
-              autoComplete="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={e => { setEmail(e.target.value); setError(''); }}
+              type="tel"
+              inputMode="numeric"
+              autoComplete="tel"
+              placeholder="Phone Number"
+              value={phone}
+              onChange={e => { setPhone(e.target.value); setError(''); }}
               className="w-full h-[50px] rounded-xl border border-[#E2E8F0] bg-[#F8F9FB] px-4 text-[14px] text-[#111] placeholder-[#C0C8D4] focus:outline-none focus:border-[#162353] focus:bg-white transition-colors"
             />
           </div>
 
-          {/* Password */}
+          {/* 6-digit Passcode */}
           <div>
-            <label className="text-[12px] font-semibold text-[#444] mb-1.5 block">Password</label>
-            <div className="relative">
-              <input
-                type={showPass ? 'text' : 'password'}
-                autoComplete="current-password"
-                placeholder="Enter your password"
-                value={password}
-                onChange={e => { setPassword(e.target.value); setError(''); }}
-                className="w-full h-[50px] rounded-xl border border-[#E2E8F0] bg-[#F8F9FB] px-4 pr-12 text-[14px] text-[#111] placeholder-[#C0C8D4] focus:outline-none focus:border-[#162353] focus:bg-white transition-colors"
-              />
-              <button type="button" onClick={() => setShowPass(v => !v)}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#999] p-1">
-                {showPass ? <EyeOff className="w-4.5 h-4.5" /> : <Eye className="w-4.5 h-4.5" />}
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[12px] font-semibold text-[#444]">Passcode</label>
+              <button type="button" className="text-[12px] text-[#162353] font-semibold">
+                Forgot Passcode?
               </button>
             </div>
-            <div className="flex justify-end mt-1.5">
-              <button type="button" className="text-[12px] text-[#162353] font-semibold">
-                Forgot password?
-              </button>
+            <div className="flex gap-2.5 justify-between" onPaste={handlePaste}>
+              {passcode.map((digit, idx) => (
+                <input
+                  key={idx}
+                  ref={el => { inputRefs.current[idx] = el; }}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={1}
+                  value={digit}
+                  onChange={e => handleDigit(idx, e.target.value)}
+                  onKeyDown={e => handleKeyDown(idx, e)}
+                  className="w-full h-[52px] rounded-xl border-2 border-[#E2E8F0] bg-[#F8F9FB] text-center text-[20px] font-bold text-[#111] focus:outline-none focus:border-[#162353] focus:bg-white transition-colors caret-transparent"
+                  style={{ maxWidth: 52 }}
+                />
+              ))}
             </div>
           </div>
 
           {/* CTA */}
-          <button type="submit" disabled={loading}
-            className="w-full h-[52px] rounded-xl bg-[#162353] text-white text-[15px] font-bold mt-2 disabled:opacity-60 transition-opacity active:scale-[0.98]">
+          <button
+            type="submit"
+            disabled={loading || !passcodeComplete}
+            className="w-full h-[52px] rounded-xl bg-[#162353] text-white text-[15px] font-bold mt-2 disabled:opacity-60 transition-opacity active:scale-[0.98]"
+          >
             {loading ? (
               <span className="flex items-center justify-center gap-2">
                 <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
@@ -100,8 +145,8 @@ export default function SignInPage() {
         {/* Demo hint */}
         <div className="mt-6 bg-[#F0F4FF] rounded-xl px-4 py-3">
           <p className="text-[11px] text-[#162353] font-semibold mb-0.5">Demo credentials</p>
-          <p className="text-[11px] text-[#555]">Email: chibuzor@vexa.com</p>
-          <p className="text-[11px] text-[#555]">Password: vexa1234</p>
+          <p className="text-[11px] text-[#555]">Phone: 08067212032</p>
+          <p className="text-[11px] text-[#555]">Passcode: 123456</p>
         </div>
 
         {/* Sign up link */}

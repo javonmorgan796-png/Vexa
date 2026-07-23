@@ -6,7 +6,7 @@ export interface User {
   phone: string;
   accountNumber: string;
   pin: string;
-  password: string;
+  password: string; // stores 6-digit login passcode
   level: number;
   verified: boolean;
 }
@@ -14,8 +14,8 @@ export interface User {
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
-  signIn: (email: string, password: string) => { success: boolean; error?: string };
-  signUp: (name: string, email: string, phone: string, password: string) => { success: boolean; error?: string };
+  signIn: (phone: string, passcode: string) => { success: boolean; error?: string };
+  signUp: (name: string, phone: string, passcode: string) => { success: boolean; error?: string };
   signOut: () => void;
   updatePin: (oldPin: string, newPin: string) => { success: boolean; error?: string };
   updatePassword: (oldPass: string, newPass: string) => { success: boolean; error?: string };
@@ -30,7 +30,7 @@ const DEFAULT_USER: User = {
   phone: '08067212032',
   accountNumber: '9067212032',
   pin: '1234',
-  password: 'vexa1234',
+  password: '123456', // 6-digit login passcode
   level: 3,
   verified: true,
 };
@@ -64,22 +64,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     else localStorage.removeItem('vexa_session');
   }
 
-  const signIn = (email: string, password: string) => {
+  // Sign in by phone number + 6-digit passcode
+  const signIn = (phone: string, passcode: string) => {
     const users = getUsers();
-    const found = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
-    if (!found) return { success: false, error: 'Invalid email or password' };
+    const normalized = phone.replace(/\D/g, '');
+    const found = users.find(u => u.phone.replace(/\D/g, '') === normalized && u.password === passcode);
+    if (!found) return { success: false, error: 'Invalid phone number or passcode' };
     persist(found);
     return { success: true };
   };
 
-  const signUp = (name: string, email: string, phone: string, password: string) => {
+  // Sign up with name, phone, and 6-digit passcode — no email required
+  const signUp = (name: string, phone: string, passcode: string) => {
     const users = getUsers();
-    if (users.find(u => u.email.toLowerCase() === email.toLowerCase())) {
-      return { success: false, error: 'An account with this email already exists' };
+    const normalized = phone.replace(/\D/g, '');
+    if (users.find(u => u.phone.replace(/\D/g, '') === normalized)) {
+      return { success: false, error: 'An account with this phone number already exists' };
     }
     const digits = () => Math.floor(Math.random() * 10).toString();
     const accountNumber = '9' + Array.from({ length: 9 }, digits).join('');
-    const newUser: User = { name, email, phone, accountNumber, pin: '0000', password, level: 1, verified: false };
+    const newUser: User = {
+      name,
+      email: '',
+      phone,
+      accountNumber,
+      pin: '0000',
+      password: passcode,
+      level: 1,
+      verified: false,
+    };
     saveUsers([...users, newUser]);
     persist(newUser);
     return { success: true };
@@ -92,16 +105,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (user.pin !== oldPin) return { success: false, error: 'Current PIN is incorrect' };
     const updated = { ...user, pin: newPin };
     persist(updated);
-    saveUsers(getUsers().map(u => u.email === user.email ? updated : u));
+    saveUsers(getUsers().map(u => u.phone === user.phone ? updated : u));
     return { success: true };
   };
 
   const updatePassword = (oldPass: string, newPass: string) => {
     if (!user) return { success: false, error: 'Not authenticated' };
-    if (user.password !== oldPass) return { success: false, error: 'Current password is incorrect' };
+    if (user.password !== oldPass) return { success: false, error: 'Current passcode is incorrect' };
     const updated = { ...user, password: newPass };
     persist(updated);
-    saveUsers(getUsers().map(u => u.email === user.email ? updated : u));
+    saveUsers(getUsers().map(u => u.phone === user.phone ? updated : u));
     return { success: true };
   };
 
@@ -109,7 +122,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!user) return;
     const updated = { ...user, name, email, phone };
     persist(updated);
-    saveUsers(getUsers().map(u => u.email === user.email ? updated : u));
+    saveUsers(getUsers().map(u => u.phone === user.phone ? updated : u));
   };
 
   return (
