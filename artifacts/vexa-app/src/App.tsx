@@ -7,6 +7,7 @@ import {
   Trophy, CreditCard, Home, ArrowDown, Settings,
   ArrowUp, ChevronRight, Shield, Fingerprint,
   BellRing, HelpCircle, Info, LogOut, User, Lock,
+  MessageCircle, Phone, Mail, ExternalLink, Star, ChevronDown,
 } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
@@ -516,8 +517,8 @@ function SettingsPage() {
     {
       heading: 'Support',
       items: [
-        { icon: <HelpCircle className="w-5 h-5" />, label: 'Help & Support' },
-        { icon: <Info className="w-5 h-5" />,        label: 'About Vexa',   sub: 'Version 1.0.0' },
+        { icon: <HelpCircle className="w-5 h-5" />, label: 'Help & Support', action: () => navigate('/help-support') },
+        { icon: <Info className="w-5 h-5" />,        label: 'About Vexa',   sub: 'Version 1.0.0', action: () => navigate('/about-vexa') },
       ],
     },
     {
@@ -586,6 +587,199 @@ function SettingsPage() {
             </div>
           </div>
         ))}
+
+        <p className="text-center text-[11px] text-[#CCC] pb-2">Vexa Bank · v1.0.0</p>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Help & Support Page ────────────────────────────────────────────── */
+function HelpSupportPage() {
+  const [, navigate] = useLocation();
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
+
+  const faqs = [
+    { q: 'How do I transfer money?', a: 'Go to the home screen and tap "Transfer". Enter the recipient\'s account number, select their bank, enter the amount, and confirm with your transaction PIN.' },
+    { q: 'What are the transfer limits?', a: 'Level 1 accounts can transfer up to ₦50,000 per day. Level 2 accounts can transfer up to ₦200,000 per day. Level 3 verified accounts have a ₦5,000,000 daily limit.' },
+    { q: 'How do I buy airtime or data?', a: 'From the home screen, tap "Airtime" or "Data", select your network provider, enter the phone number and amount, then confirm the purchase.' },
+    { q: 'I forgot my passcode. What do I do?', a: 'On the Sign In screen, tap "Forgot Passcode?" and follow the steps to reset it using your registered phone number and OTP verification.' },
+    { q: 'How do I upgrade my account level?', a: 'Go to Settings → Limits & Verification. You will find the requirements for upgrading to higher account levels, including BVN and ID verification.' },
+    { q: 'Is my money safe with Vexa?', a: 'Yes. Vexa uses 256-bit encryption and multi-factor authentication to keep your account secure. All deposits are protected by the NDIC insurance scheme.' },
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+      {/* Header */}
+      <div className="flex-none flex items-center gap-3 px-4 pb-3 bg-white border-b border-[#E8EBF0]"
+        style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
+        <button onClick={() => navigate('/settings')} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        </button>
+        <span className="text-[16px] font-bold text-[#111]">Help & Support</span>
+      </div>
+
+      <div className="flex-1 overflow-y-auto py-4 px-4 space-y-4" style={{ scrollbarWidth: 'none' }}>
+
+        {/* Contact options */}
+        <div className="bg-[#162353] rounded-2xl px-5 py-5">
+          <p className="text-white font-bold text-[15px] mb-1">Need help?</p>
+          <p className="text-white/60 text-[12px] mb-4">Our support team is available 24/7 to assist you.</p>
+          <div className="flex gap-3">
+            <button className="flex-1 bg-white/15 rounded-xl py-3 flex flex-col items-center gap-1.5 active:bg-white/25 transition-colors">
+              <Phone className="w-5 h-5 text-white" />
+              <span className="text-[11px] font-semibold text-white">Call Us</span>
+            </button>
+            <button className="flex-1 bg-white/15 rounded-xl py-3 flex flex-col items-center gap-1.5 active:bg-white/25 transition-colors">
+              <MessageCircle className="w-5 h-5 text-white" />
+              <span className="text-[11px] font-semibold text-white">Live Chat</span>
+            </button>
+            <button className="flex-1 bg-white/15 rounded-xl py-3 flex flex-col items-center gap-1.5 active:bg-white/25 transition-colors">
+              <Mail className="w-5 h-5 text-white" />
+              <span className="text-[11px] font-semibold text-white">Email Us</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Contact details */}
+        <div>
+          <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide mb-2 px-1">Contact Details</p>
+          <div className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
+            {[
+              { icon: <Phone className="w-5 h-5" />, label: 'Phone Support', sub: '+234 800 839 2600' },
+              { icon: <Mail className="w-5 h-5" />, label: 'Email Support', sub: 'support@vexa.com' },
+              { icon: <MessageCircle className="w-5 h-5" />, label: 'WhatsApp', sub: '+234 800 839 2600' },
+            ].map((item, i, arr) => (
+              <div key={i} className={`flex items-center gap-3.5 px-4 py-4 ${i < arr.length - 1 ? 'border-b border-[#F5F5F5]' : ''}`}>
+                <span className="text-[#555]">{item.icon}</span>
+                <div className="flex-1">
+                  <p className="text-[14px] font-semibold text-[#111]">{item.label}</p>
+                  <p className="text-[12px] text-[#888] mt-0.5">{item.sub}</p>
+                </div>
+                <ExternalLink className="w-4 h-4 text-[#CBD5E1]" />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* FAQ */}
+        <div>
+          <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide mb-2 px-1">Frequently Asked Questions</p>
+          <div className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
+            {faqs.map((faq, i) => (
+              <div key={i} className={i < faqs.length - 1 ? 'border-b border-[#F5F5F5]' : ''}>
+                <button
+                  onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                  className="w-full flex items-center gap-3.5 px-4 py-4 text-left hover:bg-[#F8F9FB] transition-colors"
+                >
+                  <div className="flex-1">
+                    <p className="text-[13px] font-semibold text-[#111]">{faq.q}</p>
+                  </div>
+                  <ChevronDown className={`w-4 h-4 text-[#CBD5E1] shrink-0 transition-transform ${openFaq === i ? 'rotate-180' : ''}`} />
+                </button>
+                {openFaq === i && (
+                  <div className="px-4 pb-4">
+                    <p className="text-[13px] text-[#666] leading-relaxed">{faq.a}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <p className="text-center text-[11px] text-[#CCC] pb-2">Response time: usually within 5 minutes</p>
+      </div>
+    </div>
+  );
+}
+
+/* ─── About Vexa Page ────────────────────────────────────────────────── */
+function AboutVexaPage() {
+  const [, navigate] = useLocation();
+
+  const features = [
+    { icon: <Shield className="w-5 h-5" />, title: 'Bank-grade Security', desc: '256-bit encryption and biometric authentication protect your account.' },
+    { icon: <Star className="w-5 h-5" />, title: 'Instant Transfers', desc: 'Send money to any Nigerian bank account in seconds, 24/7.' },
+    { icon: <PhoneCall className="w-5 h-5" />, title: 'Bills & Payments', desc: 'Airtime, data, electricity, cable TV and more — all in one place.' },
+    { icon: <Lock className="w-5 h-5" />, title: 'NDIC Insured', desc: 'Your deposits are insured by the Nigeria Deposit Insurance Corporation.' },
+  ];
+
+  const legal = [
+    { label: 'Terms of Service', icon: <ExternalLink className="w-4 h-4 text-[#CBD5E1]" /> },
+    { label: 'Privacy Policy', icon: <ExternalLink className="w-4 h-4 text-[#CBD5E1]" /> },
+    { label: 'Cookie Policy', icon: <ExternalLink className="w-4 h-4 text-[#CBD5E1]" /> },
+    { label: 'Licenses', icon: <ExternalLink className="w-4 h-4 text-[#CBD5E1]" /> },
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+      {/* Header */}
+      <div className="flex-none flex items-center gap-3 px-4 pb-3 bg-white border-b border-[#E8EBF0]"
+        style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
+        <button onClick={() => navigate('/settings')} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        </button>
+        <span className="text-[16px] font-bold text-[#111]">About Vexa</span>
+      </div>
+
+      <div className="flex-1 overflow-y-auto py-4 px-4 space-y-4" style={{ scrollbarWidth: 'none' }}>
+
+        {/* Brand card */}
+        <div className="bg-[#162353] rounded-2xl px-5 py-6 flex flex-col items-center text-center">
+          <img src="/vexa-logo.png" alt="Vexa" className="h-12 object-contain mb-3" />
+          <p className="text-white font-bold text-[18px]">Vexa Bank</p>
+          <p className="text-white/60 text-[12px] mt-1">Your money, your way</p>
+          <div className="flex items-center gap-2 mt-3">
+            <span className="bg-white/20 text-white text-[10px] font-semibold px-2.5 py-1 rounded-full">Version 1.0.0</span>
+            <span className="bg-white/20 text-white text-[10px] font-semibold px-2.5 py-1 rounded-full">CBN Licensed</span>
+          </div>
+        </div>
+
+        {/* About text */}
+        <div className="bg-white rounded-2xl border border-[#F0F0F0] px-5 py-5">
+          <p className="text-[13px] text-[#555] leading-relaxed">
+            Vexa is a modern digital banking platform built to make financial services fast, safe, and accessible to every Nigerian. From instant money transfers to bill payments, we put the power of a full bank in your pocket.
+          </p>
+          <p className="text-[13px] text-[#555] leading-relaxed mt-3">
+            Regulated by the Central Bank of Nigeria (CBN) and insured by the NDIC, Vexa gives you peace of mind alongside a world-class banking experience.
+          </p>
+        </div>
+
+        {/* Features */}
+        <div>
+          <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide mb-2 px-1">Why Vexa</p>
+          <div className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
+            {features.map((f, i) => (
+              <div key={i} className={`flex items-start gap-3.5 px-4 py-4 ${i < features.length - 1 ? 'border-b border-[#F5F5F5]' : ''}`}>
+                <span className="text-[#162353] mt-0.5">{f.icon}</span>
+                <div className="flex-1">
+                  <p className="text-[14px] font-semibold text-[#111]">{f.title}</p>
+                  <p className="text-[12px] text-[#888] mt-0.5 leading-relaxed">{f.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Legal */}
+        <div>
+          <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide mb-2 px-1">Legal</p>
+          <div className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
+            {legal.map((item, i) => (
+              <button key={i} className={`w-full flex items-center gap-3.5 px-4 py-4 text-left hover:bg-[#F8F9FB] transition-colors ${i < legal.length - 1 ? 'border-b border-[#F5F5F5]' : ''}`}>
+                <p className="flex-1 text-[14px] font-semibold text-[#111]">{item.label}</p>
+                {item.icon}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="bg-white rounded-2xl border border-[#F0F0F0] px-5 py-4 text-center">
+          <p className="text-[12px] text-[#888]">Registered with CBN · RC 1234567</p>
+          <p className="text-[12px] text-[#888] mt-0.5">© 2025 Vexa Financial Services Ltd.</p>
+          <p className="text-[11px] text-[#BBB] mt-2">All rights reserved</p>
+        </div>
 
         <p className="text-center text-[11px] text-[#CCC] pb-2">Vexa Bank · v1.0.0</p>
       </div>
@@ -1862,6 +2056,8 @@ function Router() {
       <Route path="/limits" component={LimitsPage} />
       <Route path="/change-pin" component={ChangePinPage} />
       <Route path="/change-password" component={ChangePasswordPage} />
+      <Route path="/help-support" component={HelpSupportPage} />
+      <Route path="/about-vexa" component={AboutVexaPage} />
       <Route component={NotFound} />
     </Switch>
   );
