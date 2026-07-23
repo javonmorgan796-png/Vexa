@@ -36,8 +36,24 @@ const DEFAULT_USER: User = {
 };
 
 function getUsers(): User[] {
-  try { return JSON.parse(localStorage.getItem('vexa_users') || 'null') ?? [DEFAULT_USER]; }
-  catch { return [DEFAULT_USER]; }
+  try {
+    const parsed = JSON.parse(localStorage.getItem('vexa_users') || 'null');
+    if (!Array.isArray(parsed) || parsed.length === 0) return [DEFAULT_USER];
+    const demoPhone = DEFAULT_USER.phone.replace(/\D/g, '');
+    // If the stored list doesn't contain the demo user (e.g. old email-based data),
+    // inject it so demo credentials always work.
+    const hasDemo = parsed.some(
+      (u: User) => typeof u.phone === 'string' && u.phone.replace(/\D/g, '') === demoPhone
+    );
+    if (!hasDemo) {
+      const fixed = [DEFAULT_USER, ...parsed.filter((u: User) => typeof u.phone === 'string' && u.phone)];
+      localStorage.setItem('vexa_users', JSON.stringify(fixed));
+      return fixed;
+    }
+    return parsed;
+  } catch {
+    return [DEFAULT_USER];
+  }
 }
 function saveUsers(users: User[]) {
   localStorage.setItem('vexa_users', JSON.stringify(users));
