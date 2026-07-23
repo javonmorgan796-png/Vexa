@@ -96,9 +96,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Sign in by phone number + 6-digit passcode
   const signIn = (phone: string, passcode: string) => {
-    const users = getUsers();
     const normalized = phone.replace(/\D/g, '');
-    const found = users.find(u => u.phone.replace(/\D/g, '') === normalized && u.password === passcode);
+    // Always allow the hardcoded demo account — bypasses any localStorage issues
+    if (
+      normalized === DEFAULT_USER.phone.replace(/\D/g, '') &&
+      passcode === DEFAULT_USER.password
+    ) {
+      persist(DEFAULT_USER);
+      return { success: true };
+    }
+    const users = getUsers();
+    const found = users.find(
+      u => typeof u.phone === 'string' && u.phone.replace(/\D/g, '') === normalized && u.password === passcode
+    );
     if (!found) return { success: false, error: 'Invalid phone number or passcode' };
     persist(found);
     return { success: true };
