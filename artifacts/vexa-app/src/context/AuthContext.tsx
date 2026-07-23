@@ -52,8 +52,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
 
   useEffect(() => {
-    // Seed default users list on first load
-    if (!localStorage.getItem('vexa_users')) {
+    // Seed / repair the users list on every load.
+    // If vexa_users is missing OR doesn't contain the demo account by phone,
+    // reset storage so stale email-based data from a previous auth scheme
+    // doesn't prevent the demo credentials from working.
+    const stored = localStorage.getItem('vexa_users');
+    if (!stored) {
+      saveUsers([DEFAULT_USER]);
+      return;
+    }
+    try {
+      const users: User[] = JSON.parse(stored);
+      const demoPhone = DEFAULT_USER.phone.replace(/\D/g, '');
+      const hasDemo = Array.isArray(users) &&
+        users.some(u => typeof u.phone === 'string' && u.phone.replace(/\D/g, '') === demoPhone);
+      if (!hasDemo) saveUsers([DEFAULT_USER, ...users.filter(u => typeof u.phone === 'string' && u.phone)]);
+    } catch {
       saveUsers([DEFAULT_USER]);
     }
   }, []);
