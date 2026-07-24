@@ -3,6 +3,10 @@ import { useLocation } from 'wouter';
 import { ChevronLeft } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
+const COUNTRY_CODES = [
+  { flag: '🇳🇬', code: '+234', name: 'Nigeria' },
+];
+
 /* Reusable 6-box PIN input */
 function PinBoxes({
   value,
@@ -77,6 +81,9 @@ export default function SignUpPage() {
   // Form fields
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [countryCode, setCountryCode] = useState(COUNTRY_CODES[0]);
+  const [showPicker, setShowPicker] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
   const [passcode, setPasscode] = useState(['', '', '', '', '', '']);
   const [confirmPasscode, setConfirmPasscode] = useState(['', '', '', '', '', '']);
   const [error, setError] = useState('');
@@ -95,6 +102,16 @@ export default function SignUpPage() {
     const t = setInterval(() => setResendTimer(v => v - 1), 1000);
     return () => clearInterval(t);
   }, [step, resendTimer]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setShowPicker(false);
+      }
+    }
+    if (showPicker) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showPicker]);
 
   function validate() {
     if (!name.trim()) return 'Full name is required';
@@ -256,12 +273,39 @@ export default function SignUpPage() {
               className="w-full h-[50px] rounded-xl border border-[#E2E8F0] bg-[#F8F9FB] px-4 text-[14px] text-[#111] placeholder-[#C0C8D4] focus:outline-none focus:border-[#162353] focus:bg-white transition-colors" />
           </div>
 
-          {/* Phone Number */}
+          {/* Phone Number with country picker */}
           <div>
             <label className="text-[12px] font-semibold text-[#444] mb-1.5 block">Phone Number</label>
-            <input type="tel" inputMode="numeric" autoComplete="tel" placeholder="Phone Number"
-              value={phone} onChange={e => { setPhone(e.target.value); setError(''); }}
-              className="w-full h-[50px] rounded-xl border border-[#E2E8F0] bg-[#F8F9FB] px-4 text-[14px] text-[#111] placeholder-[#C0C8D4] focus:outline-none focus:border-[#162353] focus:bg-white transition-colors" />
+            <div className="flex gap-2 relative" ref={pickerRef}>
+              <button
+                type="button"
+                onClick={() => setShowPicker(p => !p)}
+                className="h-[50px] px-3 rounded-xl border border-[#E2E8F0] bg-[#F8F9FB] flex items-center gap-1.5 shrink-0 hover:border-[#162353] transition-colors"
+              >
+                <span className="text-[18px]">{countryCode.flag}</span>
+                <span className="text-[13px] font-bold text-[#162353]">{countryCode.code}</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              {showPicker && (
+                <div className="absolute left-0 top-[54px] z-50 bg-white rounded-2xl border border-[#E2E8F0] shadow-xl overflow-hidden w-52">
+                  {COUNTRY_CODES.map(c => (
+                    <button
+                      key={c.code}
+                      type="button"
+                      onClick={() => { setCountryCode(c); setShowPicker(false); }}
+                      className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#F8F9FB] transition-colors ${c.code === countryCode.code ? 'bg-[#F0F4FF]' : ''}`}
+                    >
+                      <span className="text-[18px]">{c.flag}</span>
+                      <span className="text-[13px] font-semibold text-[#111]">{c.name}</span>
+                      <span className="ml-auto text-[12px] font-bold text-[#162353]">{c.code}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <input type="tel" inputMode="numeric" autoComplete="tel" placeholder="Phone Number"
+                value={phone} onChange={e => { setPhone(e.target.value); setError(''); }}
+                className="flex-1 h-[50px] rounded-xl border border-[#E2E8F0] bg-[#F8F9FB] px-4 text-[14px] text-[#111] placeholder-[#C0C8D4] focus:outline-none focus:border-[#162353] focus:bg-white transition-colors" />
+            </div>
           </div>
 
           {/* 6-digit Passcode */}
