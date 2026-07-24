@@ -167,7 +167,9 @@ function MoniepointHome() {
             </span>
           </div>
           <div className="flex items-center gap-4">
-            <Headphones className="w-6 h-6 text-[#222]" strokeWidth={1.75} />
+            <button onClick={() => navigate('/help-support')} className="focus:outline-none">
+              <Headphones className="w-6 h-6 text-[#222]" strokeWidth={1.75} />
+            </button>
             <button onClick={() => navigate('/notifications')} className="relative focus:outline-none">
               <Bell className="w-6 h-6 text-[#222]" strokeWidth={1.75} />
               {/* red notification dot */}
