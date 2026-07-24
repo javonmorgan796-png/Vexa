@@ -163,7 +163,7 @@ export default function SignUpPage() {
             className="absolute left-4 top-12 w-9 h-9 flex items-center justify-center rounded-full bg-white/10">
             <ChevronLeft className="w-5 h-5 text-white" />
           </button>
-          <img src="/vexa-logo.png" alt="Vexa" className="h-28 mb-3 object-contain" />
+          <img src="/vexa-logo.png" alt="Vexa" className="h-40 mb-4 object-contain" />
           <p className="text-white/70 text-[13px]">Phone Verification</p>
         </div>
 
@@ -232,7 +232,7 @@ export default function SignUpPage() {
           className="absolute left-4 top-12 w-9 h-9 flex items-center justify-center rounded-full bg-white/10">
           <ChevronLeft className="w-5 h-5 text-white" />
         </button>
-        <img src="/vexa-logo.png" alt="Vexa" className="h-28 mb-3 object-contain" />
+        <img src="/vexa-logo.png" alt="Vexa" className="h-40 mb-4 object-contain" />
         <p className="text-white/70 text-[13px]">Create your account</p>
       </div>
 

@@ -20,6 +20,7 @@ import ProfilePage from '@/pages/settings/ProfilePage';
 import LimitsPage from '@/pages/settings/LimitsPage';
 import ChangePinPage from '@/pages/settings/ChangePinPage';
 import ChangePasswordPage from '@/pages/settings/ChangePasswordPage';
+import NotificationsPage from '@/pages/NotificationsPage';
 
 const queryClient = new QueryClient();
 
@@ -167,11 +168,11 @@ function MoniepointHome() {
           </div>
           <div className="flex items-center gap-4">
             <Headphones className="w-6 h-6 text-[#222]" strokeWidth={1.75} />
-            <div className="relative">
+            <button onClick={() => navigate('/notifications')} className="relative focus:outline-none">
               <Bell className="w-6 h-6 text-[#222]" strokeWidth={1.75} />
               {/* red notification dot */}
               <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full border border-white" />
-            </div>
+            </button>
           </div>
         </div>
 
@@ -2058,6 +2059,7 @@ function Router() {
       <Route path="/change-password" component={ChangePasswordPage} />
       <Route path="/help-support" component={HelpSupportPage} />
       <Route path="/about-vexa" component={AboutVexaPage} />
+      <Route path="/notifications" component={NotificationsPage} />
       <Route component={NotFound} />
     </Switch>
   );
