@@ -5,7 +5,7 @@ import {
   ArrowLeftRight, PhoneCall, Tablet, Target,
   PiggyBank, BookOpen, FileText, LayoutGrid,
   Trophy, CreditCard, Home, ArrowDown, Settings,
-  ArrowUp, ChevronRight, Shield, Fingerprint,
+  ArrowUp, ChevronRight, Shield, Fingerprint, BriefcaseBusiness,
   BellRing, HelpCircle, Info, LogOut, User, Lock,
   MessageCircle, Phone, Mail, ExternalLink, Star, ChevronDown,
 } from 'lucide-react';
@@ -20,6 +20,16 @@ import ProfilePage from '@/pages/settings/ProfilePage';
 import LimitsPage from '@/pages/settings/LimitsPage';
 import ChangePinPage from '@/pages/settings/ChangePinPage';
 import ChangePasswordPage from '@/pages/settings/ChangePasswordPage';
+import { BusinessProvider } from '@/context/BusinessContext';
+import BusinessDashboard from '@/pages/business/BusinessDashboard';
+import BusinessOnboarding from '@/pages/business/BusinessOnboarding';
+import BusinessAnalytics from '@/pages/business/BusinessAnalytics';
+import BusinessBills from '@/pages/business/BusinessBills';
+import BusinessSettings from '@/pages/business/BusinessSettings';
+import BusinessTransactionHistory from '@/pages/business/BusinessTransactionHistory';
+import BusinessTransfers from '@/pages/business/BusinessTransfers';
+import EmployeeManagement from '@/pages/business/EmployeeManagement';
+import PayrollManagement from '@/pages/business/PayrollManagement';
 
 const queryClient = new QueryClient();
 
@@ -251,6 +261,23 @@ function MoniepointHome() {
                 );
               })}
             </div>
+          </div>
+
+          {/* ── Vexa Business ─────────────────────────────────────────── */}
+          <div className="px-4 mt-4">
+            <button
+              onClick={() => navigate('/business')}
+              className="w-full bg-[#162353] rounded-2xl px-4 py-3.5 flex items-center gap-3 text-left active:scale-[0.99] transition-transform"
+            >
+              <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center shrink-0">
+                <BriefcaseBusiness className="w-5 h-5 text-white" strokeWidth={1.8} />
+              </div>
+              <div className="flex-1">
+                <p className="text-white text-[13px] font-bold">Vexa Business</p>
+                <p className="text-white/60 text-[11px] mt-0.5">Manage your business finances</p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-white/60" />
+            </button>
           </div>
 
           {/* ── Rewards ──────────────────────────────────────────────── */}
@@ -2156,6 +2183,18 @@ function Router() {
       <Route path="/help-support" component={HelpSupportPage} />
       <Route path="/notifications" component={NotificationsPage} />
       <Route path="/about-vexa" component={AboutVexaPage} />
+      {/* Vexa Business */}
+      <Route path="/business" component={BusinessDashboard} />
+      <Route path="/business/onboarding" component={BusinessOnboarding} />
+      <Route path="/business/transfers" component={BusinessTransfers} />
+      <Route path="/business/receive" component={BusinessTransfers} />
+      <Route path="/business/bills" component={BusinessBills} />
+      <Route path="/business/employees" component={EmployeeManagement} />
+      <Route path="/business/payroll" component={PayrollManagement} />
+      <Route path="/business/analytics" component={BusinessAnalytics} />
+      <Route path="/business/settings" component={BusinessSettings} />
+      <Route path="/business/transactions" component={BusinessTransactionHistory} />
+      <Route path="/business/notifications" component={NotificationsPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -2191,12 +2230,14 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <TooltipProvider>
-          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-            <AppShell />
-          </WouterRouter>
-          <Toaster />
-        </TooltipProvider>
+        <BusinessProvider>
+          <TooltipProvider>
+            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+              <AppShell />
+            </WouterRouter>
+            <Toaster />
+          </TooltipProvider>
+        </BusinessProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
