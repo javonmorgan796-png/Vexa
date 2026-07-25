@@ -166,12 +166,13 @@ function MoniepointHome() {
             </span>
           </div>
           <div className="flex items-center gap-4">
-            <Headphones className="w-6 h-6 text-[#222]" strokeWidth={1.75} />
-            <div className="relative">
+            <button onClick={() => navigate('/help-support')} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">
+              <Headphones className="w-6 h-6 text-[#222]" strokeWidth={1.75} />
+            </button>
+            <button onClick={() => navigate('/notifications')} className="relative w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">
               <Bell className="w-6 h-6 text-[#222]" strokeWidth={1.75} />
-              {/* red notification dot */}
-              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full border border-white" />
-            </div>
+              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-white" />
+            </button>
           </div>
         </div>
 
@@ -688,6 +689,102 @@ function HelpSupportPage() {
         </div>
 
         <p className="text-center text-[11px] text-[#CCC] pb-2">Response time: usually within 5 minutes</p>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Notifications Page ─────────────────────────────────────────────── */
+function NotificationsPage() {
+  const [, navigate] = useLocation();
+  const [notifications, setNotifications] = useState([
+    { id: 1, type: 'credit',   title: 'Money Received',       body: 'You received ₦15,000 from Tunde Bakare.',           time: '2 min ago',  read: false },
+    { id: 2, type: 'debit',    title: 'Transfer Successful',  body: 'Transfer of ₦5,000 to GTB •••7892 was successful.', time: '1 hr ago',   read: false },
+    { id: 3, type: 'security', title: 'New Login Detected',   body: 'Your account was accessed from a new device.',      time: '3 hrs ago',  read: false },
+    { id: 4, type: 'info',     title: 'Airtime Purchase',     body: 'You purchased ₦1,000 airtime for 08012345678.',     time: '5 hrs ago',  read: true  },
+    { id: 5, type: 'promo',    title: 'Cashback Earned!',     body: 'You earned ₦200 cashback on your last transfer.',   time: 'Yesterday',  read: true  },
+    { id: 6, type: 'credit',   title: 'Salary Credited',      body: 'Salary of ₦52,000 has been credited.',             time: '2 days ago', read: true  },
+    { id: 7, type: 'info',     title: 'Data Purchase',        body: 'You purchased 2GB data for 08067212032.',           time: '3 days ago', read: true  },
+  ]);
+
+  const unreadCount = notifications.filter(n => !n.read).length;
+  const markAllRead = () => setNotifications(ns => ns.map(n => ({ ...n, read: true })));
+  const markRead   = (id: number) => setNotifications(ns => ns.map(n => n.id === id ? { ...n, read: true } : n));
+
+  function dotColor(type: string) {
+    switch (type) {
+      case 'credit':   return { bg: '#DCFCE7', stroke: '#16A34A' };
+      case 'debit':    return { bg: '#FEE2E2', stroke: '#DC2626' };
+      case 'security': return { bg: '#FEF3C7', stroke: '#D97706' };
+      case 'promo':    return { bg: '#F3E8FF', stroke: '#9333EA' };
+      default:         return { bg: '#EFF6FF', stroke: '#2563EB' };
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+      {/* Header */}
+      <div className="flex-none flex items-center justify-between px-4 pb-3 bg-white border-b border-[#E8EBF0]"
+        style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
+        <div className="flex items-center gap-3">
+          <button onClick={() => navigate('/')} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          </button>
+          <span className="text-[16px] font-bold text-[#111]">Notifications</span>
+          {unreadCount > 0 && (
+            <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">{unreadCount}</span>
+          )}
+        </div>
+        {unreadCount > 0 && (
+          <button onClick={markAllRead} className="text-[12px] text-[#162353] font-semibold">Mark all read</button>
+        )}
+      </div>
+
+      <div className="flex-1 overflow-y-auto py-4 px-4 space-y-3" style={{ scrollbarWidth: 'none' }}>
+        {unreadCount > 0 && (
+          <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide px-1">New</p>
+        )}
+        {notifications.filter(n => !n.read).map(n => {
+          const c = dotColor(n.type);
+          return (
+            <button key={n.id} onClick={() => markRead(n.id)}
+              className="w-full bg-white rounded-2xl border border-[#E8F0FE] px-4 py-4 flex items-start gap-3 text-left hover:bg-[#F8F9FB] transition-colors shadow-sm">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: c.bg }}>
+                <Bell className="w-5 h-5" style={{ color: c.stroke }} strokeWidth={1.8} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2 mb-0.5">
+                  <p className="text-[13px] font-bold text-[#111]">{n.title}</p>
+                  <span className="text-[10px] text-[#888] shrink-0">{n.time}</span>
+                </div>
+                <p className="text-[12px] text-[#555] leading-relaxed">{n.body}</p>
+              </div>
+              <span className="w-2 h-2 rounded-full bg-[#162353] shrink-0 mt-1.5" />
+            </button>
+          );
+        })}
+
+        {notifications.some(n => n.read) && (
+          <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide px-1 pt-1">Earlier</p>
+        )}
+        {notifications.filter(n => n.read).map(n => {
+          const c = dotColor(n.type);
+          return (
+            <div key={n.id} className="bg-white rounded-2xl border border-[#F0F0F0] px-4 py-4 flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: c.bg + '80' }}>
+                <Bell className="w-5 h-5" style={{ color: c.stroke + '99' }} strokeWidth={1.8} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2 mb-0.5">
+                  <p className="text-[13px] font-semibold text-[#666]">{n.title}</p>
+                  <span className="text-[10px] text-[#AAA] shrink-0">{n.time}</span>
+                </div>
+                <p className="text-[12px] text-[#888] leading-relaxed">{n.body}</p>
+              </div>
+            </div>
+          );
+        })}
+        <div className="pb-4" />
       </div>
     </div>
   );
@@ -2057,6 +2154,7 @@ function Router() {
       <Route path="/change-pin" component={ChangePinPage} />
       <Route path="/change-password" component={ChangePasswordPage} />
       <Route path="/help-support" component={HelpSupportPage} />
+      <Route path="/notifications" component={NotificationsPage} />
       <Route path="/about-vexa" component={AboutVexaPage} />
       <Route component={NotFound} />
     </Switch>
