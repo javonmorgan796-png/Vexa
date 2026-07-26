@@ -30,6 +30,8 @@ import BusinessTransactionHistory from '@/pages/business/BusinessTransactionHist
 import BusinessTransfers from '@/pages/business/BusinessTransfers';
 import EmployeeManagement from '@/pages/business/EmployeeManagement';
 import PayrollManagement from '@/pages/business/PayrollManagement';
+import { BusinessSecurityProvider, useBusinessSecurity } from '@/context/BusinessSecurityContext';
+import BusinessSecurityScreen from '@/pages/business/BusinessSecurityScreen';
 
 const queryClient = new QueryClient();
 
@@ -2155,6 +2157,13 @@ function ServicesTabPage() {
   );
 }
 
+/* ── Business security gate ─────────────────────────────────────────── */
+function BusinessSecurityGate({ children }: { children: React.ReactNode }) {
+  const { isVerified } = useBusinessSecurity();
+  if (!isVerified) return <BusinessSecurityScreen />;
+  return <>{children}</>;
+}
+
 function Router() {
   return (
     <Switch>
@@ -2183,18 +2192,38 @@ function Router() {
       <Route path="/help-support" component={HelpSupportPage} />
       <Route path="/notifications" component={NotificationsPage} />
       <Route path="/about-vexa" component={AboutVexaPage} />
-      {/* Vexa Business */}
-      <Route path="/business" component={BusinessDashboard} />
+      {/* Vexa Business — onboarding is unguarded; all other routes require security verification */}
       <Route path="/business/onboarding" component={BusinessOnboarding} />
-      <Route path="/business/transfers" component={BusinessTransfers} />
-      <Route path="/business/receive" component={BusinessTransfers} />
-      <Route path="/business/bills" component={BusinessBills} />
-      <Route path="/business/employees" component={EmployeeManagement} />
-      <Route path="/business/payroll" component={PayrollManagement} />
-      <Route path="/business/analytics" component={BusinessAnalytics} />
-      <Route path="/business/settings" component={BusinessSettings} />
-      <Route path="/business/transactions" component={BusinessTransactionHistory} />
-      <Route path="/business/notifications" component={NotificationsPage} />
+      <Route path="/business">
+        <BusinessSecurityGate><BusinessDashboard /></BusinessSecurityGate>
+      </Route>
+      <Route path="/business/transfers">
+        <BusinessSecurityGate><BusinessTransfers /></BusinessSecurityGate>
+      </Route>
+      <Route path="/business/receive">
+        <BusinessSecurityGate><BusinessTransfers /></BusinessSecurityGate>
+      </Route>
+      <Route path="/business/bills">
+        <BusinessSecurityGate><BusinessBills /></BusinessSecurityGate>
+      </Route>
+      <Route path="/business/employees">
+        <BusinessSecurityGate><EmployeeManagement /></BusinessSecurityGate>
+      </Route>
+      <Route path="/business/payroll">
+        <BusinessSecurityGate><PayrollManagement /></BusinessSecurityGate>
+      </Route>
+      <Route path="/business/analytics">
+        <BusinessSecurityGate><BusinessAnalytics /></BusinessSecurityGate>
+      </Route>
+      <Route path="/business/settings">
+        <BusinessSecurityGate><BusinessSettings /></BusinessSecurityGate>
+      </Route>
+      <Route path="/business/transactions">
+        <BusinessSecurityGate><BusinessTransactionHistory /></BusinessSecurityGate>
+      </Route>
+      <Route path="/business/notifications">
+        <BusinessSecurityGate><NotificationsPage /></BusinessSecurityGate>
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );
@@ -2205,13 +2234,25 @@ function AppShell() {
   const [showSplash, setShowSplash] = useState(true);
   const [splashDone, setSplashDone] = useState(false);
   const { isAuthenticated } = useAuth();
-  const [, navigate] = useLocation();
+  const [path, navigate] = useLocation();
+  const { clearVerification } = useBusinessSecurity();
+  const prevPathRef = React.useRef('');
 
   useEffect(() => {
     if (splashDone && !isAuthenticated) {
       navigate('/signin');
     }
   }, [splashDone, isAuthenticated]);
+
+  // Clear business verification when the user navigates away from the business section
+  useEffect(() => {
+    const wasOnBusiness = prevPathRef.current.startsWith('/business');
+    const isOnBusiness = path.startsWith('/business');
+    if (wasOnBusiness && !isOnBusiness) {
+      clearVerification();
+    }
+    prevPathRef.current = path;
+  }, [path]);
 
   return (
     <>
@@ -2231,12 +2272,14 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <BusinessProvider>
-          <TooltipProvider>
-            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-              <AppShell />
-            </WouterRouter>
-            <Toaster />
-          </TooltipProvider>
+          <BusinessSecurityProvider>
+            <TooltipProvider>
+              <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+                <AppShell />
+              </WouterRouter>
+              <Toaster />
+            </TooltipProvider>
+          </BusinessSecurityProvider>
         </BusinessProvider>
       </AuthProvider>
     </QueryClientProvider>
