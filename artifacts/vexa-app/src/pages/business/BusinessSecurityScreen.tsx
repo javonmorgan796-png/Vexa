@@ -167,12 +167,7 @@ export default function BusinessSecurityScreen() {
     if (mode === 'biometric' && !hasBiometrics) setMode('pin');
   }, [hasBiometrics]);
 
-  // Auto-trigger biometrics
-  useEffect(() => {
-    if (mode !== 'biometric') return;
-    const t = setTimeout(() => handleBiometrics(), 700);
-    return () => clearTimeout(t);
-  }, [mode]);
+  // No auto-trigger — user must tap the biometric button explicitly
 
   // Lockout countdown ticker
   useEffect(() => {
