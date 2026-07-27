@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { User, Mail, Phone, Hash, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+
+const PHOTO_KEY = 'vexa_profile_photo';
 
 export default function ProfilePage() {
   const [, navigate] = useLocation();
@@ -12,10 +14,24 @@ export default function ProfilePage() {
   const [draftPhone, setDraftPhone] = useState(user?.phone ?? '');
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const [photo, setPhoto] = useState<string | null>(() => localStorage.getItem(PHOTO_KEY));
+  const fileRef = useRef<HTMLInputElement>(null);
 
   if (!user) { navigate('/signin'); return null; }
 
   const initials = user.name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
+
+  function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      localStorage.setItem(PHOTO_KEY, dataUrl);
+      setPhoto(dataUrl);
+    };
+    reader.readAsDataURL(file);
+  }
 
   function openEdit(field: 'name' | 'email' | 'phone') {
     setDraftName(user!.name);
@@ -55,9 +71,40 @@ export default function ProfilePage() {
       <div className="flex-1 overflow-y-auto py-5 px-4 space-y-4" style={{ scrollbarWidth: 'none' }}>
         {/* Avatar hero */}
         <div className="bg-[#162353] rounded-2xl py-7 flex flex-col items-center gap-3">
-          <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center text-white text-[28px] font-bold">
-            {initials}
-          </div>
+          {/* Hidden file input */}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handlePhotoChange}
+          />
+          {/* Tappable avatar */}
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="relative group"
+            title="Change photo"
+          >
+            <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center text-white text-[28px] font-bold overflow-hidden">
+              {photo
+                ? <img src={photo} alt="Profile" className="w-full h-full object-cover" />
+                : initials}
+            </div>
+            {/* Camera overlay */}
+            <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+              </svg>
+            </div>
+            {/* Always-visible camera badge */}
+            <div className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-white flex items-center justify-center shadow">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#162353" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+              </svg>
+            </div>
+          </button>
           <div className="text-center">
             <p className="text-white font-bold text-[17px]">{user.name}</p>
             <p className="text-white/60 text-[12px] mt-0.5">{user.email}</p>
