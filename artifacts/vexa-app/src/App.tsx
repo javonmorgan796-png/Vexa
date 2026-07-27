@@ -2164,6 +2164,7 @@ function BusinessSecurityGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+
 function Router() {
   return (
     <Switch>
@@ -2253,6 +2254,7 @@ function AppShell() {
     }
     prevPathRef.current = path;
   }, [path]);
+
 
   return (
     <>
