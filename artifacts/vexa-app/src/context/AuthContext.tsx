@@ -14,12 +14,14 @@ export interface User {
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
+  profilePhoto: string | null;
   signIn: (phone: string, passcode: string) => { success: boolean; error?: string };
   signUp: (name: string, phone: string, passcode: string) => { success: boolean; error?: string };
   signOut: () => void;
   updatePin: (oldPin: string, newPin: string) => { success: boolean; error?: string };
   updatePassword: (oldPass: string, newPass: string) => { success: boolean; error?: string };
   updateProfile: (name: string, email: string, phone: string) => void;
+  updateProfilePhoto: (photo: string | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -59,6 +61,8 @@ function saveUsers(users: User[]) {
   localStorage.setItem('vexa_users', JSON.stringify(users));
 }
 
+const PHOTO_KEY = 'vexa_profile_photo';
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
     try {
@@ -66,6 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return s ? JSON.parse(s) : null;
     } catch { return null; }
   });
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(() => localStorage.getItem(PHOTO_KEY));
 
   useEffect(() => {
     // Seed / repair the users list on every load.
@@ -165,8 +170,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     saveUsers(getUsers().map(u => u.phone === user.phone ? updated : u));
   };
 
+  const updateProfilePhoto = (photo: string | null) => {
+    if (photo) localStorage.setItem(PHOTO_KEY, photo);
+    else localStorage.removeItem(PHOTO_KEY);
+    setProfilePhoto(photo);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, signIn, signUp, signOut, updatePin, updatePassword, updateProfile }}>
+    <AuthContext.Provider value={{ user, isAuthenticated: !!user, profilePhoto, signIn, signUp, signOut, updatePin, updatePassword, updateProfile, updateProfilePhoto }}>
       {children}
     </AuthContext.Provider>
   );

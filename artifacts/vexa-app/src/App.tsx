@@ -149,7 +149,7 @@ const services = [
 function MoniepointHome() {
   const [balanceHidden, setBalanceHidden] = useState(false);
   const [, navigate] = useLocation();
-  const { user } = useAuth();
+  const { user, profilePhoto } = useAuth();
   const initials = (user?.name ?? 'C').split(' ').map((p: string) => p[0]).slice(0, 2).join('').toUpperCase();
   const displayName = user?.name ?? 'Chibuzor Emmanuel Dike';
   const accountNumber = user?.accountNumber ?? '9067212032';
@@ -164,8 +164,8 @@ function MoniepointHome() {
         <div className="flex-none flex justify-between items-center px-4 pb-2.5 bg-white border-b border-[#E8EBF0]" style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
           <div className="flex items-center gap-2.5">
             {/* avatar */}
-            <div className="w-10 h-10 rounded-full bg-[#3A3530] flex items-center justify-center text-white text-[15px] font-bold shrink-0">
-              {initials}
+            <div className="w-10 h-10 rounded-full bg-[#3A3530] flex items-center justify-center text-white text-[15px] font-bold shrink-0 overflow-hidden">
+              {profilePhoto ? <img src={profilePhoto} alt="" className="w-full h-full object-cover" /> : initials}
             </div>
             {/* dynamic greeting */}
             <span className="text-[13px] font-semibold text-[#444]">
@@ -513,7 +513,7 @@ type SettingsSection = { heading: string; items: { icon: React.ReactNode; label:
 
 function SettingsPage() {
   const [, navigate] = useLocation();
-  const { user, signOut } = useAuth();
+  const { user, signOut, profilePhoto } = useAuth();
   const [biometrics, setBiometrics] = useState(true);
   const [notifs, setNotifs] = useState(true);
 
@@ -574,7 +574,9 @@ function SettingsPage() {
 
         {/* Profile hero card */}
         <div className="bg-[#162353] rounded-2xl px-5 py-4 flex items-center gap-4">
-          <div className="w-14 h-14 rounded-full bg-[#3A3530] flex items-center justify-center text-white text-[20px] font-bold shrink-0">{initials}</div>
+          <div className="w-14 h-14 rounded-full bg-[#3A3530] flex items-center justify-center text-white text-[20px] font-bold shrink-0 overflow-hidden">
+            {profilePhoto ? <img src={profilePhoto} alt="" className="w-full h-full object-cover" /> : initials}
+          </div>
           <div>
             <p className="text-white font-bold text-[15px]">{userName}</p>
             <p className="text-white/60 text-[12px] mt-0.5">{accountNumber} · Vexa Bank</p>
@@ -1745,78 +1747,305 @@ function BettingPage() {
 }
 
 /* ─── Savings Page ───────────────────────────────────────────────────── */
-const SAVINGS_GOALS = [
-  { name: 'Emergency Fund', target: '200,000', saved: '45,000',  pct: 22, emoji: '🛡️' },
-  { name: 'New Laptop',     target: '350,000', saved: '120,000', pct: 34, emoji: '💻' },
+type SavingsGoal = {
+  id: string; name: string; emoji: string; target: number; saved: number;
+  frequency: string; dueDate: string; autoSave: boolean; color: string;
+};
+
+const INIT_GOALS: SavingsGoal[] = [
+  { id:'1', name:'Emergency Fund', emoji:'🛡️', target:200000, saved:45000,  frequency:'Monthly', dueDate:'Dec 2026', autoSave:true,  color:'#162353' },
+  { id:'2', name:'New Laptop',     emoji:'💻', target:350000, saved:120000, frequency:'Weekly',  dueDate:'Sep 2026', autoSave:false, color:'#0F6CBD' },
+  { id:'3', name:'Vacation Fund',  emoji:'✈️', target:500000, saved:87500,  frequency:'Weekly',  dueDate:'Jun 2027', autoSave:true,  color:'#6D28D9' },
 ];
 
 function SavingsPage() {
   const [, navigate] = useLocation();
+  const [goals, setGoals] = useState<SavingsGoal[]>(INIT_GOALS);
+  const [activeTab, setActiveTab] = useState<'goals' | 'plans'>('goals');
   const [showCreate, setShowCreate] = useState(false);
   const [goalName, setGoalName]     = useState('');
   const [goalAmt, setGoalAmt]       = useState('');
-  const [frequency, setFreq]        = useState('Weekly');
+  const [frequency, setFreq]        = useState('Monthly');
+  const [dueDate, setDueDate]       = useState('');
+  const [autoSave, setAutoSave]     = useState(false);
+  const [topUpGoalId, setTopUpGoalId] = useState<string | null>(null);
+  const [topUpAmt, setTopUpAmt]     = useState('');
   const [created, setCreated]       = useState(false);
+  const [topUpDone, setTopUpDone]   = useState(false);
 
-  if (created) return <SuccessBanner title="Savings Goal Created!" sub={`You're saving ₦${goalAmt} towards ${goalName}`} onHome={() => navigate('/')} />;
+  const totalSaved = goals.reduce((s,g) => s + g.saved, 0);
+  const totalTarget = goals.reduce((s,g) => s + g.target, 0);
+  const overallPct = Math.round((totalSaved / totalTarget) * 100);
+
+  if (created) return <SuccessBanner title="Savings Goal Created!" sub={`You're saving ₦${goalAmt} towards "${goalName}"`} onHome={() => { setCreated(false); }} />;
+  if (topUpDone) return <SuccessBanner title="Top-up Successful!" sub={`₦${topUpAmt} added to your goal`} onHome={() => { setTopUpDone(false); setTopUpGoalId(null); setTopUpAmt(''); }} />;
+
+  const SAVINGS_PLANS = [
+    { name:'Flexi Save',    rate:'8% p.a.',  min:'₦1,000',   lock:'None',      tag:'Popular',  color:'#162353', desc:'Save anytime, withdraw anytime.' },
+    { name:'Target Save',   rate:'12% p.a.', min:'₦5,000',   lock:'3 months',  tag:'Best Rate',color:'#0F6CBD', desc:'Lock funds, earn higher returns.' },
+    { name:'Fixed Deposit', rate:'15% p.a.', min:'₦50,000',  lock:'6 months',  tag:'Highest',  color:'#6D28D9', desc:'Maximum interest for committed savers.' },
+  ];
 
   return (
     <PageShell title="Savings" back="/">
-      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4" style={{ scrollbarWidth: 'none' }}>
-        {/* Total saved */}
-        <div className="bg-[#162353] rounded-2xl px-5 py-4 text-white">
-          <p className="text-[12px] text-white/60 mb-1">Total Saved</p>
-          <p className="text-[28px] font-extrabold">₦165,000.00</p>
-          <p className="text-[11px] text-white/60 mt-1">Across {SAVINGS_GOALS.length} goals</p>
-        </div>
-        {/* Goals */}
-        {SAVINGS_GOALS.map(g => (
-          <div key={g.name} className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
-            <div className="flex items-center gap-3 mb-3">
-              <span className="text-2xl">{g.emoji}</span>
-              <div className="flex-1">
-                <p className="text-[14px] font-semibold text-[#111]">{g.name}</p>
-                <p className="text-[11px] text-[#888]">₦{g.saved} of ₦{g.target}</p>
+      <div className="flex-1 overflow-y-auto pb-6" style={{ scrollbarWidth: 'none' }}>
+
+        {/* Summary Hero */}
+        <div className="mx-4 mt-4 rounded-2xl overflow-hidden relative"
+          style={{ background: 'linear-gradient(135deg, #162353 0%, #1E3A6E 50%, #0a4fa3 100%)' }}>
+          {/* Decorative arc */}
+          <svg className="absolute right-0 top-0 opacity-10" width="160" height="120" viewBox="0 0 160 120">
+            <circle cx="140" cy="20" r="90" fill="white"/>
+          </svg>
+          <div className="px-5 py-5 relative z-10">
+            <p className="text-white/60 text-[11px] font-semibold uppercase tracking-wider mb-1">Total Savings</p>
+            <p className="text-white text-[30px] font-extrabold tracking-tight">₦{totalSaved.toLocaleString('en-NG')}.00</p>
+            <p className="text-white/50 text-[11px] mt-0.5">Target: ₦{totalTarget.toLocaleString('en-NG')} across {goals.length} goals</p>
+
+            {/* Overall progress */}
+            <div className="mt-3">
+              <div className="flex justify-between items-center mb-1">
+                <p className="text-white/60 text-[10px]">Overall progress</p>
+                <p className="text-white text-[11px] font-bold">{overallPct}%</p>
               </div>
-              <span className="text-[13px] font-bold text-[#162353]">{g.pct}%</span>
+              <div className="h-2 bg-white/15 rounded-full overflow-hidden">
+                <div className="h-full bg-white rounded-full transition-all" style={{ width: `${overallPct}%` }} />
+              </div>
             </div>
-            <div className="h-2 bg-[#F0F0F0] rounded-full overflow-hidden">
-              <div className="h-full bg-[#162353] rounded-full" style={{ width: `${g.pct}%` }} />
+
+            {/* Stats row */}
+            <div className="flex gap-3 mt-4">
+              <div className="flex-1 bg-white/10 rounded-xl px-3 py-2.5">
+                <p className="text-white/50 text-[9px] font-semibold uppercase tracking-wider">Earned Interest</p>
+                <p className="text-white text-[13px] font-bold mt-0.5">₦4,320.00</p>
+              </div>
+              <div className="flex-1 bg-white/10 rounded-xl px-3 py-2.5">
+                <p className="text-white/50 text-[9px] font-semibold uppercase tracking-wider">This Month</p>
+                <p className="text-white text-[13px] font-bold mt-0.5">+₦18,500</p>
+              </div>
+              <div className="flex-1 bg-white/10 rounded-xl px-3 py-2.5">
+                <p className="text-white/50 text-[9px] font-semibold uppercase tracking-wider">Active Goals</p>
+                <p className="text-white text-[13px] font-bold mt-0.5">{goals.length}</p>
+              </div>
             </div>
           </div>
-        ))}
-        {/* Create new */}
-        {showCreate && (
-          <div className="bg-white rounded-2xl p-5 border border-[#162353] space-y-3">
-            <p className="text-[13px] font-bold text-[#111]">New Savings Goal</p>
-            <input type="text" placeholder="Goal name (e.g. Vacation)" value={goalName} onChange={e => setGoalName(e.target.value)}
-              className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#2563EB] placeholder:text-[#CCC]" />
-            <div className="flex items-center gap-2 border border-[#E0E0E0] rounded-xl px-4 py-3 focus-within:border-[#2563EB]">
-              <span className="text-[16px] font-bold text-[#444]">₦</span>
-              <input type="text" inputMode="numeric" placeholder="Target amount" value={goalAmt} onChange={e => setGoalAmt(formatAmt(e.target.value))}
-                className="flex-1 text-[16px] font-semibold text-[#111] outline-none bg-transparent placeholder:text-[#CCC] placeholder:font-normal" />
-            </div>
-            <div className="flex gap-2">
-              {['Daily','Weekly','Monthly'].map(f => (
-                <button key={f} onClick={() => setFreq(f)}
-                  className={`flex-1 py-2 rounded-xl text-[12px] font-semibold border transition-all ${frequency===f ? 'bg-[#162353] text-white border-[#162353]' : 'border-[#E0E0E0] text-[#444]'}`}>
-                  {f}
-                </button>
-              ))}
-            </div>
-            <button onClick={() => goalName && goalAmt && setCreated(true)}
-              className="w-full h-[44px] bg-[#162353] rounded-xl text-[14px] font-semibold text-white">
-              Create Goal
+        </div>
+
+        {/* Tabs */}
+        <div className="flex mx-4 mt-4 bg-[#F0F0F0] rounded-xl p-1">
+          {(['goals','plans'] as const).map(t => (
+            <button key={t} onClick={() => setActiveTab(t)}
+              className={`flex-1 py-2 rounded-lg text-[13px] font-bold transition-all capitalize ${activeTab===t ? 'bg-white text-[#162353] shadow-sm' : 'text-[#888]'}`}>
+              {t === 'goals' ? '🎯 My Goals' : '📈 Savings Plans'}
             </button>
+          ))}
+        </div>
+
+        {/* Goals Tab */}
+        {activeTab === 'goals' && (
+          <div className="px-4 mt-4 space-y-3">
+            {goals.map(g => {
+              const pct = Math.round((g.saved / g.target) * 100);
+              const remaining = g.target - g.saved;
+              return (
+                <div key={g.id} className="bg-white rounded-2xl overflow-hidden border border-[#F0F0F0]">
+                  {/* Color header strip */}
+                  <div className="px-4 py-3 flex items-center gap-3" style={{ background: g.color }}>
+                    <span className="text-[22px]">{g.emoji}</span>
+                    <div className="flex-1">
+                      <p className="text-white font-bold text-[14px]">{g.name}</p>
+                      <p className="text-white/60 text-[11px]">Due {g.dueDate} · {g.frequency}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-white font-extrabold text-[18px]">{pct}%</p>
+                      <p className="text-white/60 text-[10px]">complete</p>
+                    </div>
+                  </div>
+                  <div className="px-4 pt-3 pb-4">
+                    {/* Progress bar */}
+                    <div className="h-2.5 bg-[#F0F0F0] rounded-full overflow-hidden mb-3">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: g.color }} />
+                    </div>
+                    {/* Amounts */}
+                    <div className="flex justify-between mb-3">
+                      <div>
+                        <p className="text-[10px] text-[#888]">Saved</p>
+                        <p className="text-[13px] font-bold text-[#111]">₦{g.saved.toLocaleString('en-NG')}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-[10px] text-[#888]">Remaining</p>
+                        <p className="text-[13px] font-bold text-[#555]">₦{remaining.toLocaleString('en-NG')}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] text-[#888]">Target</p>
+                        <p className="text-[13px] font-bold text-[#111]">₦{g.target.toLocaleString('en-NG')}</p>
+                      </div>
+                    </div>
+                    {/* Auto-save badge + top-up */}
+                    <div className="flex items-center justify-between">
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${g.autoSave ? 'bg-green-100 text-green-700' : 'bg-[#F5F5F5] text-[#888]'}`}>
+                        {g.autoSave ? '⚡ Auto-save on' : '⚡ Auto-save off'}
+                      </span>
+                      <button onClick={() => { setTopUpGoalId(g.id); setTopUpAmt(''); }}
+                        className="text-[11px] font-bold px-3 py-1.5 rounded-lg text-white transition-all active:scale-95"
+                        style={{ background: g.color }}>
+                        + Top Up
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Create new goal form */}
+            {showCreate && (
+              <div className="bg-white rounded-2xl p-5 border-2 border-[#162353] space-y-3">
+                <p className="text-[14px] font-bold text-[#111]">New Savings Goal</p>
+                <input type="text" placeholder="Goal name (e.g. MacBook Pro)" value={goalName} onChange={e => setGoalName(e.target.value)}
+                  className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#162353] placeholder:text-[#CCC]" />
+                <div className="flex items-center gap-2 border border-[#E0E0E0] rounded-xl px-4 py-3 focus-within:border-[#162353]">
+                  <span className="text-[16px] font-bold text-[#444]">₦</span>
+                  <input type="text" inputMode="numeric" placeholder="Target amount" value={goalAmt} onChange={e => setGoalAmt(formatAmt(e.target.value))}
+                    className="flex-1 text-[16px] font-semibold text-[#111] outline-none bg-transparent placeholder:text-[#CCC] placeholder:font-normal" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold text-[#444] mb-1.5">Auto-save frequency</p>
+                  <div className="flex gap-2">
+                    {['Daily','Weekly','Monthly'].map(f => (
+                      <button key={f} onClick={() => setFreq(f)}
+                        className={`flex-1 py-2 rounded-xl text-[12px] font-semibold border-2 transition-all ${frequency===f ? 'bg-[#162353] text-white border-[#162353]' : 'border-[#E0E0E0] text-[#444]'}`}>
+                        {f}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between bg-[#F8F9FB] rounded-xl px-4 py-3">
+                  <div>
+                    <p className="text-[13px] font-semibold text-[#111]">Enable Auto-save</p>
+                    <p className="text-[11px] text-[#888]">Automatically deduct on schedule</p>
+                  </div>
+                  <button onClick={() => setAutoSave(v=>!v)}
+                    className={`w-11 h-6 rounded-full transition-colors relative ${autoSave ? 'bg-[#162353]' : 'bg-[#D1D5DB]'}`}>
+                    <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${autoSave ? 'left-5' : 'left-0.5'}`} />
+                  </button>
+                </div>
+                <input type="text" placeholder="Target date (e.g. Dec 2026)" value={dueDate} onChange={e => setDueDate(e.target.value)}
+                  className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#162353] placeholder:text-[#CCC]" />
+                <div className="flex gap-2">
+                  <button onClick={() => setShowCreate(false)}
+                    className="flex-1 h-[44px] rounded-xl border-2 border-[#E0E0E0] text-[13px] font-semibold text-[#555]">
+                    Cancel
+                  </button>
+                  <button onClick={() => {
+                    if (!goalName || !goalAmt) return;
+                    const num = parseFloat(goalAmt.replace(/,/g,''));
+                    if (isNaN(num) || num <= 0) return;
+                    setGoals(prev => [...prev, {
+                      id: String(Date.now()), name: goalName, emoji: '🎯',
+                      target: num, saved: 0, frequency, dueDate: dueDate || 'TBD',
+                      autoSave, color: '#162353'
+                    }]);
+                    setShowCreate(false);
+                    setCreated(true);
+                  }} className="flex-1 h-[44px] bg-[#162353] rounded-xl text-[13px] font-semibold text-white">
+                    Create Goal
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!showCreate && (
+              <button onClick={() => setShowCreate(true)}
+                className="w-full h-[50px] rounded-xl border-2 border-dashed border-[#162353]/30 text-[13px] font-semibold text-[#162353] flex items-center justify-center gap-2">
+                <span className="text-[18px]">+</span> Create New Goal
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Plans Tab */}
+        {activeTab === 'plans' && (
+          <div className="px-4 mt-4 space-y-3">
+            <p className="text-[12px] text-[#888]">Choose a savings plan that suits your lifestyle</p>
+            {SAVINGS_PLANS.map(plan => (
+              <div key={plan.name} className="bg-white rounded-2xl overflow-hidden border border-[#F0F0F0]">
+                <div className="px-4 py-3 flex items-center justify-between" style={{ background: plan.color }}>
+                  <p className="text-white font-bold text-[15px]">{plan.name}</p>
+                  <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-white/20 text-white border border-white/30">{plan.tag}</span>
+                </div>
+                <div className="px-4 py-4">
+                  <p className="text-[12px] text-[#888] mb-3">{plan.desc}</p>
+                  <div className="flex gap-3 mb-4">
+                    <div className="flex-1 bg-[#F8F9FB] rounded-xl px-3 py-2.5 text-center">
+                      <p className="text-[10px] text-[#888] font-medium">Interest Rate</p>
+                      <p className="text-[16px] font-extrabold text-[#162353] mt-0.5">{plan.rate}</p>
+                    </div>
+                    <div className="flex-1 bg-[#F8F9FB] rounded-xl px-3 py-2.5 text-center">
+                      <p className="text-[10px] text-[#888] font-medium">Minimum</p>
+                      <p className="text-[14px] font-bold text-[#111] mt-0.5">{plan.min}</p>
+                    </div>
+                    <div className="flex-1 bg-[#F8F9FB] rounded-xl px-3 py-2.5 text-center">
+                      <p className="text-[10px] text-[#888] font-medium">Lock Period</p>
+                      <p className="text-[12px] font-bold text-[#111] mt-0.5">{plan.lock}</p>
+                    </div>
+                  </div>
+                  <button className="w-full h-[40px] rounded-xl text-[13px] font-bold text-white transition-all active:scale-[0.98]"
+                    style={{ background: plan.color }}>
+                    Start This Plan
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            <div className="bg-[#F0F4FF] border border-[#C7D7FF] rounded-2xl px-4 py-4 mt-2">
+              <p className="text-[12px] font-bold text-[#162353] mb-1">💡 Did you know?</p>
+              <p className="text-[11px] text-[#555] leading-relaxed">Consistent savings of ₦5,000/week grows to over ₦1.4M in 5 years with compound interest at 12% p.a.</p>
+            </div>
           </div>
         )}
       </div>
-      <div className="flex-none px-4 pb-6 pt-2">
-        <button onClick={() => setShowCreate(v => !v)}
-          className="w-full h-[50px] rounded-xl text-[14px] font-semibold text-white bg-[#162353]">
-          {showCreate ? 'Cancel' : '+ Create New Goal'}
-        </button>
-      </div>
+
+      {/* Top-up modal */}
+      {topUpGoalId && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setTopUpGoalId(null)} />
+          <div className="relative bg-white rounded-t-3xl px-6 pt-5 pb-10 z-10">
+            <div className="w-10 h-1 bg-[#E2E8F0] rounded-full mx-auto mb-4" />
+            <p className="text-[16px] font-bold text-[#111] mb-1">
+              Top Up: {goals.find(g=>g.id===topUpGoalId)?.name}
+            </p>
+            <p className="text-[12px] text-[#888] mb-4">How much would you like to add?</p>
+            <div className="flex items-center gap-2 border-2 border-[#E0E0E0] rounded-xl px-4 py-3 focus-within:border-[#162353] mb-3">
+              <span className="text-[20px] font-bold text-[#444]">₦</span>
+              <input type="text" inputMode="numeric" placeholder="0.00" value={topUpAmt}
+                onChange={e => setTopUpAmt(formatAmt(e.target.value))}
+                autoFocus
+                className="flex-1 text-[22px] font-bold text-[#111] outline-none bg-transparent placeholder:text-[#CCC] placeholder:font-normal" />
+            </div>
+            <div className="flex gap-2 mb-4">
+              {[1000,2000,5000,10000].map(v => (
+                <button key={v} onClick={() => setTopUpAmt(v.toLocaleString('en-NG'))}
+                  className="flex-1 py-2 bg-[#F8F9FB] border border-[#E0E0E0] rounded-lg text-[11px] font-semibold text-[#555]">
+                  ₦{v>=1000?(v/1000)+'k':v}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setTopUpGoalId(null)}
+                className="flex-1 h-[48px] rounded-xl border-2 border-[#E2E8F0] text-[13px] font-semibold text-[#444]">Cancel</button>
+              <button onClick={() => {
+                const num = parseFloat(topUpAmt.replace(/,/g,''));
+                if (!num || num <= 0) return;
+                setGoals(prev => prev.map(g => g.id === topUpGoalId ? { ...g, saved: g.saved + num } : g));
+                setTopUpGoalId(null);
+                setTopUpDone(true);
+              }} className="flex-1 h-[48px] rounded-xl bg-[#162353] text-[13px] font-semibold text-white">
+                Add Funds
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </PageShell>
   );
 }
@@ -1999,89 +2228,251 @@ function MorePage() {
 /* ─── Card Page ──────────────────────────────────────────────────────── */
 function CardPage() {
   const [, navigate] = useLocation();
-  const [frozen, setFrozen]   = useState(false);
-  const [showNum, setShowNum] = useState(false);
+  const { user } = useAuth();
+  const [frozen, setFrozen]     = useState(false);
+  const [showNum, setShowNum]   = useState(false);
+  const [activeTab, setCardTab] = useState<'details'|'transactions'|'limits'>('details');
+  const [onlinePayments, setOnline] = useState(true);
+  const [contactless, setContactless] = useState(true);
+  const [intlPayments, setIntl] = useState(false);
+
+  const cardName = user ? user.name.split(' ').slice(0, 2).map(p => p.toUpperCase()).join(' ') : 'CHIBUZOR E DIKE';
+
+  const CARD_TXS = [
+    { icon:'🛒', name:'Shoprite', date:'Today, 2:14 PM',    amount:'-₦4,500', color:'#EF4444' },
+    { icon:'🍔', name:'KFC Nigeria', date:'Yesterday, 7:33 PM', amount:'-₦2,800', color:'#EF4444' },
+    { icon:'📱', name:'Jumia Pay',   date:'25 Jul, 11:00 AM',   amount:'-₦12,000', color:'#EF4444' },
+    { icon:'🎬', name:'Netflix',     date:'23 Jul, 12:01 AM',   amount:'-₦4,600',  color:'#EF4444' },
+    { icon:'⛽', name:'MRS Fuel',    date:'20 Jul, 08:45 AM',   amount:'-₦8,000',  color:'#EF4444' },
+  ];
 
   return (
-    <PageShell title="My Card" back="/">
-      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4" style={{ scrollbarWidth: 'none' }}>
-        {/* Card visual */}
-        <div className="rounded-3xl p-5 text-white relative overflow-hidden" style={{ background: 'linear-gradient(135deg,#162353 0%,#1E3A6E 60%,#0a4fa3 100%)', minHeight: 190 }}>
-          <div className="flex justify-between items-start mb-8">
-            <div>
-              <p className="text-[11px] text-white/60 mb-0.5">Virtual Card</p>
-              <p className="text-[13px] font-bold">Vexa Bank</p>
-            </div>
-            <img src="/vexa-icon.png" alt="Vexa" className="w-9 h-9 rounded-full" />
-          </div>
-          <p className="text-[20px] font-bold tracking-[4px] mb-5">
-            {showNum ? '5399 1234 5678 9012' : '•••• •••• •••• 9012'}
-          </p>
-          <div className="flex items-end justify-between">
-            <div>
-              <p className="text-[10px] text-white/50">CARD HOLDER</p>
-              <p className="text-[13px] font-semibold">CHIBUZOR E DIKE</p>
-            </div>
-            <div>
-              <p className="text-[10px] text-white/50">EXPIRES</p>
-              <p className="text-[13px] font-semibold">08/29</p>
-            </div>
-            <div className="flex gap-1">
-              <div className="w-8 h-8 rounded-full bg-red-500/80" />
-              <div className="w-8 h-8 rounded-full bg-yellow-400/80 -ml-4" />
-            </div>
-          </div>
-          {frozen && (
-            <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-3xl">
-              <div className="text-center">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-1"><path d="M12 2v20M4.93 4.93l14.14 14.14M2 12h20M4.93 19.07l14.14-14.14"/></svg>
-                <p className="text-white font-bold text-[13px]">Card Frozen</p>
+    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+      {/* Header */}
+      <div className="flex-none flex items-center justify-between px-4 pb-3 bg-white border-b border-[#E8EBF0]"
+        style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
+        <button onClick={() => navigate('/')} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        </button>
+        <span className="text-[16px] font-bold text-[#111]">Vexa Virtual Card</span>
+        <div className="w-8" />
+      </div>
+
+      <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
+        {/* Premium Card Visual */}
+        <div className="px-4 pt-5 pb-2">
+          <div className="rounded-3xl p-5 text-white relative overflow-hidden select-none"
+            style={{
+              background: frozen
+                ? 'linear-gradient(135deg, #374151 0%, #1F2937 60%, #111827 100%)'
+                : 'linear-gradient(135deg, #162353 0%, #1E3A8A 45%, #1e40af 75%, #0369a1 100%)',
+              minHeight: 200,
+              transition: 'background 0.5s ease',
+            }}>
+            {/* Holographic shimmer overlay */}
+            <div className="absolute inset-0 opacity-[0.06]" style={{
+              background: 'repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(255,255,255,0.5) 2px, rgba(255,255,255,0.5) 4px)',
+            }} />
+            {/* Top row */}
+            <div className="relative z-10 flex justify-between items-start mb-6">
+              <div>
+                <p className="text-[10px] text-white/50 font-semibold uppercase tracking-widest">Vexa Bank</p>
+                <p className="text-[11px] text-white/80 font-medium mt-0.5">Virtual Debit Card</p>
+              </div>
+              {/* Chip */}
+              <div className="w-10 h-7 rounded-md bg-gradient-to-br from-yellow-300 to-yellow-500 relative overflow-hidden shadow-lg">
+                <div className="absolute inset-0 grid grid-cols-3 gap-px p-0.5 opacity-60">
+                  {Array.from({length:9}).map((_,i) => <div key={i} className="bg-yellow-700/50 rounded-[1px]"/>)}
+                </div>
               </div>
             </div>
-          )}
+            {/* NFC icon */}
+            <div className="relative z-10 mb-4">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5">
+                <path d="M12 2a10 10 0 0 1 0 20" strokeLinecap="round"/>
+                <path d="M12 6a6 6 0 0 1 0 12" strokeLinecap="round"/>
+                <path d="M12 10a2 2 0 0 1 0 4" strokeLinecap="round"/>
+              </svg>
+            </div>
+            {/* Card number */}
+            <p className="relative z-10 text-[19px] font-bold tracking-[5px] mb-5 font-mono">
+              {showNum ? '5399 1234 5678 9012' : '•••• •••• •••• 9012'}
+            </p>
+            {/* Bottom row */}
+            <div className="relative z-10 flex items-end justify-between">
+              <div>
+                <p className="text-[9px] text-white/40 uppercase tracking-widest font-semibold">Card Holder</p>
+                <p className="text-[13px] font-bold tracking-wide mt-0.5">{cardName}</p>
+              </div>
+              <div>
+                <p className="text-[9px] text-white/40 uppercase tracking-widest font-semibold">Expires</p>
+                <p className="text-[13px] font-bold mt-0.5">08/29</p>
+              </div>
+              {/* Mastercard circles */}
+              <div className="flex items-center">
+                <div className="w-9 h-9 rounded-full opacity-90" style={{ background:'#EB001B' }} />
+                <div className="w-9 h-9 rounded-full -ml-4 opacity-90" style={{ background:'#F79E1B', mixBlendMode:'multiply' }} />
+              </div>
+            </div>
+            {/* Frozen overlay */}
+            {frozen && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-3xl"
+                style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(2px)' }}>
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                </svg>
+                <p className="text-white font-bold text-[15px] tracking-wide">❄️ Card Frozen</p>
+                <p className="text-white/60 text-[11px]">Tap Unfreeze to re-enable</p>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Card actions */}
-        <div className="grid grid-cols-3 gap-3">
+        {/* Action Buttons */}
+        <div className="grid grid-cols-4 gap-2.5 px-4 pb-2 pt-1">
           {[
-            { label: showNum ? 'Hide Number' : 'Show Number', icon:'👁️', action: () => setShowNum(v=>!v) },
-            { label: frozen ? 'Unfreeze' : 'Freeze Card', icon: frozen ? '🔓' : '🧊', action: () => setFrozen(v=>!v) },
-            { label:'Change PIN', icon:'🔑', action: () => {} },
+            { label: showNum ? 'Hide' : 'Show', icon: showNum ? '🙈' : '👁️', action: () => setShowNum(v=>!v), active: showNum },
+            { label: frozen ? 'Unfreeze' : 'Freeze', icon: frozen ? '🔓' : '❄️', action: () => setFrozen(v=>!v), active: frozen },
+            { label: 'Change PIN', icon: '🔑', action: () => navigate('/change-pin'), active: false },
+            { label: 'Block Card', icon: '🚫', action: () => {}, active: false },
           ].map(a => (
             <button key={a.label} onClick={a.action}
-              className="bg-white rounded-2xl py-4 flex flex-col items-center gap-2 border border-[#F0F0F0] active:bg-[#F2F3F5]">
-              <span className="text-2xl">{a.icon}</span>
-              <span className="text-[11px] font-medium text-[#333] text-center leading-tight">{a.label}</span>
+              className={`rounded-2xl py-3.5 flex flex-col items-center gap-1.5 border transition-all active:scale-95 ${
+                a.active ? 'bg-[#162353] border-[#162353]' : 'bg-white border-[#F0F0F0]'
+              }`}>
+              <span className="text-[20px]">{a.icon}</span>
+              <span className={`text-[10px] font-semibold text-center leading-tight ${a.active ? 'text-white' : 'text-[#333]'}`}>{a.label}</span>
             </button>
           ))}
         </div>
 
-        {/* Card details */}
-        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0] space-y-3">
-          <p className="text-[12px] font-semibold text-[#444]">Card Details</p>
-          {[
-            { label:'Card Type',    val:'Mastercard Virtual' },
-            { label:'Card Status',  val: frozen ? '❄️ Frozen' : '✅ Active' },
-            { label:'Daily Limit',  val:'₦500,000' },
-            { label:'Billing Address', val:'Lagos, Nigeria' },
-          ].map(d => (
-            <div key={d.label} className="flex justify-between text-[13px] py-2 border-b border-[#F5F5F5] last:border-0">
-              <span className="text-[#888]">{d.label}</span>
-              <span className="font-semibold text-[#111]">{d.val}</span>
-            </div>
+        {/* Spending summary strip */}
+        <div className="mx-4 mb-3 bg-white rounded-2xl border border-[#F0F0F0] px-4 py-3 flex gap-4">
+          <div className="flex-1 text-center">
+            <p className="text-[10px] text-[#888] font-medium">Spent Today</p>
+            <p className="text-[15px] font-extrabold text-[#EF4444] mt-0.5">₦7,300</p>
+          </div>
+          <div className="w-px bg-[#F0F0F0]" />
+          <div className="flex-1 text-center">
+            <p className="text-[10px] text-[#888] font-medium">This Month</p>
+            <p className="text-[15px] font-extrabold text-[#EF4444] mt-0.5">₦31,900</p>
+          </div>
+          <div className="w-px bg-[#F0F0F0]" />
+          <div className="flex-1 text-center">
+            <p className="text-[10px] text-[#888] font-medium">Daily Limit</p>
+            <p className="text-[15px] font-extrabold text-[#162353] mt-0.5">₦500k</p>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex mx-4 mb-3 bg-[#F0F0F0] rounded-xl p-1">
+          {([['details','Details'],['transactions','Transactions'],['limits','Controls']] as const).map(([k,label]) => (
+            <button key={k} onClick={() => setCardTab(k)}
+              className={`flex-1 py-1.5 rounded-lg text-[12px] font-bold transition-all ${activeTab===k ? 'bg-white text-[#162353] shadow-sm' : 'text-[#888]'}`}>
+              {label}
+            </button>
           ))}
         </div>
 
-        {/* Request physical card */}
-        <div className="bg-[#EEF2FF] rounded-2xl p-4 flex items-center justify-between border border-[#C7D7F5]">
-          <div>
-            <p className="text-[13px] font-bold text-[#162353]">Get a Physical Card</p>
-            <p className="text-[11px] text-[#555]">Delivered to you in 3–5 business days</p>
+        {/* Details Tab */}
+        {activeTab === 'details' && (
+          <div className="px-4 space-y-3 pb-6">
+            <div className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
+              {[
+                { label:'Card Type',      val:'Mastercard Virtual Debit' },
+                { label:'Card Status',    val: frozen ? '❄️ Frozen' : '✅ Active' },
+                { label:'Card Number',    val: showNum ? '5399 1234 5678 9012' : '•••• •••• •••• 9012' },
+                { label:'CVV',            val: showNum ? '742' : '•••' },
+                { label:'Expiry Date',    val:'08/29' },
+                { label:'Billing Address',val:'Lagos, Nigeria' },
+              ].map((d, i, arr) => (
+                <div key={d.label} className={`flex items-center justify-between px-4 py-3.5 ${i < arr.length-1 ? 'border-b border-[#F5F5F5]' : ''}`}>
+                  <span className="text-[12px] text-[#888]">{d.label}</span>
+                  <span className="text-[13px] font-semibold text-[#111] font-mono">{d.val}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-[#EEF2FF] rounded-2xl p-4 flex items-center justify-between border border-[#C7D7F5]">
+              <div>
+                <p className="text-[13px] font-bold text-[#162353]">Get a Physical Card</p>
+                <p className="text-[11px] text-[#555] mt-0.5">Delivered in 3–5 business days · Free</p>
+              </div>
+              <button className="bg-[#162353] text-white text-[11px] font-semibold px-3 py-2 rounded-xl">Request</button>
+            </div>
           </div>
-          <button className="bg-[#162353] text-white text-[11px] font-semibold px-3 py-2 rounded-xl">Request</button>
-        </div>
+        )}
+
+        {/* Transactions Tab */}
+        {activeTab === 'transactions' && (
+          <div className="px-4 pb-6 space-y-2">
+            <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide px-1 mb-3">Recent Card Transactions</p>
+            <div className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
+              {CARD_TXS.map((tx, i) => (
+                <div key={tx.name} className={`flex items-center gap-3 px-4 py-3.5 ${i < CARD_TXS.length-1 ? 'border-b border-[#F5F5F5]' : ''}`}>
+                  <div className="w-10 h-10 rounded-full bg-[#F8F9FB] flex items-center justify-center text-[20px] shrink-0">{tx.icon}</div>
+                  <div className="flex-1">
+                    <p className="text-[13px] font-semibold text-[#111]">{tx.name}</p>
+                    <p className="text-[11px] text-[#888]">{tx.date}</p>
+                  </div>
+                  <span className="text-[13px] font-bold text-[#EF4444]">{tx.amount}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Controls Tab */}
+        {activeTab === 'limits' && (
+          <div className="px-4 pb-6 space-y-3">
+            <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide px-1">Payment Controls</p>
+            <div className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
+              {[
+                { label:'Online Payments',   sub:'E-commerce & web transactions', state: onlinePayments,  toggle: () => setOnline(v=>!v) },
+                { label:'Contactless / NFC', sub:'Tap-to-pay at terminals',       state: contactless,    toggle: () => setContactless(v=>!v) },
+                { label:'International',     sub:'Transactions outside Nigeria',  state: intlPayments,   toggle: () => setIntl(v=>!v) },
+              ].map((item, i, arr) => (
+                <div key={item.label} className={`flex items-center gap-3 px-4 py-4 ${i < arr.length-1 ? 'border-b border-[#F5F5F5]' : ''}`}>
+                  <div className="flex-1">
+                    <p className="text-[13px] font-semibold text-[#111]">{item.label}</p>
+                    <p className="text-[11px] text-[#888] mt-0.5">{item.sub}</p>
+                  </div>
+                  <button onClick={item.toggle}
+                    className={`w-11 h-6 rounded-full transition-colors relative ${item.state ? 'bg-[#162353]' : 'bg-[#D1D5DB]'}`}>
+                    <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${item.state ? 'left-5' : 'left-0.5'}`} />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
+              <div className="px-4 py-3 border-b border-[#F5F5F5]">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-[13px] font-semibold text-[#111]">Daily Spend Limit</p>
+                    <p className="text-[11px] text-[#888] mt-0.5">Maximum per day</p>
+                  </div>
+                  <p className="text-[14px] font-bold text-[#162353]">₦500,000</p>
+                </div>
+                <div className="mt-3 h-2 bg-[#F0F0F0] rounded-full overflow-hidden">
+                  <div className="h-full rounded-full bg-[#162353]" style={{ width:'6.38%' }} />
+                </div>
+                <p className="text-[10px] text-[#888] mt-1">₦31,900 used · ₦468,100 remaining</p>
+              </div>
+              <div className="px-4 py-3">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-[13px] font-semibold text-[#111]">Monthly Limit</p>
+                    <p className="text-[11px] text-[#888] mt-0.5">Maximum per month</p>
+                  </div>
+                  <p className="text-[14px] font-bold text-[#162353]">₦2,000,000</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-    </PageShell>
+    </div>
   );
 }
 

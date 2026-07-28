@@ -3,18 +3,16 @@ import { useLocation } from 'wouter';
 import { User, Mail, Phone, Hash, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
-const PHOTO_KEY = 'vexa_profile_photo';
-
 export default function ProfilePage() {
   const [, navigate] = useLocation();
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, profilePhoto, updateProfilePhoto } = useAuth();
   const [editing, setEditing] = useState<'name' | 'email' | 'phone' | null>(null);
   const [draftName, setDraftName] = useState(user?.name ?? '');
   const [draftEmail, setDraftEmail] = useState(user?.email ?? '');
   const [draftPhone, setDraftPhone] = useState(user?.phone ?? '');
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
-  const [photo, setPhoto] = useState<string | null>(() => localStorage.getItem(PHOTO_KEY));
+  const photo = profilePhoto;
   const fileRef = useRef<HTMLInputElement>(null);
 
   if (!user) { navigate('/signin'); return null; }
@@ -27,8 +25,7 @@ export default function ProfilePage() {
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result as string;
-      localStorage.setItem(PHOTO_KEY, dataUrl);
-      setPhoto(dataUrl);
+      updateProfilePhoto(dataUrl);
     };
     reader.readAsDataURL(file);
   }

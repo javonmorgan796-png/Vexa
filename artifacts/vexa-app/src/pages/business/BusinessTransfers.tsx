@@ -1,12 +1,172 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useBusiness } from '@/context/BusinessContext';
+import { useBusinessSecurity } from '@/context/BusinessSecurityContext';
+import { motion, AnimatePresence } from 'framer-motion';
 
 function fmt(n: number) { return '₦' + n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
 const BANKS = ['Access Bank', 'GTBank', 'Zenith Bank', 'UBA', 'First Bank', 'Polaris Bank', 'Stanbic IBTC', 'Wema Bank', 'Fidelity Bank', 'Ecobank'];
 
-type Step = 'form' | 'confirm' | 'success';
+type Step = 'form' | 'confirm' | 'pin' | 'success';
+
+/* ── Transfer PIN Modal ──────────────────────────────────────── */
+function TransferPinModal({ onSuccess, onClose }: { onSuccess: () => void; onClose: () => void }) {
+  const { verifyPin } = useBusinessSecurity();
+  const [pin, setPin] = useState('');
+  const [error, setError] = useState('');
+  const [shake, setShake] = useState(false);
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  function handleDigit(idx: number, val: string) {
+    const digit = val.replace(/\D/g, '').slice(-1);
+    const next = pin.slice(0, idx) + digit + pin.slice(idx + 1);
+    const filled = next.padEnd(6, '').slice(0, 6);
+    // build array-style
+    const arr = pin.split('').concat(Array(6).fill('')).slice(0, 6);
+    arr[idx] = digit;
+    const newPin = arr.join('');
+    setPin(newPin.slice(0, 6));
+    setError('');
+    if (digit && idx < 5) inputRefs.current[idx + 1]?.focus();
+    if (newPin.replace('', '').length === 6 && !newPin.includes('')) {
+      // auto submit when 6 digits
+    }
+  }
+
+  function handleKey(idx: number, e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Backspace') {
+      const arr = (pin + '      ').slice(0, 6).split('');
+      if (arr[idx]) { arr[idx] = ''; setPin(arr.join('')); }
+      else if (idx > 0) { arr[idx - 1] = ''; setPin(arr.join('')); inputRefs.current[idx - 1]?.focus(); }
+    }
+  }
+
+  function addKey(k: string) {
+    const len = pin.replace(/\s/g, '').length;
+    if (len >= 6) return;
+    // find first empty slot
+    const arr = (pin + '      ').slice(0, 6).split('');
+    const idx = arr.findIndex(c => c === ' ' || c === '');
+    if (idx === -1) return;
+    arr[idx] = k;
+    const newPin = arr.join('');
+    setPin(newPin);
+    setError('');
+    inputRefs.current[Math.min(idx + 1, 5)]?.focus();
+    if (newPin.replace(/\s/g,'').length === 6) {
+      setTimeout(() => submitPin(newPin.replace(/\s/g,'')), 80);
+    }
+  }
+
+  function removeKey() {
+    const arr = (pin + '      ').slice(0, 6).split('');
+    for (let i = 5; i >= 0; i--) {
+      if (arr[i] !== ' ' && arr[i] !== '') { arr[i] = ''; setPin(arr.join('')); inputRefs.current[i]?.focus(); break; }
+    }
+  }
+
+  function submitPin(p: string) {
+    const result = verifyPin(p);
+    if (result.success) { onSuccess(); return; }
+    setShake(true);
+    setPin('');
+    setTimeout(() => setShake(false), 500);
+    setError(result.nowLocked ? 'Too many attempts. Business locked.' : result.error ?? 'Incorrect PIN');
+  }
+
+  function handleManualSubmit() {
+    const clean = pin.replace(/\s/g, '');
+    if (clean.length < 6) { setError('Enter your 6-digit transfer PIN'); return; }
+    submitPin(clean);
+  }
+
+  const pinArr = (pin + '      ').slice(0, 6).split('');
+  const digits = pin.replace(/\s/g, '');
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <motion.div
+        initial={{ y: 100, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 100, opacity: 0 }}
+        transition={{ type: 'spring', damping: 22, stiffness: 300 }}
+        className="relative rounded-t-3xl overflow-hidden z-10"
+        style={{ background: 'linear-gradient(180deg, #0a1a3d 0%, #021029 100%)' }}
+      >
+        {/* Handle */}
+        <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mt-3 mb-5" />
+
+        <div className="px-6 pb-3">
+          {/* Icon */}
+          <div className="flex flex-col items-center mb-5">
+            <div className="w-14 h-14 rounded-full flex items-center justify-center mb-3"
+              style={{ background: 'rgba(0,198,255,0.12)', border: '1px solid rgba(0,198,255,0.3)' }}>
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+                <rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="#00c6ff" strokeWidth="1.8"/>
+                <path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="#00c6ff" strokeWidth="1.8" strokeLinecap="round"/>
+                <circle cx="12" cy="16" r="1.5" fill="#00c6ff"/>
+              </svg>
+            </div>
+            <p className="text-white text-[16px] font-bold">Enter Transfer PIN</p>
+            <p className="text-white/50 text-[12px] mt-1">Confirm with your 6-digit Business PIN</p>
+          </div>
+
+          {/* PIN dots */}
+          <motion.div
+            className="flex justify-center gap-3 mb-4"
+            animate={shake ? { x: [0, -8, 8, -6, 6, -4, 4, 0] } : {}}
+            transition={{ duration: 0.4 }}
+          >
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${
+                i < digits.length ? 'bg-[#00c6ff] border-[#00c6ff]' : 'border-white/30 bg-transparent'
+              }`} />
+            ))}
+          </motion.div>
+
+          <AnimatePresence>
+            {error && (
+              <motion.p initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                className="text-[#ff6b6b] text-[12px] font-medium text-center mb-3">
+                {error}
+              </motion.p>
+            )}
+          </AnimatePresence>
+
+          {/* Keypad */}
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            {['1','2','3','4','5','6','7','8','9'].map(k => (
+              <button key={k} onClick={() => addKey(k)}
+                className="h-[52px] rounded-2xl bg-white/10 border border-white/10 text-[22px] font-semibold text-white active:bg-white/25 transition-colors select-none">
+                {k}
+              </button>
+            ))}
+            <div />
+            <button onClick={() => addKey('0')}
+              className="h-[52px] rounded-2xl bg-white/10 border border-white/10 text-[22px] font-semibold text-white active:bg-white/25 transition-colors select-none">
+              0
+            </button>
+            <button onClick={removeKey}
+              className="h-[52px] rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/25 transition-colors select-none">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12H9M15 6l-6 6 6 6"/>
+              </svg>
+            </button>
+          </div>
+
+          <button onClick={handleManualSubmit} disabled={digits.length < 6}
+            className="w-full h-[48px] rounded-xl bg-[#00c6ff]/20 border border-[#00c6ff]/40 text-[#00c6ff] text-[14px] font-bold mb-3 disabled:opacity-40 transition-opacity">
+            Confirm Transfer
+          </button>
+
+          <button onClick={onClose} className="w-full text-white/40 text-[13px] py-2 mb-2">Cancel</button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
 
 export default function BusinessTransfers() {
   const [, navigate] = useLocation();
@@ -195,9 +355,19 @@ export default function BusinessTransfers() {
             </div>
             <div className="flex gap-3">
               <button onClick={() => setStep('form')} className="flex-1 h-[52px] rounded-xl border-2 border-[#E2E8F0] text-[#555] text-[14px] font-semibold">Back</button>
-              <button onClick={handleConfirm} className="flex-1 h-[52px] rounded-xl bg-[#162353] text-white text-[15px] font-bold">Confirm Transfer</button>
+              <button onClick={() => setStep('pin')} className="flex-1 h-[52px] rounded-xl bg-[#162353] text-white text-[15px] font-bold">Enter PIN</button>
             </div>
           </div>
+        )}
+
+        {/* PIN Verification */}
+        {mode === 'send' && step === 'pin' && (
+          <AnimatePresence>
+            <TransferPinModal
+              onSuccess={() => { handleConfirm(); setStep('success'); }}
+              onClose={() => setStep('confirm')}
+            />
+          </AnimatePresence>
         )}
 
         {/* Success */}

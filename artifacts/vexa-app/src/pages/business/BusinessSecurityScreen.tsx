@@ -339,7 +339,7 @@ export default function BusinessSecurityScreen() {
           </svg>
         </button>
 
-        <img src="/vexa-logo.png" alt="Vexa" className="h-7 object-contain" style={{ filter: 'brightness(0) invert(1)' }} />
+        <p className="text-white/80 text-[13px] font-semibold tracking-wide">Vexa Business</p>
 
         <div className="w-9" />
       </div>
