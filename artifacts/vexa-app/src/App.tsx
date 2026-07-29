@@ -315,101 +315,185 @@ function PromoBannerCarousel() {
 /* ─── Passcode Lock Screen (shown on app-return if setting is ON) ──── */
 const PASSCODE_RETURN_KEY = 'vexa_passcode_on_return';
 
-function PasscodeLockScreen({ onUnlock }: { onUnlock: () => void }) {
-  const { user } = useAuth();
-  const [pin, setPin] = useState('');
-  const [shake, setShake] = useState(false);
+/* ── Lock-timestamp helpers (localStorage so full-reload is covered) ── */
+const LOCK_HIDDEN_AT_KEY  = 'vexa_lock_hidden_at';   // ms timestamp written on hide
+const LOCK_TIMEOUT_MS     = 5 * 60 * 1000;           // 5 minutes
+
+function writeLockTimestamp() {
+  localStorage.setItem(LOCK_HIDDEN_AT_KEY, String(Date.now()));
+}
+function clearLockTimestamp() {
+  localStorage.removeItem(LOCK_HIDDEN_AT_KEY);
+}
+/** Returns true when the stored timestamp is ≥ 5 min old (or missing). */
+function shouldLockNow(): boolean {
+  const raw = localStorage.getItem(LOCK_HIDDEN_AT_KEY);
+  if (!raw) return false;
+  return Date.now() - Number(raw) >= LOCK_TIMEOUT_MS;
+}
+
+/* ── Passcode Lock Screen ─────────────────────────────────────────────── */
+const MAX_LOCK_ATTEMPTS = 5;
+
+function PasscodeLockScreen({ onUnlock, onSignOut }: { onUnlock: () => void; onSignOut: () => void }) {
+  const { user, profilePhoto } = useAuth();
+  const [pin, setPin]           = useState('');
+  const [shake, setShake]       = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [attempts, setAttempts] = useState(0);
+  const [lockedOut, setLockedOut] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+
+  // Progressive lockout: 30 s after MAX_LOCK_ATTEMPTS wrong tries
+  useEffect(() => {
+    if (!lockedOut) return;
+    setCountdown(30);
+    const id = setInterval(() => {
+      setCountdown(c => {
+        if (c <= 1) { clearInterval(id); setLockedOut(false); setAttempts(0); return 0; }
+        return c - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [lockedOut]);
 
   function addDigit(d: string) {
-    if (pin.length >= 6) return;
+    if (lockedOut || pin.length >= 6) return;
     const next = pin + d;
     setPin(next);
     setErrorMsg('');
-    if (next.length === 6) {
-      setTimeout(() => verify(next), 60);
-    }
+    if (next.length === 6) setTimeout(() => verify(next), 80);
   }
 
-  function removeDigit() { setPin(p => p.slice(0, -1)); setErrorMsg(''); }
+  function removeDigit() {
+    if (lockedOut) return;
+    setPin(p => p.slice(0, -1));
+    setErrorMsg('');
+  }
 
   function verify(code: string) {
     if (user && code === user.password) {
+      clearLockTimestamp();
       onUnlock();
+      return;
+    }
+    const newAttempts = attempts + 1;
+    setAttempts(newAttempts);
+    setShake(true);
+    setTimeout(() => { setShake(false); setPin(''); }, 500);
+
+    if (newAttempts >= MAX_LOCK_ATTEMPTS) {
+      setLockedOut(true);
+      setErrorMsg('Too many attempts — locked for 30 s');
     } else {
-      setShake(true);
-      setTimeout(() => { setShake(false); setPin(''); }, 500);
-      setErrorMsg('Incorrect passcode');
+      setErrorMsg(`Incorrect passcode · ${MAX_LOCK_ATTEMPTS - newAttempts} attempt${MAX_LOCK_ATTEMPTS - newAttempts !== 1 ? 's' : ''} left`);
     }
   }
 
-  const userName = user?.name?.split(' ')[0] ?? 'there';
-  const initials = (user?.name ?? 'U').split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
+  const firstName = user?.name?.split(' ')[0] ?? 'there';
+  const initials  = (user?.name ?? 'U').split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
 
   return (
-    <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-between py-10 px-6"
-      style={{ background: 'linear-gradient(180deg, #0d1b3e 0%, #081229 100%)', fontFamily: "'Inter', sans-serif" }}>
-
-      {/* Top area */}
-      <div className="flex flex-col items-center mt-4">
-        {/* Avatar */}
-        <div className="w-16 h-16 rounded-full bg-white/10 border-2 border-white/20 flex items-center justify-center text-white text-[22px] font-bold mb-4">
-          {initials}
+    <div
+      className="fixed inset-0 z-[9999] flex flex-col"
+      style={{ background: 'linear-gradient(170deg,#0b1730 0%,#05101f 60%,#020a18 100%)', fontFamily:"'Inter',sans-serif" }}
+    >
+      {/* Header area */}
+      <div className="flex flex-col items-center pt-16 pb-4 px-6">
+        {/* Lock icon */}
+        <div className="w-12 h-12 rounded-full flex items-center justify-center mb-5"
+          style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)' }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="5" y="11" width="14" height="10" rx="2"/>
+            <path d="M8 11V7a4 4 0 0 1 8 0v4"/>
+            <circle cx="12" cy="16" r="1.3" fill="rgba(255,255,255,0.5)"/>
+          </svg>
         </div>
-        <p className="text-white/50 text-[12px] font-medium mb-1">Welcome back, {userName}</p>
-        <p className="text-white text-[18px] font-bold">Enter your passcode</p>
-        <p className="text-white/40 text-[11px] mt-1">Your session is locked for security</p>
+
+        {/* Avatar */}
+        <div className="w-[72px] h-[72px] rounded-full border-2 border-white/20 overflow-hidden flex items-center justify-center text-white text-[24px] font-bold mb-3 shrink-0"
+          style={{ background:'rgba(255,255,255,0.1)' }}>
+          {profilePhoto
+            ? <img src={profilePhoto} alt="" className="w-full h-full object-cover" />
+            : initials}
+        </div>
+
+        <p className="text-white/50 text-[13px] font-medium">Welcome back, {firstName}</p>
+        <p className="text-white text-[20px] font-bold mt-1 mb-0.5">Verify it's you</p>
+        <p className="text-white/35 text-[12px]">Session locked · enter your login passcode</p>
       </div>
 
-      {/* PIN dots */}
-      <div className="flex flex-col items-center gap-5">
+      {/* PIN dots + error */}
+      <div className="flex flex-col items-center gap-4 py-4">
         <div
           className="flex gap-4"
-          style={{
-            animation: shake ? 'lockShake 0.4s ease' : 'none',
-          }}>
+          style={{ animation: shake ? 'lockShake 0.45s ease' : 'none' }}
+        >
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${
-              i < pin.length ? 'bg-white border-white scale-110' : 'border-white/30 bg-transparent'
+            <div key={i} className={`w-[15px] h-[15px] rounded-full border-2 transition-all duration-150 ${
+              i < pin.length
+                ? 'bg-white border-white shadow-[0_0_8px_rgba(255,255,255,0.5)] scale-110'
+                : 'border-white/25 bg-transparent'
             }`} />
           ))}
         </div>
 
-        {errorMsg && (
-          <p className="text-[#FF6B6B] text-[12px] font-medium -mt-2">{errorMsg}</p>
-        )}
+        <div className="h-5">
+          {lockedOut ? (
+            <p className="text-orange-400 text-[12px] font-medium">
+              Locked — try again in <span className="font-bold tabular-nums">{countdown}s</span>
+            </p>
+          ) : errorMsg ? (
+            <p className="text-[#FF6B6B] text-[12px] font-medium">{errorMsg}</p>
+          ) : null}
+        </div>
       </div>
 
       {/* Keypad */}
-      <div className="w-full max-w-[280px]">
+      <div className="flex-1 flex flex-col justify-end pb-10 px-8">
         <div className="grid grid-cols-3 gap-3 mb-3">
           {['1','2','3','4','5','6','7','8','9'].map(k => (
-            <button key={k} onClick={() => addDigit(k)}
-              className="h-[60px] rounded-2xl bg-white/10 border border-white/10 text-[24px] font-semibold text-white active:bg-white/25 transition-colors">
+            <button key={k} onClick={() => addDigit(k)} disabled={lockedOut}
+              className="h-[62px] rounded-2xl text-[26px] font-semibold text-white transition-all active:scale-95 disabled:opacity-40"
+              style={{ background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.1)' }}>
               {k}
             </button>
           ))}
+
+          {/* Bottom row: empty · 0 · backspace */}
           <div />
-          <button onClick={() => addDigit('0')}
-            className="h-[60px] rounded-2xl bg-white/10 border border-white/10 text-[24px] font-semibold text-white active:bg-white/25 transition-colors">
+
+          <button onClick={() => addDigit('0')} disabled={lockedOut}
+            className="h-[62px] rounded-2xl text-[26px] font-semibold text-white transition-all active:scale-95 disabled:opacity-40"
+            style={{ background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.1)' }}>
             0
           </button>
-          <button onClick={removeDigit}
-            className="h-[60px] rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/25 transition-colors">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 12H9M15 6l-6 6 6 6"/>
+
+          <button onClick={removeDigit} disabled={lockedOut}
+            className="h-[62px] rounded-2xl flex items-center justify-center transition-all active:scale-95 disabled:opacity-40"
+            style={{ background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.1)' }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+              <path d="M20 12H8" stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
+              <path d="M13 7l-5 5 5 5" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </button>
         </div>
+
+        {/* Sign out link */}
+        <button onClick={onSignOut}
+          className="mt-4 text-white/30 text-[13px] font-medium underline underline-offset-2 text-center">
+          Not you? Sign in with a different account
+        </button>
       </div>
 
       <style>{`
         @keyframes lockShake {
           0%,100%{transform:translateX(0)}
-          20%{transform:translateX(-10px)}
-          40%{transform:translateX(10px)}
-          60%{transform:translateX(-7px)}
-          80%{transform:translateX(7px)}
+          15%{transform:translateX(-12px)}
+          35%{transform:translateX(12px)}
+          55%{transform:translateX(-8px)}
+          75%{transform:translateX(8px)}
+          90%{transform:translateX(-4px)}
         }
       `}</style>
     </div>
@@ -2864,35 +2948,73 @@ function Router() {
 function AppShell() {
   const [showSplash, setShowSplash] = useState(true);
   const [splashDone, setSplashDone] = useState(false);
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, signOut } = useAuth();
   const [path, navigate] = useLocation();
   const { clearVerification } = useBusinessSecurity();
   const prevPathRef = React.useRef('');
 
   // ── Passcode-on-return lock ──────────────────────────────────────────
-  const [locked, setLocked] = useState(false);
-  const hiddenAtRef = React.useRef<number | null>(null);
-  // Grace period: only lock if the app was hidden for more than 15 seconds
-  const LOCK_GRACE_MS = 15_000;
+  // Initialise locked state: if a lock timestamp is already in localStorage
+  // AND it's ≥ 5 min old AND the pref is on, lock immediately on mount.
+  const [locked, setLocked] = useState(() => {
+    const pref = localStorage.getItem(PASSCODE_RETURN_KEY) === 'true';
+    return pref && shouldLockNow();
+  });
 
+  // Write the "hidden at" timestamp whenever the page is hidden / unloaded.
+  // Read it back whenever the page becomes visible again.
   useEffect(() => {
-    function handleVisibility() {
-      if (document.hidden) {
-        hiddenAtRef.current = Date.now();
-      } else {
-        // App returned to foreground
-        const pref = localStorage.getItem(PASSCODE_RETURN_KEY) === 'true';
-        const wasHiddenLongEnough =
-          hiddenAtRef.current !== null &&
-          Date.now() - hiddenAtRef.current >= LOCK_GRACE_MS;
-        if (pref && isAuthenticated && splashDone && wasHiddenLongEnough) {
-          setLocked(true);
-        }
-        hiddenAtRef.current = null;
+    function onHide() {
+      if (localStorage.getItem(PASSCODE_RETURN_KEY) === 'true') {
+        writeLockTimestamp();
       }
     }
+
+    function onShow() {
+      const pref = localStorage.getItem(PASSCODE_RETURN_KEY) === 'true';
+      if (pref && isAuthenticated && splashDone && shouldLockNow()) {
+        setLocked(true);
+      }
+      // Whether we lock or not, clear the stored timestamp so a quick
+      // background → foreground within the same page cycle doesn't re-fire.
+      clearLockTimestamp();
+    }
+
+    // visibilitychange: tab switch, minimise, screen-off on mobile
+    function handleVisibility() {
+      if (document.hidden) onHide(); else onShow();
+    }
+
+    // pagehide / pageshow: full page unload / back-forward cache restore
+    // (iOS Safari & some Android browsers fire these instead of visibilitychange)
+    function handlePageHide()  { onHide(); }
+    function handlePageShow(e: PageTransitionEvent) {
+      // persisted == came from BFCache (page was fully frozen)
+      if (e.persisted) onShow();
+    }
+
+    // beforeunload: user closes the tab entirely
+    function handleBeforeUnload() { onHide(); }
+
+    // focus / blur on the window itself (desktop tab switch fallback)
+    function handleBlur()  { onHide(); }
+    function handleFocus() { onShow(); }
+
     document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('pagehide',     handlePageHide);
+    window.addEventListener('pageshow',     handlePageShow as EventListener);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('blur',         handleBlur);
+    window.addEventListener('focus',        handleFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('pagehide',     handlePageHide);
+      window.removeEventListener('pageshow',     handlePageShow as EventListener);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('blur',         handleBlur);
+      window.removeEventListener('focus',        handleFocus);
+    };
   }, [isAuthenticated, splashDone]);
 
   useEffect(() => {
@@ -2921,7 +3043,10 @@ function AppShell() {
       )}
       <Router />
       {locked && (
-        <PasscodeLockScreen onUnlock={() => setLocked(false)} />
+        <PasscodeLockScreen
+          onUnlock={() => { clearLockTimestamp(); setLocked(false); }}
+          onSignOut={() => { clearLockTimestamp(); setLocked(false); signOut(); navigate('/signin'); }}
+        />
       )}
     </>
   );
