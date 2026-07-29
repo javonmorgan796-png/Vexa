@@ -146,6 +146,276 @@ const services = [
   { label: 'More',      Icon: LayoutGrid      },
 ];
 
+/* ─── Promo Banner Carousel ──────────────────────────────────────────── */
+const PROMO_BANNERS = [
+  {
+    id: 'moneyworld',
+    bg: '#F0EFFF',
+    accent: '#7C3AED',
+    badge: '🌍 MoneyWorld',
+    title: 'Earn big with MonieWorld',
+    body: 'Refer your UK friends and earn ₦10,000 when they send at least £100.',
+    cta: 'Refer Now',
+    illustration: (
+      <svg viewBox="0 0 80 65" width="80" height="65" xmlns="http://www.w3.org/2000/svg">
+        <rect x="8" y="24" width="62" height="36" rx="4" fill="#2E8B57" transform="rotate(-8 39 42)"/>
+        <rect x="8" y="20" width="62" height="36" rx="4" fill="#3CB371" transform="rotate(-3 39 38)"/>
+        <rect x="8" y="16" width="62" height="36" rx="4" fill="#4CAF50"/>
+        <rect x="14" y="22" width="20" height="2" rx="1" fill="rgba(255,255,255,0.4)"/>
+        <rect x="14" y="27" width="36" height="1.5" rx="0.75" fill="rgba(255,255,255,0.25)"/>
+        <rect x="14" y="31" width="28" height="1.5" rx="0.75" fill="rgba(255,255,255,0.25)"/>
+        <circle cx="55" cy="28" r="8" fill="rgba(255,255,255,0.15)"/>
+        <rect x="48" y="2" width="28" height="18" rx="3" fill="#012169"/>
+        <line x1="48" y1="2" x2="76" y2="20" stroke="white" strokeWidth="2.5"/>
+        <line x1="76" y1="2" x2="48" y2="20" stroke="white" strokeWidth="2.5"/>
+        <line x1="48" y1="11" x2="76" y2="11" stroke="white" strokeWidth="3"/>
+        <line x1="62" y1="2" x2="62" y2="20" stroke="white" strokeWidth="3"/>
+        <line x1="48" y1="2" x2="76" y2="20" stroke="#C8102E" strokeWidth="1.5"/>
+        <line x1="76" y1="2" x2="48" y2="20" stroke="#C8102E" strokeWidth="1.5"/>
+        <line x1="48" y1="11" x2="76" y2="11" stroke="#C8102E" strokeWidth="2"/>
+        <line x1="62" y1="2" x2="62" y2="20" stroke="#C8102E" strokeWidth="2"/>
+      </svg>
+    ),
+  },
+  {
+    id: 'cashback',
+    bg: '#FFF4E6',
+    accent: '#EA580C',
+    badge: '🔥 Limited Offer',
+    title: '5% Cashback on Transfers',
+    body: 'Send money to any bank and earn 5% cashback — up to ₦2,500 per transfer this week.',
+    cta: 'Transfer Now',
+    illustration: (
+      <svg viewBox="0 0 80 65" width="80" height="65" xmlns="http://www.w3.org/2000/svg">
+        {/* coin stack */}
+        <ellipse cx="40" cy="54" rx="26" ry="8" fill="#F59E0B" opacity="0.4"/>
+        <rect x="14" y="38" width="52" height="16" rx="8" fill="#F59E0B"/>
+        <ellipse cx="40" cy="38" rx="26" ry="8" fill="#FBBF24"/>
+        <rect x="14" y="24" width="52" height="16" rx="8" fill="#FBBF24"/>
+        <ellipse cx="40" cy="24" rx="26" ry="8" fill="#FCD34D"/>
+        <rect x="14" y="12" width="52" height="14" rx="7" fill="#FCD34D"/>
+        <ellipse cx="40" cy="12" rx="26" ry="7" fill="#FEF08A"/>
+        <text x="40" y="16" textAnchor="middle" fill="#92400E" fontSize="9" fontWeight="bold">₦</text>
+        {/* sparkle */}
+        <circle cx="66" cy="8" r="4" fill="#EA580C" opacity="0.8"/>
+        <text x="66" y="11" textAnchor="middle" fill="white" fontSize="6" fontWeight="bold">%</text>
+      </svg>
+    ),
+  },
+  {
+    id: 'savings',
+    bg: '#E8F5F0',
+    accent: '#059669',
+    badge: '📈 Up to 15% p.a.',
+    title: 'Grow Your Savings Faster',
+    body: 'Lock your funds in a Fixed Deposit and earn up to 15% annual interest — guaranteed.',
+    cta: 'Start Saving',
+    illustration: (
+      <svg viewBox="0 0 80 65" width="80" height="65" xmlns="http://www.w3.org/2000/svg">
+        {/* bar chart */}
+        <rect x="10" y="44" width="12" height="16" rx="3" fill="#34D399" opacity="0.5"/>
+        <rect x="26" y="32" width="12" height="28" rx="3" fill="#10B981" opacity="0.7"/>
+        <rect x="42" y="20" width="12" height="40" rx="3" fill="#059669"/>
+        <rect x="58" y="10" width="12" height="50" rx="3" fill="#047857"/>
+        {/* upward trend line */}
+        <polyline points="16,44 32,32 48,20 64,10" fill="none" stroke="#F59E0B" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <circle cx="64" cy="10" r="4" fill="#F59E0B"/>
+        <text x="64" y="7" textAnchor="middle" fill="#92400E" fontSize="6" fontWeight="bold">↑</text>
+      </svg>
+    ),
+  },
+];
+
+function PromoBannerCarousel() {
+  const [current, setCurrent] = useState(0);
+  const [animDir, setAnimDir] = useState<'left'|'right'>('left');
+  const [isAnimating, setIsAnimating] = useState(false);
+  const touchStart = React.useRef<number | null>(null);
+  const timerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const goTo = (idx: number, dir: 'left' | 'right') => {
+    if (isAnimating) return;
+    setAnimDir(dir);
+    setIsAnimating(true);
+    setTimeout(() => {
+      setCurrent(idx);
+      setIsAnimating(false);
+    }, 280);
+  };
+
+  const next = () => goTo((current + 1) % PROMO_BANNERS.length, 'left');
+  const prev = () => goTo((current - 1 + PROMO_BANNERS.length) % PROMO_BANNERS.length, 'right');
+
+  // Auto-advance every 4 s
+  useEffect(() => {
+    timerRef.current = setInterval(next, 4000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [current, isAnimating]);
+
+  const b = PROMO_BANNERS[current];
+
+  const handleTouchStart = (e: React.TouchEvent) => { touchStart.current = e.touches[0].clientX; };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStart.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStart.current;
+    touchStart.current = null;
+    if (dx < -40) next();
+    else if (dx > 40) prev();
+  };
+
+  return (
+    <div className="px-4 mt-4 mb-4">
+      <span className="text-[12px] font-normal text-[#888] block mb-2">Do more with Vexa</span>
+
+      {/* Card */}
+      <div
+        className="rounded-xl p-4 flex items-center justify-between overflow-hidden relative select-none"
+        style={{
+          background: b.bg,
+          opacity: isAnimating ? 0 : 1,
+          transform: isAnimating ? (animDir === 'left' ? 'translateX(-8px)' : 'translateX(8px)') : 'translateX(0)',
+          transition: 'opacity 0.28s ease, transform 0.28s ease, background 0.3s ease',
+        } as React.CSSProperties}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
+        <div className="flex-1 pr-3">
+          {/* Badge */}
+          <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full mb-1.5"
+            style={{ background: `${b.accent}18`, color: b.accent }}>
+            {b.badge}
+          </span>
+          <div className="text-[14px] font-bold text-[#111] mb-1 leading-snug">{b.title}</div>
+          <div className="text-[11px] text-[#555] leading-relaxed mb-2">{b.body}</div>
+          <button className="text-[11px] font-bold px-3 py-1 rounded-lg text-white"
+            style={{ background: b.accent }}>
+            {b.cta} →
+          </button>
+        </div>
+        {/* Illustration */}
+        <div className="w-[80px] h-[65px] shrink-0">{b.illustration}</div>
+      </div>
+
+      {/* Dots */}
+      <div className="flex justify-center gap-1.5 mt-2.5">
+        {PROMO_BANNERS.map((_, i) => (
+          <button key={i} onClick={() => goTo(i, i > current ? 'left' : 'right')}
+            className="rounded-full transition-all"
+            style={{
+              width: i === current ? 18 : 6,
+              height: 6,
+              background: i === current ? PROMO_BANNERS[current].accent : '#D1D5DB',
+            }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Passcode Lock Screen (shown on app-return if setting is ON) ──── */
+const PASSCODE_RETURN_KEY = 'vexa_passcode_on_return';
+
+function PasscodeLockScreen({ onUnlock }: { onUnlock: () => void }) {
+  const { user } = useAuth();
+  const [pin, setPin] = useState('');
+  const [shake, setShake] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  function addDigit(d: string) {
+    if (pin.length >= 6) return;
+    const next = pin + d;
+    setPin(next);
+    setErrorMsg('');
+    if (next.length === 6) {
+      setTimeout(() => verify(next), 60);
+    }
+  }
+
+  function removeDigit() { setPin(p => p.slice(0, -1)); setErrorMsg(''); }
+
+  function verify(code: string) {
+    if (user && code === user.password) {
+      onUnlock();
+    } else {
+      setShake(true);
+      setTimeout(() => { setShake(false); setPin(''); }, 500);
+      setErrorMsg('Incorrect passcode');
+    }
+  }
+
+  const userName = user?.name?.split(' ')[0] ?? 'there';
+  const initials = (user?.name ?? 'U').split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-between py-10 px-6"
+      style={{ background: 'linear-gradient(180deg, #0d1b3e 0%, #081229 100%)', fontFamily: "'Inter', sans-serif" }}>
+
+      {/* Top area */}
+      <div className="flex flex-col items-center mt-4">
+        {/* Avatar */}
+        <div className="w-16 h-16 rounded-full bg-white/10 border-2 border-white/20 flex items-center justify-center text-white text-[22px] font-bold mb-4">
+          {initials}
+        </div>
+        <p className="text-white/50 text-[12px] font-medium mb-1">Welcome back, {userName}</p>
+        <p className="text-white text-[18px] font-bold">Enter your passcode</p>
+        <p className="text-white/40 text-[11px] mt-1">Your session is locked for security</p>
+      </div>
+
+      {/* PIN dots */}
+      <div className="flex flex-col items-center gap-5">
+        <div
+          className="flex gap-4"
+          style={{
+            animation: shake ? 'lockShake 0.4s ease' : 'none',
+          }}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${
+              i < pin.length ? 'bg-white border-white scale-110' : 'border-white/30 bg-transparent'
+            }`} />
+          ))}
+        </div>
+
+        {errorMsg && (
+          <p className="text-[#FF6B6B] text-[12px] font-medium -mt-2">{errorMsg}</p>
+        )}
+      </div>
+
+      {/* Keypad */}
+      <div className="w-full max-w-[280px]">
+        <div className="grid grid-cols-3 gap-3 mb-3">
+          {['1','2','3','4','5','6','7','8','9'].map(k => (
+            <button key={k} onClick={() => addDigit(k)}
+              className="h-[60px] rounded-2xl bg-white/10 border border-white/10 text-[24px] font-semibold text-white active:bg-white/25 transition-colors">
+              {k}
+            </button>
+          ))}
+          <div />
+          <button onClick={() => addDigit('0')}
+            className="h-[60px] rounded-2xl bg-white/10 border border-white/10 text-[24px] font-semibold text-white active:bg-white/25 transition-colors">
+            0
+          </button>
+          <button onClick={removeDigit}
+            className="h-[60px] rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/25 transition-colors">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12H9M15 6l-6 6 6 6"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes lockShake {
+          0%,100%{transform:translateX(0)}
+          20%{transform:translateX(-10px)}
+          40%{transform:translateX(10px)}
+          60%{transform:translateX(-7px)}
+          80%{transform:translateX(7px)}
+        }
+      `}</style>
+    </div>
+  );
+}
+
 function MoniepointHome() {
   const [balanceHidden, setBalanceHidden] = useState(false);
   const [, navigate] = useLocation();
@@ -339,53 +609,8 @@ function MoniepointHome() {
             </div>
           </div>
 
-          {/* ── Do more with Moniepoint ───────────────────────────────── */}
-          {/* mt 16px, px 16px */}
-          <div className="px-4 mt-4 mb-4">
-            <span className="text-[12px] font-normal text-[#888] block mb-2">
-              Do more with Moniepoint
-            </span>
-
-            {/* banner card: light lavender bg #F0EFFF, rounded-xl */}
-            <div className="bg-[#F0EFFF] rounded-xl p-4 flex items-center justify-between overflow-hidden">
-              <div className="flex-1 pr-4">
-                <div className="text-[14px] font-bold text-[#111] mb-1 leading-snug">
-                  Earn big with MonieWorld
-                </div>
-                <div className="text-[11px] text-[#555] leading-relaxed font-normal">
-                  Refer your UK friends and earn ₦10,000<br />
-                  when they send at least £100.
-                </div>
-              </div>
-              {/* illustration: green banknotes with UK flag */}
-              <div className="w-[80px] h-[65px] shrink-0 relative">
-                {/* stacked green notes */}
-                <svg viewBox="0 0 80 65" width="80" height="65" xmlns="http://www.w3.org/2000/svg">
-                  {/* bottom note - lighter */}
-                  <rect x="8" y="24" width="62" height="36" rx="4" fill="#2E8B57" transform="rotate(-8 39 42)"/>
-                  {/* middle note */}
-                  <rect x="8" y="20" width="62" height="36" rx="4" fill="#3CB371" transform="rotate(-3 39 38)"/>
-                  {/* top note */}
-                  <rect x="8" y="16" width="62" height="36" rx="4" fill="#4CAF50"/>
-                  {/* note lines */}
-                  <rect x="14" y="22" width="20" height="2" rx="1" fill="rgba(255,255,255,0.4)"/>
-                  <rect x="14" y="27" width="36" height="1.5" rx="0.75" fill="rgba(255,255,255,0.25)"/>
-                  <rect x="14" y="31" width="28" height="1.5" rx="0.75" fill="rgba(255,255,255,0.25)"/>
-                  <circle cx="55" cy="28" r="8" fill="rgba(255,255,255,0.15)"/>
-                  {/* UK flag - small envelope / flag overlay at top-right */}
-                  <rect x="48" y="2" width="28" height="18" rx="3" fill="#012169"/>
-                  <line x1="48" y1="2" x2="76" y2="20" stroke="white" strokeWidth="2.5"/>
-                  <line x1="76" y1="2" x2="48" y2="20" stroke="white" strokeWidth="2.5"/>
-                  <line x1="48" y1="11" x2="76" y2="11" stroke="white" strokeWidth="3"/>
-                  <line x1="62" y1="2" x2="62" y2="20" stroke="white" strokeWidth="3"/>
-                  <line x1="48" y1="2" x2="76" y2="20" stroke="#C8102E" strokeWidth="1.5"/>
-                  <line x1="76" y1="2" x2="48" y2="20" stroke="#C8102E" strokeWidth="1.5"/>
-                  <line x1="48" y1="11" x2="76" y2="11" stroke="#C8102E" strokeWidth="2"/>
-                  <line x1="62" y1="2" x2="62" y2="20" stroke="#C8102E" strokeWidth="2"/>
-                </svg>
-              </div>
-            </div>
-          </div>
+          {/* ── Promotional Banner Carousel ───────────────────────────── */}
+          <PromoBannerCarousel />
 
         </div>
 
@@ -516,6 +741,15 @@ function SettingsPage() {
   const { user, signOut, profilePhoto } = useAuth();
   const [biometrics, setBiometrics] = useState(true);
   const [notifs, setNotifs] = useState(true);
+  const [passcodeOnReturn, setPasscodeOnReturn] = useState(() =>
+    localStorage.getItem(PASSCODE_RETURN_KEY) === 'true'
+  );
+
+  function togglePasscodeOnReturn() {
+    const next = !passcodeOnReturn;
+    setPasscodeOnReturn(next);
+    localStorage.setItem(PASSCODE_RETURN_KEY, String(next));
+  }
 
   const userName = user?.name ?? 'Chibuzor Emmanuel Dike';
   const accountNumber = user?.accountNumber ?? '9067212032';
@@ -534,8 +768,9 @@ function SettingsPage() {
       heading: 'Security',
       items: [
         { icon: <Lock className="w-5 h-5" />,        label: 'Change Transaction PIN', action: () => navigate('/change-pin') },
-        { icon: <Fingerprint className="w-5 h-5" />, label: 'Biometric Login',   sub: biometrics ? 'On' : 'Off' },
+        { icon: <Fingerprint className="w-5 h-5" />, label: 'Biometric Login',        sub: biometrics ? 'On' : 'Off' },
         { icon: <Lock className="w-5 h-5" />,        label: 'Change Password',        action: () => navigate('/change-password') },
+        { icon: <Shield className="w-5 h-5" />,      label: 'Passcode on App Return', sub: passcodeOnReturn ? 'On · locks when you leave' : 'Off' },
       ],
     },
     {
@@ -592,11 +827,15 @@ function SettingsPage() {
               {section.items.map((item, ii) => {
                 const isBio  = item.label === 'Biometric Login';
                 const isNot  = item.label === 'Notifications';
+                const isPCR  = item.label === 'Passcode on App Return';
+                const isToggle = isBio || isNot || isPCR;
+                const toggleState = isBio ? biometrics : isNot ? notifs : passcodeOnReturn;
                 return (
                   <button key={ii}
                     onClick={() => {
                       if (isBio) setBiometrics(v => !v);
                       else if (isNot) setNotifs(v => !v);
+                      else if (isPCR) togglePasscodeOnReturn();
                       else if (item.action) item.action();
                     }}
                     className={`w-full flex items-center gap-3.5 px-4 py-4 text-left transition-colors hover:bg-[#F8F9FB] ${ii < section.items.length - 1 ? 'border-b border-[#F5F5F5]' : ''}`}
@@ -606,9 +845,9 @@ function SettingsPage() {
                       <p className={`text-[14px] font-semibold ${item.danger ? 'text-red-500' : 'text-[#111]'}`}>{item.label}</p>
                       {item.sub && <p className="text-[11px] text-[#888] mt-0.5 truncate">{item.sub}</p>}
                     </div>
-                    {(isBio || isNot) ? (
-                      <div className={`w-11 h-6 rounded-full transition-colors relative ${(isBio ? biometrics : notifs) ? 'bg-[#162353]' : 'bg-[#D1D5DB]'}`}>
-                        <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${(isBio ? biometrics : notifs) ? 'left-5' : 'left-0.5'}`} />
+                    {isToggle ? (
+                      <div className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${toggleState ? 'bg-[#162353]' : 'bg-[#D1D5DB]'}`}>
+                        <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${toggleState ? 'left-5' : 'left-0.5'}`} />
                       </div>
                     ) : !item.danger ? (
                       <ChevronRight className="w-4 h-4 text-[#CBD5E1] shrink-0" />
@@ -2630,6 +2869,32 @@ function AppShell() {
   const { clearVerification } = useBusinessSecurity();
   const prevPathRef = React.useRef('');
 
+  // ── Passcode-on-return lock ──────────────────────────────────────────
+  const [locked, setLocked] = useState(false);
+  const hiddenAtRef = React.useRef<number | null>(null);
+  // Grace period: only lock if the app was hidden for more than 15 seconds
+  const LOCK_GRACE_MS = 15_000;
+
+  useEffect(() => {
+    function handleVisibility() {
+      if (document.hidden) {
+        hiddenAtRef.current = Date.now();
+      } else {
+        // App returned to foreground
+        const pref = localStorage.getItem(PASSCODE_RETURN_KEY) === 'true';
+        const wasHiddenLongEnough =
+          hiddenAtRef.current !== null &&
+          Date.now() - hiddenAtRef.current >= LOCK_GRACE_MS;
+        if (pref && isAuthenticated && splashDone && wasHiddenLongEnough) {
+          setLocked(true);
+        }
+        hiddenAtRef.current = null;
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [isAuthenticated, splashDone]);
+
   useEffect(() => {
     if (splashDone && !isAuthenticated) {
       navigate('/signin');
@@ -2646,7 +2911,6 @@ function AppShell() {
     prevPathRef.current = path;
   }, [path]);
 
-
   return (
     <>
       {showSplash && (
@@ -2656,6 +2920,9 @@ function AppShell() {
         }} />
       )}
       <Router />
+      {locked && (
+        <PasscodeLockScreen onUnlock={() => setLocked(false)} />
+      )}
     </>
   );
 }
