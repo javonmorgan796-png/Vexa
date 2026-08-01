@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
 import {
   Headphones, Bell, Copy, EyeOff, Eye, Clock,
@@ -8,6 +8,7 @@ import {
   ArrowUp, ChevronRight, Shield, Fingerprint, BriefcaseBusiness,
   BellRing, HelpCircle, Info, LogOut, User, Lock,
   MessageCircle, Phone, Mail, ExternalLink, Star, ChevronDown,
+  Send, X, Bot, CheckCheck, Wifi,
 } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
@@ -949,10 +950,358 @@ function SettingsPage() {
   );
 }
 
+/* ─── Live Chat Modal ────────────────────────────────────────────────── */
+type ChatMessage = {
+  id: string;
+  from: 'ai' | 'agent' | 'user';
+  text: string;
+  time: string;
+};
+
+const AI_FAQ_MAP: { keywords: string[]; answer: string }[] = [
+  { keywords: ['transfer', 'send money', 'send'],
+    answer: 'To transfer money, go to the home screen and tap "Transfer". Enter the recipient\'s account number, select their bank, enter the amount, and confirm with your transaction PIN.' },
+  { keywords: ['limit', 'daily limit', 'how much'],
+    answer: 'Level 1 accounts can transfer up to ₦50,000/day. Level 2 up to ₦200,000/day. Level 3 verified accounts enjoy a ₦5,000,000 daily limit.' },
+  { keywords: ['airtime', 'data', 'recharge'],
+    answer: 'Tap "Airtime" or "Data" on the home screen, choose your network, enter the phone number and amount, then confirm.' },
+  { keywords: ['passcode', 'forgot', 'password', 'pin'],
+    answer: 'On the Sign In screen tap "Forgot Passcode?" and reset it via your registered phone number and OTP.' },
+  { keywords: ['upgrade', 'verification', 'bvn', 'level'],
+    answer: 'Go to Settings → Limits & Verification. You\'ll find requirements for each account level, including BVN and ID verification.' },
+  { keywords: ['safe', 'security', 'secure', 'insured', 'ndic'],
+    answer: 'Absolutely. Vexa uses 256-bit encryption and multi-factor authentication. All deposits are protected by the NDIC insurance scheme.' },
+  { keywords: ['balance', 'account', 'number'],
+    answer: 'Your account number and balance are displayed on your home dashboard. Tap the eye icon to show or hide your balance.' },
+  { keywords: ['card', 'debit', 'virtual card'],
+    answer: 'You can manage your Vexa debit card from the "Card" section on the home screen. You can freeze, unfreeze, or request a new card there.' },
+];
+
+function getAIReply(userText: string): string {
+  const lower = userText.toLowerCase();
+  for (const entry of AI_FAQ_MAP) {
+    if (entry.keywords.some(k => lower.includes(k))) return entry.answer;
+  }
+  return "I'm not sure about that one. I can connect you with a live agent who can help right away — tap the button below.";
+}
+
+function nowTime() {
+  return new Date().toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' });
+}
+
+const AGENT = {
+  name: 'Adaeze Okonkwo',
+  role: 'Customer Support Specialist',
+  avatar: 'AO',
+  avatarBg: '#1E3A6E',
+  online: true,
+  responseTime: 'Usually replies in < 2 min',
+};
+
+const QUICK_REPLIES = [
+  'How do I transfer money?',
+  'What are my transfer limits?',
+  'How do I buy airtime?',
+  'Is my money safe?',
+];
+
+function LiveChatModal({ onClose }: { onClose: () => void }) {
+  const [mode, setMode] = useState<'ai' | 'live'>('ai');
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      id: '1',
+      from: 'ai',
+      text: "Hi! I'm Vexa AI 👋 I can answer most questions instantly. What do you need help with today?",
+      time: nowTime(),
+    },
+  ]);
+  const [inputText, setInputText] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const [transferring, setTransferring] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isTyping]);
+
+  function addMessage(msg: Omit<ChatMessage, 'id'>) {
+    setMessages(prev => [...prev, { ...msg, id: String(Date.now()) }]);
+  }
+
+  function handleSend(text?: string) {
+    const txt = (text ?? inputText).trim();
+    if (!txt) return;
+    setInputText('');
+    addMessage({ from: 'user', text: txt, time: nowTime() });
+
+    if (mode === 'ai') {
+      setIsTyping(true);
+      setTimeout(() => {
+        setIsTyping(false);
+        addMessage({ from: 'ai', text: getAIReply(txt), time: nowTime() });
+      }, 1100 + Math.random() * 600);
+    } else {
+      // Live agent — simulate reply
+      setIsTyping(true);
+      setTimeout(() => {
+        setIsTyping(false);
+        const agentReplies = [
+          "Thanks for sharing that! Let me look into this for you right away.",
+          "I can see your account details. Give me a moment to resolve this.",
+          "Got it! I've noted your concern and will escalate if needed. Is there anything else?",
+          "That's been resolved on our end. Please try again and let me know if the issue persists.",
+        ];
+        addMessage({ from: 'agent', text: agentReplies[Math.floor(Math.random() * agentReplies.length)], time: nowTime() });
+      }, 1500 + Math.random() * 1000);
+    }
+  }
+
+  function handleTransferToAgent() {
+    setTransferring(true);
+    setIsTyping(true);
+    setTimeout(() => {
+      setTransferring(false);
+      setIsTyping(false);
+      setMode('live');
+      addMessage({
+        from: 'agent',
+        text: `Hi! I'm ${AGENT.name} from Vexa Support 😊 I've reviewed your conversation and I'm here to help. What can I do for you?`,
+        time: nowTime(),
+      });
+    }, 2000);
+  }
+
+  const isAiMode = mode === 'ai';
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex flex-col bg-[#F2F3F5]"
+      style={{ fontFamily: "'Inter', sans-serif" }}
+    >
+      {/* ── Header ── */}
+      <div
+        className="flex-none bg-[#162353] px-4 pb-4"
+        style={{ paddingTop: 'max(env(safe-area-inset-top), 14px)' }}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-white/15 active:bg-white/25 transition-colors"
+          >
+            <X className="w-4 h-4 text-white" />
+          </button>
+          <span className="text-white font-bold text-[15px]">Live Chat</span>
+          <div className="w-8" />
+        </div>
+
+        {/* Agent / AI profile card */}
+        {isAiMode ? (
+          <div className="flex items-center gap-3 bg-white/10 rounded-2xl px-4 py-3">
+            <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#00C6FF] to-[#0072FF] flex items-center justify-center flex-shrink-0">
+              <Bot className="w-6 h-6 text-white" />
+            </div>
+            <div className="flex-1">
+              <p className="text-white font-bold text-[14px]">Vexa AI Assistant</p>
+              <p className="text-white/60 text-[11px]">Instant answers · Always available</p>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-[#22C55E] animate-pulse" />
+              <span className="text-[10px] font-semibold text-[#22C55E]">Online</span>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 bg-white/10 rounded-2xl px-4 py-3">
+            <div
+              className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-[14px] flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg,#1E3A6E,#2563EB)' }}
+            >
+              {AGENT.avatar}
+            </div>
+            <div className="flex-1">
+              <p className="text-white font-bold text-[14px]">{AGENT.name}</p>
+              <p className="text-white/60 text-[11px]">{AGENT.role}</p>
+            </div>
+            <div className="text-right">
+              <div className="flex items-center gap-1.5 justify-end mb-0.5">
+                <div className="w-2 h-2 rounded-full bg-[#22C55E] animate-pulse" />
+                <span className="text-[10px] font-semibold text-[#22C55E]">Online</span>
+              </div>
+              <p className="text-[10px] text-white/50">{AGENT.responseTime}</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Messages ── */}
+      <div
+        className="flex-1 overflow-y-auto px-4 py-4 space-y-3"
+        style={{ scrollbarWidth: 'none' }}
+      >
+        {/* Mode banner */}
+        {!isAiMode && (
+          <div className="flex items-center gap-2 justify-center">
+            <div className="flex-1 h-px bg-[#E2E8F0]" />
+            <span className="text-[11px] text-[#94A3B8] font-medium px-2">Transferred to Live Agent</span>
+            <div className="flex-1 h-px bg-[#E2E8F0]" />
+          </div>
+        )}
+
+        {messages.map((msg) => {
+          const isUser = msg.from === 'user';
+          const isBot = msg.from === 'ai';
+
+          return (
+            <div key={msg.id} className={`flex gap-2.5 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+              {/* Avatar */}
+              {!isUser && (
+                <div className="flex-shrink-0 mt-auto">
+                  {isBot ? (
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00C6FF] to-[#0072FF] flex items-center justify-center">
+                      <Bot className="w-4 h-4 text-white" />
+                    </div>
+                  ) : (
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[11px]"
+                      style={{ background: 'linear-gradient(135deg,#1E3A6E,#2563EB)' }}
+                    >
+                      {AGENT.avatar}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className={`flex flex-col max-w-[78%] ${isUser ? 'items-end' : 'items-start'}`}>
+                {!isUser && (
+                  <p className="text-[10px] font-semibold text-[#64748B] mb-1 px-1">
+                    {isBot ? 'Vexa AI' : AGENT.name}
+                  </p>
+                )}
+                <div
+                  className={`px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${
+                    isUser
+                      ? 'bg-[#162353] text-white rounded-br-sm'
+                      : 'bg-white text-[#1E293B] rounded-bl-sm border border-[#F0F0F0]'
+                  }`}
+                  style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
+                >
+                  {msg.text}
+                </div>
+                <div className={`flex items-center gap-1 mt-1 px-1 ${isUser ? 'flex-row-reverse' : ''}`}>
+                  <span className="text-[10px] text-[#CBD5E1]">{msg.time}</span>
+                  {isUser && <CheckCheck className="w-3 h-3 text-[#22C55E]" />}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Typing indicator */}
+        {isTyping && (
+          <div className="flex gap-2.5 flex-row">
+            <div className="flex-shrink-0 mt-auto">
+              {isAiMode ? (
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00C6FF] to-[#0072FF] flex items-center justify-center">
+                  <Bot className="w-4 h-4 text-white" />
+                </div>
+              ) : (
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[11px]"
+                  style={{ background: 'linear-gradient(135deg,#1E3A6E,#2563EB)' }}
+                >
+                  {AGENT.avatar}
+                </div>
+              )}
+            </div>
+            <div className="bg-white border border-[#F0F0F0] rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1.5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+              {[0, 1, 2].map(i => (
+                <span
+                  key={i}
+                  className="w-1.5 h-1.5 bg-[#94A3B8] rounded-full inline-block"
+                  style={{ animation: `typingDot 1.2s ${i * 0.2}s infinite ease-in-out` }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* "Talk to a Live Agent" button — only in AI mode after ≥2 exchanges */}
+        {isAiMode && messages.length >= 2 && !isTyping && (
+          <div className="flex justify-center pt-1">
+            <button
+              onClick={handleTransferToAgent}
+              disabled={transferring}
+              className="flex items-center gap-2 bg-white border border-[#E2E8F0] rounded-full px-5 py-2.5 text-[12px] font-semibold text-[#162353] active:bg-[#F1F5F9] transition-colors disabled:opacity-60"
+              style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}
+            >
+              <Wifi className="w-3.5 h-3.5" />
+              {transferring ? 'Connecting...' : 'Talk to a Live Agent'}
+            </button>
+          </div>
+        )}
+
+        <div ref={bottomRef} />
+      </div>
+
+      {/* ── Quick replies (AI mode only, when no user message yet) ── */}
+      {isAiMode && messages.length === 1 && (
+        <div className="flex-none px-4 pb-2">
+          <p className="text-[11px] text-[#94A3B8] font-medium mb-2">Suggested questions</p>
+          <div className="flex flex-wrap gap-2">
+            {QUICK_REPLIES.map((q) => (
+              <button
+                key={q}
+                onClick={() => handleSend(q)}
+                className="bg-white border border-[#E2E8F0] rounded-full px-3.5 py-1.5 text-[12px] font-medium text-[#334155] active:bg-[#F1F5F9] transition-colors"
+                style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Input bar ── */}
+      <div
+        className="flex-none bg-white border-t border-[#E8EBF0] px-4 py-3 flex items-end gap-3"
+        style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)' }}
+      >
+        <div className="flex-1 bg-[#F8F9FB] rounded-2xl border border-[#E8EBF0] flex items-end px-4 py-2.5">
+          <input
+            ref={inputRef}
+            type="text"
+            value={inputText}
+            onChange={e => setInputText(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSend()}
+            placeholder={isAiMode ? 'Ask Vexa AI anything…' : `Message ${AGENT.name.split(' ')[0]}…`}
+            className="flex-1 bg-transparent text-[13px] text-[#1E293B] placeholder-[#94A3B8] outline-none resize-none"
+          />
+        </div>
+        <button
+          onClick={() => handleSend()}
+          disabled={!inputText.trim()}
+          className="w-10 h-10 rounded-full bg-[#162353] flex items-center justify-center flex-shrink-0 transition-opacity disabled:opacity-40 active:opacity-70"
+        >
+          <Send className="w-4 h-4 text-white" />
+        </button>
+      </div>
+
+      <style>{`
+        @keyframes typingDot {
+          0%,80%,100% { transform: scale(0.8); opacity: 0.4; }
+          40%          { transform: scale(1.2); opacity: 1; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 /* ─── Help & Support Page ────────────────────────────────────────────── */
 function HelpSupportPage() {
   const [, navigate] = useLocation();
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [showChat, setShowChat] = useState(false);
 
   const faqs = [
     { q: 'How do I transfer money?', a: 'Go to the home screen and tap "Transfer". Enter the recipient\'s account number, select their bank, enter the amount, and confirm with your transaction PIN.' },
@@ -964,87 +1313,113 @@ function HelpSupportPage() {
   ];
 
   return (
-    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
-      {/* Header */}
-      <div className="flex-none flex items-center gap-3 px-4 pb-3 bg-white border-b border-[#E8EBF0]"
-        style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
-        <button onClick={() => navigate('/settings')} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
-        </button>
-        <span className="text-[16px] font-bold text-[#111]">Help & Support</span>
-      </div>
+    <>
+      {showChat && <LiveChatModal onClose={() => setShowChat(false)} />}
 
-      <div className="flex-1 overflow-y-auto py-4 px-4 space-y-4" style={{ scrollbarWidth: 'none' }}>
-
-        {/* Contact options */}
-        <div className="bg-[#162353] rounded-2xl px-5 py-5">
-          <p className="text-white font-bold text-[15px] mb-1">Need help?</p>
-          <p className="text-white/60 text-[12px] mb-4">Our support team is available 24/7 to assist you.</p>
-          <div className="flex gap-3">
-            <button className="flex-1 bg-white/15 rounded-xl py-3 flex flex-col items-center gap-1.5 active:bg-white/25 transition-colors">
-              <Phone className="w-5 h-5 text-white" />
-              <span className="text-[11px] font-semibold text-white">Call Us</span>
-            </button>
-            <button className="flex-1 bg-white/15 rounded-xl py-3 flex flex-col items-center gap-1.5 active:bg-white/25 transition-colors">
-              <MessageCircle className="w-5 h-5 text-white" />
-              <span className="text-[11px] font-semibold text-white">Live Chat</span>
-            </button>
-            <button className="flex-1 bg-white/15 rounded-xl py-3 flex flex-col items-center gap-1.5 active:bg-white/25 transition-colors">
-              <Mail className="w-5 h-5 text-white" />
-              <span className="text-[11px] font-semibold text-white">Email Us</span>
-            </button>
-          </div>
+      <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+        {/* Header */}
+        <div className="flex-none flex items-center gap-3 px-4 pb-3 bg-white border-b border-[#E8EBF0]"
+          style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
+          <button onClick={() => navigate('/settings')} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          </button>
+          <span className="text-[16px] font-bold text-[#111]">Help & Support</span>
         </div>
 
-        {/* Contact details */}
-        <div>
-          <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide mb-2 px-1">Contact Details</p>
-          <div className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
-            {[
-              { icon: <Phone className="w-5 h-5" />, label: 'Phone Support', sub: '+234 800 839 2600' },
-              { icon: <Mail className="w-5 h-5" />, label: 'Email Support', sub: 'support@vexa.com' },
-              { icon: <MessageCircle className="w-5 h-5" />, label: 'WhatsApp', sub: '+234 800 839 2600' },
-            ].map((item, i, arr) => (
-              <div key={i} className={`flex items-center gap-3.5 px-4 py-4 ${i < arr.length - 1 ? 'border-b border-[#F5F5F5]' : ''}`}>
-                <span className="text-[#555]">{item.icon}</span>
-                <div className="flex-1">
-                  <p className="text-[14px] font-semibold text-[#111]">{item.label}</p>
-                  <p className="text-[12px] text-[#888] mt-0.5">{item.sub}</p>
-                </div>
-                <ExternalLink className="w-4 h-4 text-[#CBD5E1]" />
-              </div>
-            ))}
-          </div>
-        </div>
+        <div className="flex-1 overflow-y-auto py-4 px-4 space-y-4" style={{ scrollbarWidth: 'none' }}>
 
-        {/* FAQ */}
-        <div>
-          <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide mb-2 px-1">Frequently Asked Questions</p>
-          <div className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
-            {faqs.map((faq, i) => (
-              <div key={i} className={i < faqs.length - 1 ? 'border-b border-[#F5F5F5]' : ''}>
-                <button
-                  onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                  className="w-full flex items-center gap-3.5 px-4 py-4 text-left hover:bg-[#F8F9FB] transition-colors"
-                >
+          {/* Contact options */}
+          <div className="bg-[#162353] rounded-2xl px-5 py-5">
+            <p className="text-white font-bold text-[15px] mb-1">Need help?</p>
+            <p className="text-white/60 text-[12px] mb-4">Our support team is available 24/7 to assist you.</p>
+            <div className="flex gap-3">
+              <button className="flex-1 bg-white/15 rounded-xl py-3 flex flex-col items-center gap-1.5 active:bg-white/25 transition-colors">
+                <Phone className="w-5 h-5 text-white" />
+                <span className="text-[11px] font-semibold text-white">Call Us</span>
+              </button>
+              <button
+                onClick={() => setShowChat(true)}
+                className="flex-1 bg-white/25 border border-white/30 rounded-xl py-3 flex flex-col items-center gap-1.5 active:bg-white/35 transition-colors"
+              >
+                <MessageCircle className="w-5 h-5 text-white" />
+                <span className="text-[11px] font-semibold text-white">Live Chat</span>
+              </button>
+              <button className="flex-1 bg-white/15 rounded-xl py-3 flex flex-col items-center gap-1.5 active:bg-white/25 transition-colors">
+                <Mail className="w-5 h-5 text-white" />
+                <span className="text-[11px] font-semibold text-white">Email Us</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Live chat promo card */}
+          <button
+            onClick={() => setShowChat(true)}
+            className="w-full bg-white rounded-2xl border border-[#E8EBF0] px-4 py-4 flex items-center gap-4 active:bg-[#F8F9FB] transition-colors"
+            style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
+          >
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#00C6FF] to-[#0072FF] flex items-center justify-center flex-shrink-0">
+              <Bot className="w-6 h-6 text-white" />
+            </div>
+            <div className="flex-1 text-left">
+              <p className="text-[14px] font-bold text-[#111]">Chat with Vexa AI</p>
+              <p className="text-[12px] text-[#888] mt-0.5">Instant answers, or connect to a live agent</p>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-[#22C55E] animate-pulse" />
+              <span className="text-[11px] font-semibold text-[#22C55E]">Online</span>
+            </div>
+          </button>
+
+          {/* Contact details */}
+          <div>
+            <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide mb-2 px-1">Contact Details</p>
+            <div className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
+              {[
+                { icon: <Phone className="w-5 h-5" />, label: 'Phone Support', sub: '+234 800 839 2600' },
+                { icon: <Mail className="w-5 h-5" />, label: 'Email Support', sub: 'support@vexa.com' },
+                { icon: <MessageCircle className="w-5 h-5" />, label: 'WhatsApp', sub: '+234 800 839 2600' },
+              ].map((item, i, arr) => (
+                <div key={i} className={`flex items-center gap-3.5 px-4 py-4 ${i < arr.length - 1 ? 'border-b border-[#F5F5F5]' : ''}`}>
+                  <span className="text-[#555]">{item.icon}</span>
                   <div className="flex-1">
-                    <p className="text-[13px] font-semibold text-[#111]">{faq.q}</p>
+                    <p className="text-[14px] font-semibold text-[#111]">{item.label}</p>
+                    <p className="text-[12px] text-[#888] mt-0.5">{item.sub}</p>
                   </div>
-                  <ChevronDown className={`w-4 h-4 text-[#CBD5E1] shrink-0 transition-transform ${openFaq === i ? 'rotate-180' : ''}`} />
-                </button>
-                {openFaq === i && (
-                  <div className="px-4 pb-4">
-                    <p className="text-[13px] text-[#666] leading-relaxed">{faq.a}</p>
-                  </div>
-                )}
-              </div>
-            ))}
+                  <ExternalLink className="w-4 h-4 text-[#CBD5E1]" />
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
 
-        <p className="text-center text-[11px] text-[#CCC] pb-2">Response time: usually within 5 minutes</p>
+          {/* FAQ */}
+          <div>
+            <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide mb-2 px-1">Frequently Asked Questions</p>
+            <div className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
+              {faqs.map((faq, i) => (
+                <div key={i} className={i < faqs.length - 1 ? 'border-b border-[#F5F5F5]' : ''}>
+                  <button
+                    onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                    className="w-full flex items-center gap-3.5 px-4 py-4 text-left hover:bg-[#F8F9FB] transition-colors"
+                  >
+                    <div className="flex-1">
+                      <p className="text-[13px] font-semibold text-[#111]">{faq.q}</p>
+                    </div>
+                    <ChevronDown className={`w-4 h-4 text-[#CBD5E1] shrink-0 transition-transform ${openFaq === i ? 'rotate-180' : ''}`} />
+                  </button>
+                  {openFaq === i && (
+                    <div className="px-4 pb-4">
+                      <p className="text-[13px] text-[#666] leading-relaxed">{faq.a}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <p className="text-center text-[11px] text-[#CCC] pb-2">Response time: usually within 5 minutes</p>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
