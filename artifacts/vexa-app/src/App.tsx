@@ -553,21 +553,16 @@ function MoniepointHome() {
           {/* mx 12px, mt 12px, rounded-2xl (20px), p-5 */}
           <div className="mx-3 mt-3 bg-[#162353] rounded-[20px] px-4 py-3 text-white relative overflow-hidden">
 
-            {/* Decorative watermark icon — top-right */}
-            <div className="absolute top-0 right-0 pointer-events-none select-none" style={{ opacity: 0.07 }}>
-              <svg width="110" height="110" viewBox="0 0 110 110" fill="none" xmlns="http://www.w3.org/2000/svg">
-                {/* Shield shape */}
-                <path d="M55 8L18 24V52C18 73 34 90 55 98C76 90 92 73 92 52V24L55 8Z" fill="white"/>
-                {/* Inner V / checkmark */}
-                <path d="M38 54L50 66L74 42" stroke="#162353" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
+            {/* Vexa logo — visible top-right */}
+            <div className="absolute top-3 right-4 pointer-events-none select-none flex flex-col items-center gap-1">
+              <img
+                src="/vexa-icon.png"
+                alt=""
+                className="w-10 h-10 object-contain"
+                style={{ opacity: 0.85 }}
+              />
+              <span className="text-[9px] font-bold tracking-widest text-white/50 uppercase">Vexa</span>
             </div>
-
-            {/* Subtle circle accent — bottom-right */}
-            <div
-              className="absolute bottom-[-28px] right-[-28px] w-[90px] h-[90px] rounded-full pointer-events-none"
-              style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.07) 0%, transparent 70%)' }}
-            />
 
             {/* account number row */}
             <div className="flex items-center gap-1.5 text-[12px] font-normal text-white mb-2">
