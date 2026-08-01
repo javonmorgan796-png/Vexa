@@ -3563,7 +3563,16 @@ function ReferralsPage() {
 
   function shareCode() {
     if (navigator.share) {
-      navigator.share({ title: 'Join Vexa!', text: `Use my referral code ${refCode} on Vexa and we both earn ₦10,000 when you make your first transfer. Download at vexa.app` });
+      navigator.share({
+        title: 'Join Vexa!',
+        text: `Use my referral code ${refCode} on Vexa and we both earn ₦10,000 when you make your first transfer. Download at vexa.app`,
+      }).catch((err: unknown) => {
+        // User dismissed the share sheet — not an error, ignore silently.
+        // Only re-throw unexpected errors (not AbortError / cancel).
+        if (err instanceof Error && err.name !== 'AbortError') {
+          console.warn('Share failed:', err);
+        }
+      });
     } else {
       copyCode();
     }
