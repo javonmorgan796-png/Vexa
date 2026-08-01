@@ -8,7 +8,7 @@ import {
   ArrowUp, ChevronRight, Shield, Fingerprint, BriefcaseBusiness,
   BellRing, HelpCircle, Info, LogOut, User, Lock,
   MessageCircle, Phone, Mail, ExternalLink, Star, ChevronDown,
-  Send, X, Bot, CheckCheck, Wifi,
+  Send, X, Bot, CheckCheck, Wifi, Paperclip, ImagePlus, FileUp, FileText as FileIcon,
 } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
@@ -951,11 +951,19 @@ function SettingsPage() {
 }
 
 /* ─── Live Chat Modal ────────────────────────────────────────────────── */
+type ChatAttachment = {
+  kind: 'image' | 'file';
+  name: string;
+  url: string;   // object URL
+  size: string;
+};
+
 type ChatMessage = {
   id: string;
   from: 'ai' | 'agent' | 'user';
   text: string;
   time: string;
+  attachment?: ChatAttachment;
 };
 
 const AI_FAQ_MAP: { keywords: string[]; answer: string }[] = [
@@ -1018,8 +1026,11 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [transferring, setTransferring] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -1027,6 +1038,42 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
 
   function addMessage(msg: Omit<ChatMessage, 'id'>) {
     setMessages(prev => [...prev, { ...msg, id: String(Date.now()) }]);
+  }
+
+  function formatBytes(bytes: number) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setShowAttachMenu(false);
+    const url = URL.createObjectURL(file);
+    const isImage = file.type.startsWith('image/');
+    const attachment: ChatAttachment = {
+      kind: isImage ? 'image' : 'file',
+      name: file.name,
+      url,
+      size: formatBytes(file.size),
+    };
+    addMessage({ from: 'user', text: '', time: nowTime(), attachment });
+    // reset input
+    e.target.value = '';
+    // agent/AI acknowledgement
+    setIsTyping(true);
+    const ackReplies = isImage
+      ? ["Got your photo! I can see it clearly. Let me take a look...", "Thanks for sending that image. Reviewing it now."]
+      : ["I've received your file. Give me a moment to review it.", "Thanks for sending that document. I'll check it right away."];
+    setTimeout(() => {
+      setIsTyping(false);
+      addMessage({
+        from: mode === 'ai' ? 'ai' : 'agent',
+        text: ackReplies[Math.floor(Math.random() * ackReplies.length)],
+        time: nowTime(),
+      });
+    }, 1400 + Math.random() * 600);
   }
 
   function handleSend(text?: string) {
@@ -1177,16 +1224,46 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
                     {isBot ? 'Vexa AI' : AGENT.name}
                   </p>
                 )}
-                <div
-                  className={`px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${
-                    isUser
-                      ? 'bg-[#162353] text-white rounded-br-sm'
-                      : 'bg-white text-[#1E293B] rounded-bl-sm border border-[#F0F0F0]'
-                  }`}
-                  style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
-                >
-                  {msg.text}
-                </div>
+
+                {/* Attachment bubble */}
+                {msg.attachment && (
+                  <div className={`rounded-2xl overflow-hidden mb-1 ${isUser ? 'rounded-br-sm' : 'rounded-bl-sm'}`}
+                    style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.10)', maxWidth: 220 }}>
+                    {msg.attachment.kind === 'image' ? (
+                      <img
+                        src={msg.attachment.url}
+                        alt={msg.attachment.name}
+                        className="w-full object-cover"
+                        style={{ maxHeight: 200 }}
+                      />
+                    ) : (
+                      <div className={`flex items-center gap-3 px-4 py-3 ${isUser ? 'bg-[#162353]' : 'bg-white border border-[#F0F0F0]'}`}>
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${isUser ? 'bg-white/15' : 'bg-[#EFF6FF]'}`}>
+                          <FileIcon className={`w-4 h-4 ${isUser ? 'text-white' : 'text-[#2563EB]'}`} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className={`text-[12px] font-semibold truncate ${isUser ? 'text-white' : 'text-[#1E293B]'}`}>{msg.attachment.name}</p>
+                          <p className={`text-[11px] mt-0.5 ${isUser ? 'text-white/60' : 'text-[#94A3B8]'}`}>{msg.attachment.size}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Text bubble (skip if empty attachment-only message) */}
+                {msg.text && (
+                  <div
+                    className={`px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${
+                      isUser
+                        ? 'bg-[#162353] text-white rounded-br-sm'
+                        : 'bg-white text-[#1E293B] rounded-bl-sm border border-[#F0F0F0]'
+                    }`}
+                    style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
+                  >
+                    {msg.text}
+                  </div>
+                )}
+
                 <div className={`flex items-center gap-1 mt-1 px-1 ${isUser ? 'flex-row-reverse' : ''}`}>
                   <span className="text-[10px] text-[#CBD5E1]">{msg.time}</span>
                   {isUser && <CheckCheck className="w-3 h-3 text-[#22C55E]" />}
@@ -1262,11 +1339,58 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
+      {/* ── Attach menu popup ── */}
+      {showAttachMenu && (
+        <div className="flex-none bg-white border-t border-[#E8EBF0] px-4 pt-3 pb-2">
+          <div className="flex gap-3">
+            {/* Camera / Photo */}
+            <button
+              onClick={() => { setShowAttachMenu(false); cameraInputRef.current?.click(); }}
+              className="flex-1 flex flex-col items-center gap-2 bg-[#F8F9FB] rounded-2xl py-4 active:bg-[#EEF2F7] transition-colors border border-[#E8EBF0]"
+            >
+              <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#00C6FF] to-[#0072FF] flex items-center justify-center">
+                <ImagePlus className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-[12px] font-semibold text-[#334155]">Photo / Camera</span>
+            </button>
+            {/* File */}
+            <button
+              onClick={() => { setShowAttachMenu(false); fileInputRef.current?.click(); }}
+              className="flex-1 flex flex-col items-center gap-2 bg-[#F8F9FB] rounded-2xl py-4 active:bg-[#EEF2F7] transition-colors border border-[#E8EBF0]"
+            >
+              <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#7C3AED] to-[#4F46E5] flex items-center justify-center">
+                <FileUp className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-[12px] font-semibold text-[#334155]">Document / File</span>
+            </button>
+          </div>
+          <button
+            onClick={() => setShowAttachMenu(false)}
+            className="w-full mt-2 py-2 text-[12px] font-semibold text-[#94A3B8] active:text-[#64748B]"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
       {/* ── Input bar ── */}
       <div
-        className="flex-none bg-white border-t border-[#E8EBF0] px-4 py-3 flex items-end gap-3"
+        className="flex-none bg-white border-t border-[#E8EBF0] px-4 py-3 flex items-end gap-2"
         style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)' }}
       >
+        {/* Attachment button */}
+        <button
+          onClick={() => setShowAttachMenu(v => !v)}
+          className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border transition-colors ${
+            showAttachMenu
+              ? 'bg-[#162353] border-[#162353]'
+              : 'bg-[#F8F9FB] border-[#E8EBF0] active:bg-[#EEF2F7]'
+          }`}
+        >
+          <Paperclip className={`w-4 h-4 ${showAttachMenu ? 'text-white' : 'text-[#64748B]'}`} />
+        </button>
+
+        {/* Text input */}
         <div className="flex-1 bg-[#F8F9FB] rounded-2xl border border-[#E8EBF0] flex items-end px-4 py-2.5">
           <input
             ref={inputRef}
@@ -1278,6 +1402,8 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
             className="flex-1 bg-transparent text-[13px] text-[#1E293B] placeholder-[#94A3B8] outline-none resize-none"
           />
         </div>
+
+        {/* Send button */}
         <button
           onClick={() => handleSend()}
           disabled={!inputText.trim()}
@@ -1286,6 +1412,23 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
           <Send className="w-4 h-4 text-white" />
         </button>
       </div>
+
+      {/* Hidden file inputs */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleFileSelected}
+      />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+        className="hidden"
+        onChange={handleFileSelected}
+      />
 
       <style>{`
         @keyframes typingDot {
