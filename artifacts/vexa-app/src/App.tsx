@@ -9,6 +9,7 @@ import {
   BellRing, HelpCircle, Info, LogOut, User, Lock,
   MessageCircle, Phone, Mail, ExternalLink, Star, ChevronDown,
   Send, X, Bot, CheckCheck, Wifi, Paperclip, ImagePlus, FileUp, FileText as FileIcon,
+  Gift, Users, Share2, Percent, TrendingUp, BadgeCheck, ChevronUp,
 } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
@@ -655,26 +656,33 @@ function MoniepointHome() {
 
             <div className="grid grid-cols-2 gap-2">
               {/* Cashback */}
-              <div className="bg-white rounded-xl p-3.5 border border-[#F0F0F0] flex items-center gap-3">
-                {/* coins image: ~36×36 */}
+              <button
+                onClick={() => navigate('/cashback')}
+                className="bg-white rounded-xl p-3.5 border border-[#F0F0F0] flex items-center gap-3 active:bg-[#F8F9FB] transition-colors text-left"
+              >
                 <div className="w-9 h-9 shrink-0 flex items-center justify-center text-[26px] leading-none select-none">
                   🪙
                 </div>
-                <div>
+                <div className="flex-1 min-w-0">
                   <div className="text-[11px] font-medium text-[#888] mb-0.5">Cashback</div>
-                  <div className="text-[14px] font-bold text-[#111]">₦0.00</div>
+                  <div className="text-[14px] font-bold text-[#111]">₦1,450.00</div>
                 </div>
-              </div>
+                <ChevronRight className="w-3.5 h-3.5 text-[#CBD5E1] shrink-0" />
+              </button>
               {/* Referrals */}
-              <div className="bg-white rounded-xl p-3.5 border border-[#F0F0F0] flex items-center gap-3">
+              <button
+                onClick={() => navigate('/referrals')}
+                className="bg-white rounded-xl p-3.5 border border-[#F0F0F0] flex items-center gap-3 active:bg-[#F8F9FB] transition-colors text-left"
+              >
                 <div className="w-9 h-9 shrink-0 flex items-center justify-center text-[26px] leading-none select-none">
                   📣
                 </div>
-                <div>
+                <div className="flex-1 min-w-0">
                   <div className="text-[11px] font-medium text-[#888] mb-0.5">Referrals</div>
-                  <div className="text-[14px] font-bold text-[#111]">₦0.00</div>
+                  <div className="text-[14px] font-bold text-[#111]">₦40,000.00</div>
                 </div>
-              </div>
+                <ChevronRight className="w-3.5 h-3.5 text-[#CBD5E1] shrink-0" />
+              </button>
             </div>
           </div>
 
@@ -3400,6 +3408,278 @@ function ServicesTabPage() {
   );
 }
 
+/* ─── Cashback Page ──────────────────────────────────────────────────── */
+function CashbackPage() {
+  const [, navigate] = useLocation();
+  const [redeemed, setRedeemed] = useState(false);
+
+  const totalEarned = 1450;
+  const pending     = 200;
+  const redeemable  = totalEarned - pending;
+
+  const history = [
+    { id: 1, desc: 'Transfer to GTB •••7892',   date: '28 Jul 2026', rate: '2%', earned: 100 },
+    { id: 2, desc: 'Airtime – MTN ₦2,000',      date: '25 Jul 2026', rate: '5%', earned: 100 },
+    { id: 3, desc: 'Data – Airtel 5GB',          date: '22 Jul 2026', rate: '5%', earned: 250 },
+    { id: 4, desc: 'Transfer to Access •••3301', date: '19 Jul 2026', rate: '2%', earned: 200 },
+    { id: 5, desc: 'Education – UNILAG fees',    date: '14 Jul 2026', rate: '3%', earned: 600 },
+    { id: 6, desc: 'Betting – Betway wallet',    date: '10 Jul 2026', rate: '1%', earned: 200 },
+  ];
+
+  const rates = [
+    { label: 'Transfers',  rate: '2%', icon: '↗' },
+    { label: 'Airtime',    rate: '5%', icon: '📶' },
+    { label: 'Data',       rate: '5%', icon: '🌐' },
+    { label: 'Education',  rate: '3%', icon: '🎓' },
+    { label: 'Betting',    rate: '1%', icon: '🎲' },
+    { label: 'Savings',    rate: '4%', icon: '🏦' },
+  ];
+
+  if (redeemed) {
+    return (
+      <div className="fixed inset-0 bg-white flex flex-col items-center justify-center px-6" style={{ fontFamily: "'Inter', sans-serif" }}>
+        <div className="w-20 h-20 rounded-full bg-yellow-50 flex items-center justify-center mb-5 text-[36px]">🪙</div>
+        <p className="text-[20px] font-bold text-[#111] mb-1">Cashback Redeemed!</p>
+        <p className="text-[13px] text-[#888] text-center mb-8">₦{redeemable.toLocaleString('en-NG')}.00 has been added to your Vexa wallet.</p>
+        <button onClick={() => navigate('/')} className="w-full max-w-xs bg-[#162353] rounded-xl h-[50px] text-[14px] font-semibold text-white">Back to Home</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+      {/* Header */}
+      <div className="flex-none flex items-center gap-3 px-4 pb-3 bg-white border-b border-[#E8EBF0]"
+        style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
+        <button onClick={() => navigate('/')} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        </button>
+        <span className="text-[16px] font-bold text-[#111]">Cashback</span>
+      </div>
+
+      <div className="flex-1 overflow-y-auto py-4 px-4 space-y-4" style={{ scrollbarWidth: 'none' }}>
+
+        {/* Hero balance card */}
+        <div className="bg-[#162353] rounded-2xl px-5 py-5 relative overflow-hidden">
+          <div className="absolute -top-4 -right-4 w-24 h-24 rounded-full opacity-10 bg-white" />
+          <div className="absolute bottom-[-20px] right-[40px] w-16 h-16 rounded-full opacity-5 bg-white" />
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-7 h-7 rounded-full bg-yellow-400/20 flex items-center justify-center">
+              <span className="text-[14px]">🪙</span>
+            </div>
+            <span className="text-white/70 text-[12px] font-medium">Total Earned</span>
+          </div>
+          <p className="text-[28px] font-extrabold text-white mb-1">₦{totalEarned.toLocaleString('en-NG')}.00</p>
+          <div className="flex gap-4 mt-3">
+            <div className="bg-white/10 rounded-xl px-4 py-2.5 flex-1">
+              <p className="text-[10px] text-white/60 mb-0.5">Redeemable</p>
+              <p className="text-[15px] font-bold text-white">₦{redeemable.toLocaleString('en-NG')}.00</p>
+            </div>
+            <div className="bg-white/10 rounded-xl px-4 py-2.5 flex-1">
+              <p className="text-[10px] text-white/60 mb-0.5">Pending</p>
+              <p className="text-[15px] font-bold text-yellow-300">₦{pending.toLocaleString('en-NG')}.00</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setRedeemed(true)}
+            className="mt-4 w-full bg-yellow-400 rounded-xl h-[42px] text-[13px] font-bold text-[#111] active:bg-yellow-300 transition-colors flex items-center justify-center gap-2"
+          >
+            <Gift className="w-4 h-4" />
+            Redeem ₦{redeemable.toLocaleString('en-NG')}.00 to Wallet
+          </button>
+        </div>
+
+        {/* Cashback rates */}
+        <div>
+          <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide mb-2 px-1">Cashback Rates</p>
+          <div className="grid grid-cols-3 gap-2">
+            {rates.map(r => (
+              <div key={r.label} className="bg-white rounded-2xl border border-[#F0F0F0] px-3 py-3 flex flex-col items-center gap-1.5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                <span className="text-[20px]">{r.icon}</span>
+                <span className="text-[12px] font-bold text-[#162353]">{r.rate}</span>
+                <span className="text-[10px] text-[#888] font-medium">{r.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Earning history */}
+        <div>
+          <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide mb-2 px-1">Earning History</p>
+          <div className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
+            {history.map((item, i) => (
+              <div key={item.id} className={`flex items-center gap-3.5 px-4 py-3.5 ${i < history.length - 1 ? 'border-b border-[#F5F5F5]' : ''}`}>
+                <div className="w-9 h-9 rounded-full bg-yellow-50 flex items-center justify-center flex-shrink-0">
+                  <Percent className="w-4 h-4 text-yellow-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold text-[#111] truncate">{item.desc}</p>
+                  <p className="text-[11px] text-[#888] mt-0.5">{item.date} · {item.rate} cashback</p>
+                </div>
+                <span className="text-[13px] font-bold text-[#16A34A] flex-shrink-0">+₦{item.earned}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Info note */}
+        <div className="bg-[#F0F4FF] border border-[#C7D7FF] rounded-2xl px-4 py-4">
+          <p className="text-[12px] font-bold text-[#162353] mb-1 flex items-center gap-1.5">
+            <TrendingUp className="w-3.5 h-3.5" /> How it works
+          </p>
+          <p className="text-[11px] text-[#555] leading-relaxed">Earn cashback on every transaction. Pending cashback clears after 7 days and can then be redeemed to your Vexa wallet instantly.</p>
+        </div>
+
+        <div className="pb-2" />
+      </div>
+    </div>
+  );
+}
+
+/* ─── Referrals Page ─────────────────────────────────────────────────── */
+function ReferralsPage() {
+  const [, navigate] = useLocation();
+  const { user } = useAuth();
+  const [copied, setCopied] = useState(false);
+
+  const refCode = 'VEXA-' + (user?.accountNumber?.slice(-4) ?? '2032');
+
+  const referrals = [
+    { name: 'Amara Okafor',    phone: '080***4521', date: '25 Jul 2026', earned: 10000, status: 'paid' },
+    { name: 'Emeka Nwosu',     phone: '081***9034', date: '18 Jul 2026', earned: 10000, status: 'paid' },
+    { name: 'Fatima Bello',    phone: '090***1122', date: '10 Jul 2026', earned: 10000, status: 'paid' },
+    { name: 'Tunde Bakare',    phone: '080***7743', date: '2 Jul 2026',  earned: 10000, status: 'pending' },
+    { name: 'Ngozi Eze',       phone: '081***3308', date: '24 Jun 2026', earned: 10000, status: 'paid' },
+  ];
+
+  const totalEarned  = referrals.filter(r => r.status === 'paid').length * 10000;
+  const totalPending = referrals.filter(r => r.status === 'pending').length * 10000;
+
+  function copyCode() {
+    navigator.clipboard.writeText(refCode).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  function shareCode() {
+    if (navigator.share) {
+      navigator.share({ title: 'Join Vexa!', text: `Use my referral code ${refCode} on Vexa and we both earn ₦10,000 when you make your first transfer. Download at vexa.app` });
+    } else {
+      copyCode();
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+      {/* Header */}
+      <div className="flex-none flex items-center gap-3 px-4 pb-3 bg-white border-b border-[#E8EBF0]"
+        style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
+        <button onClick={() => navigate('/')} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        </button>
+        <span className="text-[16px] font-bold text-[#111]">Refer & Earn</span>
+      </div>
+
+      <div className="flex-1 overflow-y-auto py-4 px-4 space-y-4" style={{ scrollbarWidth: 'none' }}>
+
+        {/* Hero */}
+        <div className="bg-[#162353] rounded-2xl px-5 py-5 relative overflow-hidden">
+          <div className="absolute -top-6 -right-6 w-28 h-28 rounded-full opacity-10 bg-white" />
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-7 h-7 rounded-full bg-green-400/20 flex items-center justify-center">
+              <Users className="w-4 h-4 text-green-300" />
+            </div>
+            <span className="text-white/70 text-[12px] font-medium">{referrals.length} friends referred</span>
+          </div>
+          <p className="text-[12px] text-white/60 mb-0.5">Total Earned</p>
+          <p className="text-[28px] font-extrabold text-white mb-3">₦{totalEarned.toLocaleString('en-NG')}.00</p>
+
+          {totalPending > 0 && (
+            <div className="bg-white/10 rounded-xl px-4 py-2 mb-3 flex items-center justify-between">
+              <span className="text-[12px] text-white/70">Pending (awaiting 1st transfer)</span>
+              <span className="text-[13px] font-bold text-yellow-300">₦{totalPending.toLocaleString('en-NG')}</span>
+            </div>
+          )}
+
+          {/* Referral code */}
+          <div className="bg-white/15 rounded-xl px-4 py-3 flex items-center justify-between mb-3">
+            <div>
+              <p className="text-[10px] text-white/60 mb-0.5">Your referral code</p>
+              <p className="text-[18px] font-extrabold text-white tracking-widest">{refCode}</p>
+            </div>
+            <button onClick={copyCode} className="flex items-center gap-1.5 bg-white/20 rounded-lg px-3 py-2 active:bg-white/30 transition-colors">
+              {copied
+                ? <BadgeCheck className="w-4 h-4 text-green-300" />
+                : <Copy className="w-4 h-4 text-white" />}
+              <span className="text-[11px] font-semibold text-white">{copied ? 'Copied!' : 'Copy'}</span>
+            </button>
+          </div>
+
+          {/* Share button */}
+          <button
+            onClick={shareCode}
+            className="w-full bg-green-400 rounded-xl h-[42px] text-[13px] font-bold text-[#111] active:bg-green-300 transition-colors flex items-center justify-center gap-2"
+          >
+            <Share2 className="w-4 h-4" />
+            Share &amp; Earn ₦10,000 per Referral
+          </button>
+        </div>
+
+        {/* How it works steps */}
+        <div>
+          <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide mb-2 px-1">How it works</p>
+          <div className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
+            {[
+              { step: '1', title: 'Share your code', desc: 'Send your unique code to friends and family.', icon: Share2 },
+              { step: '2', title: 'They sign up',     desc: 'Your friend creates a Vexa account using your code.', icon: Users },
+              { step: '3', title: 'Both earn ₦10,000', desc: 'You both get ₦10,000 when they complete their first transfer.', icon: Gift },
+            ].map((s, i, arr) => {
+              const Icon = s.icon;
+              return (
+                <div key={s.step} className={`flex items-start gap-3.5 px-4 py-4 ${i < arr.length - 1 ? 'border-b border-[#F5F5F5]' : ''}`}>
+                  <div className="w-8 h-8 rounded-full bg-[#162353] flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Icon className="w-3.5 h-3.5 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-bold text-[#111]">{s.title}</p>
+                    <p className="text-[12px] text-[#888] mt-0.5 leading-relaxed">{s.desc}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Referred friends list */}
+        <div>
+          <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide mb-2 px-1">Referred Friends</p>
+          <div className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
+            {referrals.map((r, i) => (
+              <div key={r.name} className={`flex items-center gap-3.5 px-4 py-3.5 ${i < referrals.length - 1 ? 'border-b border-[#F5F5F5]' : ''}`}>
+                <div className="w-9 h-9 rounded-full bg-[#EEF2FF] flex items-center justify-center flex-shrink-0">
+                  <span className="text-[13px] font-bold text-[#162353]">{r.name[0]}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold text-[#111]">{r.name}</p>
+                  <p className="text-[11px] text-[#888] mt-0.5">{r.phone} · {r.date}</p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-[13px] font-bold text-[#16A34A]">+₦{r.earned.toLocaleString('en-NG')}</p>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${r.status === 'paid' ? 'bg-green-50 text-green-600' : 'bg-yellow-50 text-yellow-600'}`}>
+                    {r.status === 'paid' ? 'Paid' : 'Pending'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="pb-2" />
+      </div>
+    </div>
+  );
+}
+
 /* ── Business security gate ─────────────────────────────────────────── */
 function BusinessSecurityGate({ children }: { children: React.ReactNode }) {
   const { isVerified } = useBusinessSecurity();
@@ -3436,6 +3716,8 @@ function Router() {
       <Route path="/help-support" component={HelpSupportPage} />
       <Route path="/notifications" component={NotificationsPage} />
       <Route path="/about-vexa" component={AboutVexaPage} />
+      <Route path="/cashback" component={CashbackPage} />
+      <Route path="/referrals" component={ReferralsPage} />
       {/* Vexa Business — onboarding is unguarded; all other routes require security verification */}
       <Route path="/business/onboarding" component={BusinessOnboarding} />
       <Route path="/business">
