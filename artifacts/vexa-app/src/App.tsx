@@ -574,7 +574,7 @@ function MoniepointHome() {
             {/* balance */}
             <div className="flex items-center gap-2.5 mb-0.5">
               <span className="text-[22px] font-bold tracking-tight leading-none">
-                {balanceHidden ? '* * * * *' : '₦73,000.00'}
+                {balanceHidden ? '* * * * *' : '₦2,506,400.90'}
               </span>
               <button onClick={() => setBalanceHidden(v => !v)} className="focus:outline-none">
                 {balanceHidden
