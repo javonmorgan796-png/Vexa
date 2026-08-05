@@ -33,6 +33,7 @@ import BusinessTransfers from '@/pages/business/BusinessTransfers';
 import EmployeeManagement from '@/pages/business/EmployeeManagement';
 import PayrollManagement from '@/pages/business/PayrollManagement';
 import { BusinessSecurityProvider, useBusinessSecurity } from '@/context/BusinessSecurityContext';
+import { UserDataProvider, useUserData } from '@/context/UserDataContext';
 import BusinessSecurityScreen from '@/pages/business/BusinessSecurityScreen';
 
 const queryClient = new QueryClient();
@@ -506,6 +507,7 @@ function MoniepointHome() {
   const [balanceHidden, setBalanceHidden] = useState(false);
   const [, navigate] = useLocation();
   const { user, profilePhoto } = useAuth();
+  const { balance, cashbackTotal, referralTotalEarned } = useUserData();
   const initials = (user?.name ?? 'C').split(' ').map((p: string) => p[0]).slice(0, 2).join('').toUpperCase();
   const displayName = user?.name ?? 'Chibuzor Emmanuel Dike';
   const accountNumber = user?.accountNumber ?? '9067212032';
@@ -574,7 +576,7 @@ function MoniepointHome() {
             {/* balance */}
             <div className="flex items-center gap-2.5 mb-0.5">
               <span className="text-[22px] font-bold tracking-tight leading-none">
-                {balanceHidden ? '* * * * *' : '₦2,506,400.90'}
+                {balanceHidden ? '* * * * *' : `₦${balance.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
               </span>
               <button onClick={() => setBalanceHidden(v => !v)} className="focus:outline-none">
                 {balanceHidden
@@ -665,7 +667,7 @@ function MoniepointHome() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[11px] font-medium text-[#888] mb-0.5">Cashback</div>
-                  <div className="text-[14px] font-bold text-[#111]">₦1,450.00</div>
+                  <div className="text-[14px] font-bold text-[#111]">₦{cashbackTotal.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                 </div>
                 <ChevronRight className="w-3.5 h-3.5 text-[#CBD5E1] shrink-0" />
               </button>
@@ -679,7 +681,7 @@ function MoniepointHome() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[11px] font-medium text-[#888] mb-0.5">Referrals</div>
-                  <div className="text-[14px] font-bold text-[#111]">₦40,000.00</div>
+                  <div className="text-[14px] font-bold text-[#111]">₦{referralTotalEarned.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                 </div>
                 <ChevronRight className="w-3.5 h-3.5 text-[#CBD5E1] shrink-0" />
               </button>
@@ -3412,19 +3414,13 @@ function ServicesTabPage() {
 function CashbackPage() {
   const [, navigate] = useLocation();
   const [redeemed, setRedeemed] = useState(false);
-
-  const totalEarned = 1450;
-  const pending     = 200;
-  const redeemable  = totalEarned - pending;
-
-  const history = [
-    { id: 1, desc: 'Transfer to GTB •••7892',   date: '28 Jul 2026', rate: '2%', earned: 100 },
-    { id: 2, desc: 'Airtime – MTN ₦2,000',      date: '25 Jul 2026', rate: '5%', earned: 100 },
-    { id: 3, desc: 'Data – Airtel 5GB',          date: '22 Jul 2026', rate: '5%', earned: 250 },
-    { id: 4, desc: 'Transfer to Access •••3301', date: '19 Jul 2026', rate: '2%', earned: 200 },
-    { id: 5, desc: 'Education – UNILAG fees',    date: '14 Jul 2026', rate: '3%', earned: 600 },
-    { id: 6, desc: 'Betting – Betway wallet',    date: '10 Jul 2026', rate: '1%', earned: 200 },
-  ];
+  const {
+    cashbackTotal: totalEarned,
+    cashbackPending: pending,
+    cashbackRedeemable: redeemable,
+    cashbackHistory: history,
+    redeemCashback,
+  } = useUserData();
 
   const rates = [
     { label: 'Transfers',  rate: '2%', icon: '↗' },
@@ -3481,7 +3477,7 @@ function CashbackPage() {
             </div>
           </div>
           <button
-            onClick={() => setRedeemed(true)}
+            onClick={async () => { await redeemCashback(); setRedeemed(true); }}
             className="mt-4 w-full bg-yellow-400 rounded-xl h-[42px] text-[13px] font-bold text-[#111] active:bg-yellow-300 transition-colors flex items-center justify-center gap-2"
           >
             <Gift className="w-4 h-4" />
@@ -3542,18 +3538,12 @@ function ReferralsPage() {
   const { user } = useAuth();
   const [copied, setCopied] = useState(false);
 
-  const refCode = 'VEXA-' + (user?.accountNumber?.slice(-4) ?? '2032');
-
-  const referrals = [
-    { name: 'Amara Okafor',    phone: '080***4521', date: '25 Jul 2026', earned: 10000, status: 'paid' },
-    { name: 'Emeka Nwosu',     phone: '081***9034', date: '18 Jul 2026', earned: 10000, status: 'paid' },
-    { name: 'Fatima Bello',    phone: '090***1122', date: '10 Jul 2026', earned: 10000, status: 'paid' },
-    { name: 'Tunde Bakare',    phone: '080***7743', date: '2 Jul 2026',  earned: 10000, status: 'pending' },
-    { name: 'Ngozi Eze',       phone: '081***3308', date: '24 Jun 2026', earned: 10000, status: 'paid' },
-  ];
-
-  const totalEarned  = referrals.filter(r => r.status === 'paid').length * 10000;
-  const totalPending = referrals.filter(r => r.status === 'pending').length * 10000;
+  const {
+    referrals,
+    referralCode: refCode,
+    referralTotalEarned: totalEarned,
+    referralTotalPending: totalPending,
+  } = useUserData();
 
   function copyCode() {
     navigator.clipboard.writeText(refCode).catch(() => {});
@@ -3876,6 +3866,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <UserDataProvider>
         <BusinessProvider>
           <BusinessSecurityProvider>
             <TooltipProvider>
@@ -3886,6 +3877,7 @@ function App() {
             </TooltipProvider>
           </BusinessSecurityProvider>
         </BusinessProvider>
+        </UserDataProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

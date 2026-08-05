@@ -143,8 +143,8 @@ export default function SignUpPage() {
     if (entered.length < 6) { setOtpError('Enter the 6-digit OTP'); return; }
     if (entered !== otpCode) { setOtpError('Incorrect OTP. Please try again.'); return; }
     setOtpLoading(true);
-    setTimeout(() => {
-      const res = signUp(name.trim(), phone.trim(), passcode.join(''));
+    setTimeout(async () => {
+      const res = await signUp(name.trim(), phone.trim(), passcode.join(''));
       setOtpLoading(false);
       if (res.success) setStep('success');
       else setOtpError(res.error ?? 'Registration failed');

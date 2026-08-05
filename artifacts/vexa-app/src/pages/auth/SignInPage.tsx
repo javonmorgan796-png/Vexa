@@ -178,8 +178,8 @@ export default function SignInPage() {
     if (code.length < 6) { setError('Enter your 6-digit passcode'); return; }
 
     setLoading(true);
-    setTimeout(() => {
-      const res = signIn(phone, code);
+    setTimeout(async () => {
+      const res = await signIn(phone, code);
       setLoading(false);
       if (res.success) {
         clearAttempts(cleanPhone);
@@ -200,13 +200,13 @@ export default function SignInPage() {
     }, 800);
   }
 
-  function handleFingerprint() {
+  async function handleFingerprint() {
     setFingerprintLoading(true);
     setTimeout(() => {
       setFingerprintLoading(false);
       setFingerprintSuccess(true);
-      setTimeout(() => {
-        const res = signIn('08067212032', '123456');
+      setTimeout(async () => {
+        const res = await signIn('08067212032', '123456');
         if (res.success) navigate('/');
         else setFingerprintSuccess(false);
       }, 800);

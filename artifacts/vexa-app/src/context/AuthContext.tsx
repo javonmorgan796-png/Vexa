@@ -1,12 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
 
 export interface User {
+  id: string;
   name: string;
   email: string;
   phone: string;
   accountNumber: string;
   pin: string;
-  password: string; // stores 6-digit login passcode
   level: number;
   verified: boolean;
 }
@@ -15,169 +16,186 @@ interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   profilePhoto: string | null;
-  signIn: (phone: string, passcode: string) => { success: boolean; error?: string };
-  signUp: (name: string, phone: string, passcode: string) => { success: boolean; error?: string };
-  signOut: () => void;
-  updatePin: (oldPin: string, newPin: string) => { success: boolean; error?: string };
-  updatePassword: (oldPass: string, newPass: string) => { success: boolean; error?: string };
-  updateProfile: (name: string, email: string, phone: string) => void;
-  updateProfilePhoto: (photo: string | null) => void;
+  loading: boolean;
+  signIn: (phone: string, passcode: string) => Promise<{ success: boolean; error?: string }>;
+  signUp: (name: string, phone: string, passcode: string) => Promise<{ success: boolean; error?: string }>;
+  signOut: () => Promise<void>;
+  updatePin: (oldPin: string, newPin: string) => Promise<{ success: boolean; error?: string }>;
+  updatePassword: (oldPass: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
+  updateProfile: (name: string, email: string, phone: string) => Promise<void>;
+  updateProfilePhoto: (photo: string | null) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-const DEFAULT_USER: User = {
-  name: 'Chibuzor Emmanuel Dike',
-  email: 'chibuzor@vexa.com',
-  phone: '08067212032',
-  accountNumber: '9067212032',
-  pin: '1234',
-  password: '123456', // 6-digit login passcode
-  level: 3,
-  verified: true,
-};
-
-function getUsers(): User[] {
-  try {
-    const parsed = JSON.parse(localStorage.getItem('vexa_users') || 'null');
-    if (!Array.isArray(parsed) || parsed.length === 0) return [DEFAULT_USER];
-    const demoPhone = DEFAULT_USER.phone.replace(/\D/g, '');
-    // If the stored list doesn't contain the demo user (e.g. old email-based data),
-    // inject it so demo credentials always work.
-    const hasDemo = parsed.some(
-      (u: User) => typeof u.phone === 'string' && u.phone.replace(/\D/g, '') === demoPhone
-    );
-    if (!hasDemo) {
-      const fixed = [DEFAULT_USER, ...parsed.filter((u: User) => typeof u.phone === 'string' && u.phone)];
-      localStorage.setItem('vexa_users', JSON.stringify(fixed));
-      return fixed;
-    }
-    return parsed;
-  } catch {
-    return [DEFAULT_USER];
-  }
-}
-function saveUsers(users: User[]) {
-  localStorage.setItem('vexa_users', JSON.stringify(users));
+function normalizePhone(phone: string): string {
+  return phone.replace(/\D/g, '');
 }
 
-const PHOTO_KEY = 'vexa_profile_photo';
+function phoneToEmail(phone: string): string {
+  return `${normalizePhone(phone)}@vexa.app`;
+}
+
+function genAccountNumber(): string {
+  return '9' + Array.from({ length: 9 }, () => Math.floor(Math.random() * 10)).join('');
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(() => {
-    try {
-      const s = localStorage.getItem('vexa_session');
-      return s ? JSON.parse(s) : null;
-    } catch { return null; }
-  });
-  const [profilePhoto, setProfilePhoto] = useState<string | null>(() => localStorage.getItem(PHOTO_KEY));
+  const [user, setUser]               = useState<User | null>(null);
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
+  const [loading, setLoading]         = useState(true);
 
   useEffect(() => {
-    // Seed / repair the users list on every load.
-    // If vexa_users is missing OR doesn't contain the demo account by phone,
-    // reset storage so stale email-based data from a previous auth scheme
-    // doesn't prevent the demo credentials from working.
-    const stored = localStorage.getItem('vexa_users');
-    if (!stored) {
-      saveUsers([DEFAULT_USER]);
-      return;
-    }
-    try {
-      const users: User[] = JSON.parse(stored);
-      const demoPhone = DEFAULT_USER.phone.replace(/\D/g, '');
-      const hasDemo = Array.isArray(users) &&
-        users.some(u => typeof u.phone === 'string' && u.phone.replace(/\D/g, '') === demoPhone);
-      if (!hasDemo) saveUsers([DEFAULT_USER, ...users.filter(u => typeof u.phone === 'string' && u.phone)]);
-    } catch {
-      saveUsers([DEFAULT_USER]);
-    }
+    // Restore session from Supabase on mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        fetchProfile(session.user.id);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        fetchProfile(session.user.id);
+      } else {
+        setUser(null);
+        setProfilePhoto(null);
+        setLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  function persist(u: User | null) {
-    setUser(u);
-    if (u) localStorage.setItem('vexa_session', JSON.stringify(u));
-    else localStorage.removeItem('vexa_session');
+  async function fetchProfile(userId: string) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (error || !data) {
+      console.error('[Auth] fetchProfile error:', error?.message);
+      setLoading(false);
+      return;
+    }
+
+    setUser({
+      id:            data.id,
+      name:          data.name,
+      email:         data.email ?? '',
+      phone:         data.phone,
+      accountNumber: data.account_number,
+      pin:           data.pin,
+      level:         data.level,
+      verified:      data.verified,
+    });
+    setProfilePhoto(data.profile_photo ?? null);
+    setLoading(false);
   }
 
-  // Sign in by phone number + 6-digit passcode
-  const signIn = (phone: string, passcode: string) => {
-    const normalized = phone.replace(/\D/g, '');
-    // Always allow the hardcoded demo account — bypasses any localStorage issues
-    if (
-      normalized === DEFAULT_USER.phone.replace(/\D/g, '') &&
-      passcode === DEFAULT_USER.password
-    ) {
-      persist(DEFAULT_USER);
-      return { success: true };
+  const signIn = async (phone: string, passcode: string): Promise<{ success: boolean; error?: string }> => {
+    const email = phoneToEmail(phone);
+    const { error } = await supabase.auth.signInWithPassword({ email, password: passcode });
+    if (error) {
+      return { success: false, error: 'Invalid phone number or passcode' };
     }
-    const users = getUsers();
-    const found = users.find(
-      u => typeof u.phone === 'string' && u.phone.replace(/\D/g, '') === normalized && u.password === passcode
-    );
-    if (!found) return { success: false, error: 'Invalid phone number or passcode' };
-    persist(found);
     return { success: true };
   };
 
-  // Sign up with name, phone, and 6-digit passcode — no email required
-  const signUp = (name: string, phone: string, passcode: string) => {
-    const users = getUsers();
-    const normalized = phone.replace(/\D/g, '');
-    if (users.find(u => u.phone.replace(/\D/g, '') === normalized)) {
-      return { success: false, error: 'An account with this phone number already exists' };
+  const signUp = async (
+    name: string,
+    phone: string,
+    passcode: string,
+  ): Promise<{ success: boolean; error?: string }> => {
+    const normalized    = normalizePhone(phone);
+    const email         = `${normalized}@vexa.app`;
+    const accountNumber = genAccountNumber();
+    const referralCode  = 'VEXA-' + accountNumber.slice(-4);
+
+    const { data, error } = await supabase.auth.signUp({ email, password: passcode });
+    if (error) {
+      if (error.message?.toLowerCase().includes('already')) {
+        return { success: false, error: 'An account with this phone number already exists' };
+      }
+      return { success: false, error: error.message };
     }
-    const digits = () => Math.floor(Math.random() * 10).toString();
-    const accountNumber = '9' + Array.from({ length: 9 }, digits).join('');
-    const newUser: User = {
+
+    if (!data.user) {
+      return { success: false, error: 'Sign up failed. Please try again.' };
+    }
+
+    const { error: profileError } = await supabase.from('profiles').insert({
+      id:             data.user.id,
       name,
-      email: '',
+      email:          '',
       phone,
-      accountNumber,
-      pin: '0000',
-      password: passcode,
-      level: 1,
-      verified: false,
-    };
-    saveUsers([...users, newUser]);
-    persist(newUser);
+      account_number: accountNumber,
+      pin:            '0000',
+      level:          1,
+      verified:       false,
+      balance:        0,
+      referral_code:  referralCode,
+    });
+
+    if (profileError) {
+      console.error('[Auth] profile insert error:', profileError.message);
+      return { success: false, error: 'Account created but profile setup failed. Please contact support.' };
+    }
+
     return { success: true };
   };
 
-  const signOut = () => persist(null);
+  const signOut = async () => {
+    await supabase.auth.signOut();
+  };
 
-  const updatePin = (oldPin: string, newPin: string) => {
+  const updatePin = async (oldPin: string, newPin: string): Promise<{ success: boolean; error?: string }> => {
     if (!user) return { success: false, error: 'Not authenticated' };
     if (user.pin !== oldPin) return { success: false, error: 'Current PIN is incorrect' };
-    const updated = { ...user, pin: newPin };
-    persist(updated);
-    saveUsers(getUsers().map(u => u.phone === user.phone ? updated : u));
+
+    const { error } = await supabase.from('profiles').update({ pin: newPin }).eq('id', user.id);
+    if (error) return { success: false, error: 'Failed to update PIN' };
+
+    setUser(prev => prev ? { ...prev, pin: newPin } : null);
     return { success: true };
   };
 
-  const updatePassword = (oldPass: string, newPass: string) => {
+  const updatePassword = async (oldPass: string, newPass: string): Promise<{ success: boolean; error?: string }> => {
     if (!user) return { success: false, error: 'Not authenticated' };
-    if (user.password !== oldPass) return { success: false, error: 'Current passcode is incorrect' };
-    const updated = { ...user, password: newPass };
-    persist(updated);
-    saveUsers(getUsers().map(u => u.phone === user.phone ? updated : u));
+
+    // Verify old password
+    const { error: verifyError } = await supabase.auth.signInWithPassword({
+      email:    phoneToEmail(user.phone),
+      password: oldPass,
+    });
+    if (verifyError) return { success: false, error: 'Current passcode is incorrect' };
+
+    const { error } = await supabase.auth.updateUser({ password: newPass });
+    if (error) return { success: false, error: 'Failed to update passcode' };
+
     return { success: true };
   };
 
-  const updateProfile = (name: string, email: string, phone: string) => {
+  const updateProfile = async (name: string, email: string, phone: string): Promise<void> => {
     if (!user) return;
-    const updated = { ...user, name, email, phone };
-    persist(updated);
-    saveUsers(getUsers().map(u => u.phone === user.phone ? updated : u));
+    const { error } = await supabase.from('profiles').update({ name, email, phone }).eq('id', user.id);
+    if (!error) setUser(prev => prev ? { ...prev, name, email, phone } : null);
   };
 
-  const updateProfilePhoto = (photo: string | null) => {
-    if (photo) localStorage.setItem(PHOTO_KEY, photo);
-    else localStorage.removeItem(PHOTO_KEY);
-    setProfilePhoto(photo);
+  const updateProfilePhoto = async (photo: string | null): Promise<void> => {
+    if (!user) return;
+    const { error } = await supabase.from('profiles').update({ profile_photo: photo }).eq('id', user.id);
+    if (!error) setProfilePhoto(photo);
   };
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, profilePhoto, signIn, signUp, signOut, updatePin, updatePassword, updateProfile, updateProfilePhoto }}>
+    <AuthContext.Provider value={{
+      user, isAuthenticated: !!user, profilePhoto, loading,
+      signIn, signUp, signOut,
+      updatePin, updatePassword, updateProfile, updateProfilePhoto,
+    }}>
       {children}
     </AuthContext.Provider>
   );
