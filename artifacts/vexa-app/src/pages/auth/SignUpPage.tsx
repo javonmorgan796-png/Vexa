@@ -191,12 +191,25 @@ export default function SignUpPage() {
           </p>
           <p className="text-[14px] font-semibold text-[#111] mb-6">{phone}</p>
 
-          {/* Demo OTP banner */}
-          <div className="mb-6 bg-[#F0F4FF] border border-[#C7D7FF] rounded-xl px-4 py-3">
-            <p className="text-[11px] text-[#162353] font-semibold mb-0.5">Demo — your OTP</p>
-            <p className="text-[22px] font-extrabold text-[#162353] tracking-[0.2em]">{otpCode}</p>
-            <p className="text-[10px] text-[#888] mt-0.5">In a real app this would be sent via SMS</p>
-          </div>
+          {/* Demo OTP banner — tap to auto-fill */}
+          <button
+            type="button"
+            onClick={() => setOtp(otpCode.split(''))}
+            className="w-full mb-6 bg-[#F0F4FF] border-2 border-[#C7D7FF] rounded-xl px-4 py-3 text-left active:scale-[0.98] transition-transform"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[11px] text-[#162353] font-semibold mb-0.5">Demo OTP — tap to auto-fill</p>
+                <p className="text-[26px] font-extrabold text-[#162353] tracking-[0.25em] leading-tight">{otpCode}</p>
+                <p className="text-[10px] text-[#888] mt-1">This will be replaced with a real SMS API</p>
+              </div>
+              <div className="ml-4 flex-shrink-0 w-9 h-9 rounded-full bg-[#162353] flex items-center justify-center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              </div>
+            </div>
+          </button>
 
           {otpError && (
             <div className="mb-5 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-600 font-medium">
