@@ -507,7 +507,7 @@ function MoniepointHome() {
   const [balanceHidden, setBalanceHidden] = useState(false);
   const [, navigate] = useLocation();
   const { user, profilePhoto } = useAuth();
-  const { balance, cashbackTotal, referralTotalEarned } = useUserData();
+  const { balance, cashbackTotal, referralTotalEarned, unreadNotificationsCount, transactions } = useUserData();
   const initials = (user?.name ?? 'C').split(' ').map((p: string) => p[0]).slice(0, 2).join('').toUpperCase();
   const displayName = user?.name ?? 'Chibuzor Emmanuel Dike';
   const accountNumber = user?.accountNumber ?? '9067212032';
@@ -541,7 +541,9 @@ function MoniepointHome() {
             </button>
             <button onClick={() => navigate('/notifications')} className="relative w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">
               <Bell className="w-6 h-6 text-[#222]" strokeWidth={1.75} />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-white" />
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-white" />
+              )}
             </button>
           </div>
         </div>
@@ -689,30 +691,36 @@ function MoniepointHome() {
           </div>
 
           {/* ── Recent transactions ──────────────────────────────────── */}
-          {/* mt 16px, px 16px */}
           <div className="px-4 mt-4">
             <div className="flex justify-between items-center mb-2.5">
               <span className="text-[12px] font-semibold text-[#111]">Recent transactions</span>
               <button onClick={() => navigate('/history')} className="text-[#2563EB] text-[11px] font-semibold">View All</button>
             </div>
 
-            <div className="bg-white rounded-xl p-4 border border-[#F0F0F0] flex items-center justify-between">
-              {/* left: icon + name + date */}
-              <div className="flex items-center gap-3">
-                {/* blue circle ~36px with down arrow */}
-                <div className="w-9 h-9 rounded-full bg-[#EBF2FF] flex items-center justify-center shrink-0">
-                  <ArrowDown className="w-4 h-4 text-[#2563EB]" strokeWidth={2.5} />
-                </div>
-                <div>
-                  <div className="text-[13px] font-semibold text-[#111] leading-snug">
-                    Chibuzor Emmanuel Dike
-                  </div>
-                  <div className="text-[11px] text-[#888] font-normal mt-0.5">14 Jul, 06:39 PM</div>
-                </div>
+            {transactions.length === 0 ? (
+              <div className="bg-white rounded-xl p-4 border border-[#F0F0F0] flex items-center justify-center text-[#888]">
+                <p className="text-[12px]">No transactions yet</p>
               </div>
-              {/* right: amount */}
-              <span className="text-[13px] font-bold text-[#16A34A]">+₦1,000.00</span>
-            </div>
+            ) : (
+              <div className="bg-white rounded-xl p-4 border border-[#F0F0F0] flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${transactions[0].type === 'in' ? 'bg-[#DCFCE7]' : 'bg-[#FEE2E2]'}`}>
+                    {transactions[0].type === 'in'
+                      ? <ArrowDown className="w-4 h-4 text-[#16A34A]" strokeWidth={2.5} />
+                      : <ArrowUp   className="w-4 h-4 text-[#DC2626]" strokeWidth={2.5} />}
+                  </div>
+                  <div>
+                    <div className="text-[13px] font-semibold text-[#111] leading-snug truncate max-w-[160px]">
+                      {transactions[0].name}
+                    </div>
+                    <div className="text-[11px] text-[#888] font-normal mt-0.5">{transactions[0].date}</div>
+                  </div>
+                </div>
+                <span className={`text-[13px] font-bold shrink-0 ${transactions[0].type === 'in' ? 'text-[#16A34A]' : 'text-[#DC2626]'}`}>
+                  {transactions[0].type === 'in' ? '+' : '-'}₦{transactions[0].amount}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* ── Promotional Banner Carousel ───────────────────────────── */}
@@ -753,27 +761,15 @@ function MoniepointHome() {
 }
 
 /* ─── History Page ───────────────────────────────────────────────────── */
-const ALL_TRANSACTIONS = [
-  { id: 1, type: 'in',  name: 'Chibuzor Emmanuel Dike', date: '17 Jul, 09:12 AM', amount: '1,000.00',  note: 'Salary' },
-  { id: 2, type: 'out', name: 'Ada Okonkwo',             date: '16 Jul, 07:44 PM', amount: '5,500.00',  note: 'Transfer' },
-  { id: 3, type: 'out', name: 'Emeka Nwosu',             date: '15 Jul, 02:30 PM', amount: '2,000.00',  note: 'Data subscription' },
-  { id: 4, type: 'in',  name: 'Tunde Bakare',            date: '14 Jul, 06:39 PM', amount: '10,000.00', note: 'Payment received' },
-  { id: 5, type: 'out', name: 'MTN Nigeria',             date: '13 Jul, 11:05 AM', amount: '500.00',    note: 'Airtime' },
-  { id: 6, type: 'in',  name: 'Vexa Cashback',           date: '12 Jul, 08:00 AM', amount: '150.00',    note: 'Cashback reward' },
-  { id: 7, type: 'out', name: 'Bet9ja',                  date: '11 Jul, 04:22 PM', amount: '3,000.00',  note: 'Betting' },
-  { id: 8, type: 'in',  name: 'Oluwaseun Adeyemi',       date: '10 Jul, 01:17 PM', amount: '7,500.00',  note: 'Refund' },
-  { id: 9, type: 'out', name: 'EKEDC',                   date: '09 Jul, 10:00 AM', amount: '4,200.00',  note: 'Electricity bill' },
-  { id: 10,type: 'in',  name: 'Freelance Client',        date: '08 Jul, 05:50 PM', amount: '25,000.00', note: 'Design payment' },
-];
-
 type TxFilter = 'all' | 'in' | 'out';
 
 function HistoryPage() {
   const [, navigate] = useLocation();
   const [filter, setFilter] = useState<TxFilter>('all');
   const [search, setSearch] = useState('');
+  const { transactions, transactionsLoading } = useUserData();
 
-  const filtered = ALL_TRANSACTIONS.filter(tx => {
+  const filtered = transactions.filter(tx => {
     const matchFilter = filter === 'all' || tx.type === filter;
     const matchSearch = tx.name.toLowerCase().includes(search.toLowerCase()) || tx.note.toLowerCase().includes(search.toLowerCase());
     return matchFilter && matchSearch;
@@ -812,10 +808,17 @@ function HistoryPage() {
 
       {/* Transaction list */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2" style={{ scrollbarWidth: 'none' }}>
-        {filtered.length === 0 && (
+        {transactionsLoading && (
+          <div className="flex justify-center py-16">
+            <svg className="animate-spin w-6 h-6 text-[#162353]" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40 20" />
+            </svg>
+          </div>
+        )}
+        {!transactionsLoading && filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center py-16 text-[#888]">
             <Clock className="w-10 h-10 mb-3 opacity-30" />
-            <p className="text-[13px]">No transactions found</p>
+            <p className="text-[13px]">{transactions.length === 0 ? 'No transactions yet' : 'No transactions found'}</p>
           </div>
         )}
         {filtered.map(tx => (
@@ -1590,19 +1593,13 @@ function HelpSupportPage() {
 /* ─── Notifications Page ─────────────────────────────────────────────── */
 function NotificationsPage() {
   const [, navigate] = useLocation();
-  const [notifications, setNotifications] = useState([
-    { id: 1, type: 'credit',   title: 'Money Received',       body: 'You received ₦15,000 from Tunde Bakare.',           time: '2 min ago',  read: false },
-    { id: 2, type: 'debit',    title: 'Transfer Successful',  body: 'Transfer of ₦5,000 to GTB •••7892 was successful.', time: '1 hr ago',   read: false },
-    { id: 3, type: 'security', title: 'New Login Detected',   body: 'Your account was accessed from a new device.',      time: '3 hrs ago',  read: false },
-    { id: 4, type: 'info',     title: 'Airtime Purchase',     body: 'You purchased ₦1,000 airtime for 08012345678.',     time: '5 hrs ago',  read: true  },
-    { id: 5, type: 'promo',    title: 'Cashback Earned!',     body: 'You earned ₦200 cashback on your last transfer.',   time: 'Yesterday',  read: true  },
-    { id: 6, type: 'credit',   title: 'Salary Credited',      body: 'Salary of ₦52,000 has been credited.',             time: '2 days ago', read: true  },
-    { id: 7, type: 'info',     title: 'Data Purchase',        body: 'You purchased 2GB data for 08067212032.',           time: '3 days ago', read: true  },
-  ]);
-
-  const unreadCount = notifications.filter(n => !n.read).length;
-  const markAllRead = () => setNotifications(ns => ns.map(n => ({ ...n, read: true })));
-  const markRead   = (id: number) => setNotifications(ns => ns.map(n => n.id === id ? { ...n, read: true } : n));
+  const {
+    notifications,
+    notificationsLoading,
+    unreadNotificationsCount: unreadCount,
+    markNotificationRead: markRead,
+    markAllNotificationsRead: markAllRead,
+  } = useUserData();
 
   function dotColor(type: string) {
     switch (type) {
@@ -1634,7 +1631,20 @@ function NotificationsPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto py-4 px-4 space-y-3" style={{ scrollbarWidth: 'none' }}>
-        {unreadCount > 0 && (
+        {notificationsLoading && (
+          <div className="flex justify-center py-16">
+            <svg className="animate-spin w-6 h-6 text-[#162353]" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40 20" />
+            </svg>
+          </div>
+        )}
+        {!notificationsLoading && notifications.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-20 text-[#888]">
+            <Bell className="w-10 h-10 mb-3 opacity-20" />
+            <p className="text-[13px]">No notifications yet</p>
+          </div>
+        )}
+        {!notificationsLoading && unreadCount > 0 && (
           <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide px-1">New</p>
         )}
         {notifications.filter(n => !n.read).map(n => {
@@ -1933,7 +1943,7 @@ const KNOWN_ACCOUNTS: Record<string, string> = {
   '9067212032': 'Chibuzor Emmanuel Dike',
 };
 
-type TxStep = 'details' | 'amount' | 'pin' | 'success';
+type TxStep = 'details' | 'amount' | 'create_pin' | 'pin' | 'success';
 
 function formatAmt(raw: string) {
   const clean = raw.replace(/,/g, '').replace(/[^0-9.]/g, '');
@@ -1944,6 +1954,8 @@ function formatAmt(raw: string) {
 
 function TransferPage() {
   const [, navigate] = useLocation();
+  const { user, setInitialTransferPin } = useAuth();
+  const { debitBalance, addTransaction, addNotification } = useUserData();
   const [step, setStep]           = useState<TxStep>('details');
   const [bank, setBank]           = useState('');
   const [showBankList, setShowBankList] = useState(false);
@@ -1956,6 +1968,11 @@ function TransferPage() {
   const [pin, setPin]             = useState('');
   const [pinError, setPinError]   = useState(false);
   const [processing, setProcessing] = useState(false);
+  /* Create-PIN state */
+  const [newPinEntry, setNewPinEntry]         = useState('');
+  const [confirmPinEntry, setConfirmPinEntry] = useState('');
+  const [createPinError, setCreatePinError]   = useState('');
+  const [savingPin, setSavingPin]             = useState(false);
 
   // Simulate account name lookup when 10-digit acc entered + bank chosen
   useEffect(() => {
@@ -1978,14 +1995,28 @@ function TransferPage() {
   }
   function handlePinBack() { setPin(p => p.slice(0, -1)); }
 
-  function submitPin() {
+  async function submitPin() {
     if (pin.length < 4) return;
+    // Validate against user's saved PIN
+    if (pin !== (user?.pin ?? '')) {
+      setPinError(true);
+      setPin('');
+      return;
+    }
     setProcessing(true);
-    setTimeout(() => {
-      setProcessing(false);
-      // Accept any 4-digit PIN for demo
-      setStep('success');
-    }, 1800);
+    const amtValue = parseFloat(amount.replace(/,/g, '') || '0');
+    await debitBalance(amtValue);
+    await addTransaction({
+      type: 'out', name: resolvedName, date: '',
+      amount, note: narration || 'Transfer', raw_amount: amtValue,
+    });
+    await addNotification({
+      type: 'debit',
+      title: 'Transfer Successful',
+      body: `Transfer of ₦${amount} to ${resolvedName} (${bank}) was successful.`,
+    });
+    setProcessing(false);
+    setStep('success');
   }
 
   const filteredBanks = BANKS.filter(b =>
@@ -1998,6 +2029,7 @@ function TransferPage() {
   function goBack() {
     if (step === 'details') navigate('/');
     else if (step === 'amount') setStep('details');
+    else if (step === 'create_pin') setStep('amount');
     else if (step === 'pin') setStep('amount');
   }
 
@@ -2038,6 +2070,89 @@ function TransferPage() {
             className="w-full bg-[#162353] rounded-xl h-[50px] text-[14px] font-semibold text-white"
           >
             Back to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── STEP: CREATE TRANSFER PIN ─────────────────────── */
+  if (step === 'create_pin') {
+    return (
+      <div className="fixed inset-0 bg-white flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+        <div className="flex-none flex items-center gap-3 px-4 pb-3 bg-white border-b border-[#E8EBF0]"
+          style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
+          <button onClick={goBack} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          </button>
+          <span className="text-[16px] font-bold text-[#111]">Create Transfer PIN</span>
+        </div>
+        <div className="flex-1 flex flex-col items-center px-6 py-8 gap-5 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
+          <div className="w-16 h-16 rounded-full bg-[#EEF2FF] flex items-center justify-center">
+            <Lock className="w-8 h-8 text-[#162353]" />
+          </div>
+          <div className="text-center">
+            <p className="text-[18px] font-bold text-[#111] mb-1">Set your Transfer PIN</p>
+            <p className="text-[13px] text-[#888] leading-relaxed max-w-xs">
+              You need a 4-digit PIN to authorise every transfer. You'll enter it each time you send money.
+            </p>
+          </div>
+          {createPinError && (
+            <div className="w-full bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-600 font-medium">
+              {createPinError}
+            </div>
+          )}
+          <div className="w-full space-y-4">
+            <div>
+              <label className="text-[12px] font-semibold text-[#444] mb-1.5 block">New 4-digit PIN</label>
+              <input
+                type="password" inputMode="numeric" maxLength={4}
+                value={newPinEntry}
+                onChange={e => setNewPinEntry(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                placeholder="• • • •"
+                className="w-full text-center text-[24px] tracking-[0.5em] border border-[#E0E0E0] rounded-xl px-4 py-3 outline-none focus:border-[#162353] transition-colors placeholder:text-[#CCC]"
+              />
+            </div>
+            <div>
+              <label className="text-[12px] font-semibold text-[#444] mb-1.5 block">Confirm PIN</label>
+              <input
+                type="password" inputMode="numeric" maxLength={4}
+                value={confirmPinEntry}
+                onChange={e => setConfirmPinEntry(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                placeholder="• • • •"
+                className="w-full text-center text-[24px] tracking-[0.5em] border border-[#E0E0E0] rounded-xl px-4 py-3 outline-none focus:border-[#162353] transition-colors placeholder:text-[#CCC]"
+              />
+            </div>
+          </div>
+          <button
+            disabled={newPinEntry.length < 4 || confirmPinEntry.length < 4 || savingPin}
+            onClick={async () => {
+              setCreatePinError('');
+              if (newPinEntry !== confirmPinEntry) {
+                setCreatePinError('PINs do not match. Please try again.');
+                setConfirmPinEntry('');
+                return;
+              }
+              setSavingPin(true);
+              const res = await setInitialTransferPin(newPinEntry);
+              setSavingPin(false);
+              if (res.success) {
+                setNewPinEntry(''); setConfirmPinEntry('');
+                setStep('pin');
+              } else {
+                setCreatePinError(res.error ?? 'Failed to save PIN. Try again.');
+              }
+            }}
+            className="w-full h-[50px] rounded-xl bg-[#162353] text-white text-[14px] font-semibold disabled:opacity-50 transition-opacity active:opacity-80"
+          >
+            {savingPin ? (
+              <span className="flex items-center justify-center gap-2">
+                <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="3" strokeDasharray="40 20" />
+                </svg>
+                Saving…
+              </span>
+            ) : 'Save Transfer PIN'}
           </button>
         </div>
       </div>
@@ -2179,7 +2294,7 @@ function TransferPage() {
 
         <div className="flex-none px-4 pb-6 pt-2 bg-[#F2F3F5]">
           <button
-            onClick={() => { if (amtNum > 0) setStep('pin'); }}
+            onClick={() => { if (amtNum > 0) { if (user?.pin === '0000') setStep('create_pin'); else setStep('pin'); } }}
             disabled={amtNum <= 0}
             className={`w-full h-[50px] rounded-xl text-[14px] font-semibold text-white transition-all ${amtNum > 0 ? 'bg-[#162353] active:opacity-80' : 'bg-[#162353]/40'}`}
           >

@@ -21,6 +21,7 @@ interface AuthContextType {
   signUp: (name: string, phone: string, passcode: string) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
   updatePin: (oldPin: string, newPin: string) => Promise<{ success: boolean; error?: string }>;
+  setInitialTransferPin: (newPin: string) => Promise<{ success: boolean; error?: string }>;
   updatePassword: (oldPass: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
   updateProfile: (name: string, email: string, phone: string) => Promise<void>;
   updateProfilePhoto: (photo: string | null) => Promise<void>;
@@ -114,9 +115,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const accountNumber = genAccountNumber();
     const referralCode  = 'VEXA-' + accountNumber.slice(-4);
 
-    const { data, error } = await supabase.auth.signUp({ email, password: passcode });
+    // Pass user data as metadata so the DB trigger can create the profile
+    // even when email confirmation is enabled (no session yet at that point)
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password: passcode,
+      options: {
+        data: { name, phone, account_number: accountNumber, referral_code: referralCode },
+      },
+    });
+
     if (error) {
-      if (error.message?.toLowerCase().includes('already')) {
+      if (error.message?.toLowerCase().includes('already registered') ||
+          error.message?.toLowerCase().includes('already exists')) {
         return { success: false, error: 'An account with this phone number already exists' };
       }
       return { success: false, error: error.message };
@@ -126,22 +137,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { success: false, error: 'Sign up failed. Please try again.' };
     }
 
-    const { error: profileError } = await supabase.from('profiles').insert({
-      id:             data.user.id,
-      name,
-      email:          '',
-      phone,
-      account_number: accountNumber,
-      pin:            '0000',
-      level:          1,
-      verified:       false,
-      balance:        0,
-      referral_code:  referralCode,
-    });
-
-    if (profileError) {
-      console.error('[Auth] profile insert error:', profileError.message);
-      return { success: false, error: 'Account created but profile setup failed. Please contact support.' };
+    // The DB trigger (handle_new_user) creates the profile automatically.
+    // If there is a session (email confirmation OFF), also upsert to ensure
+    // all fields are correct in case the trigger ran with partial data.
+    if (data.session) {
+      await supabase.from('profiles').upsert({
+        id: data.user.id, name, email: '', phone,
+        account_number: accountNumber, pin: '0000',
+        level: 1, verified: false, balance: 0, referral_code: referralCode,
+      }, { onConflict: 'id' });
     }
 
     return { success: true };
@@ -149,6 +153,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut();
+  };
+
+  const setInitialTransferPin = async (newPin: string): Promise<{ success: boolean; error?: string }> => {
+    if (!user) return { success: false, error: 'Not authenticated' };
+    if (user.pin !== '0000') return { success: false, error: 'Use Change PIN to update an existing PIN' };
+    const { error } = await supabase.from('profiles').update({ pin: newPin }).eq('id', user.id);
+    if (error) return { success: false, error: 'Failed to save PIN. Please try again.' };
+    setUser(prev => prev ? { ...prev, pin: newPin } : null);
+    return { success: true };
   };
 
   const updatePin = async (oldPin: string, newPin: string): Promise<{ success: boolean; error?: string }> => {
@@ -194,7 +207,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider value={{
       user, isAuthenticated: !!user, profilePhoto, loading,
       signIn, signUp, signOut,
-      updatePin, updatePassword, updateProfile, updateProfilePhoto,
+      updatePin, setInitialTransferPin, updatePassword, updateProfile, updateProfilePhoto,
     }}>
       {children}
     </AuthContext.Provider>

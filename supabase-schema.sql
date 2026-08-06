@@ -40,6 +40,41 @@ CREATE POLICY "Users can insert own profile"
   ON public.profiles FOR INSERT
   WITH CHECK (auth.uid() = id);
 
+-- ── Auto-create profile on signup (bypasses RLS) ──────────
+-- This trigger runs with SECURITY DEFINER (elevated privileges),
+-- so it works even when email confirmation is ON (no session yet).
+
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+DECLARE
+  acc TEXT;
+BEGIN
+  -- Generate a 10-digit account number starting with 9
+  acc := '9' || lpad(floor(random() * 1000000000)::bigint::text, 9, '0');
+  INSERT INTO public.profiles (
+    id, name, email, phone, account_number, pin, level, verified, balance, referral_code
+  ) VALUES (
+    NEW.id,
+    COALESCE(NEW.raw_user_meta_data->>'name', 'Vexa User'),
+    '',
+    COALESCE(NEW.raw_user_meta_data->>'phone', ''),
+    COALESCE(NEW.raw_user_meta_data->>'account_number', acc),
+    '0000',
+    1,
+    false,
+    0,
+    COALESCE(NEW.raw_user_meta_data->>'referral_code', 'VEXA-' || right(acc, 4))
+  )
+  ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
 -- ── Cashback history ──────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS public.cashback_history (
@@ -89,6 +124,54 @@ CREATE POLICY "Users can view own referrals"
 CREATE POLICY "Users can insert own referrals"
   ON public.referrals FOR INSERT
   WITH CHECK (auth.uid() = referrer_id);
+
+-- ── User notifications ────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  type       TEXT NOT NULL DEFAULT 'info',  -- 'credit' | 'debit' | 'security' | 'promo' | 'info'
+  title      TEXT NOT NULL,
+  body       TEXT NOT NULL,
+  read       BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own notifications"
+  ON public.notifications FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own notifications"
+  ON public.notifications FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own notifications"
+  ON public.notifications FOR UPDATE
+  USING (auth.uid() = user_id);
+
+-- ── User transactions ─────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.transactions (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  type       TEXT NOT NULL DEFAULT 'out',  -- 'in' | 'out'
+  name       TEXT NOT NULL,
+  amount     NUMERIC(15, 2) NOT NULL,
+  note       TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own transactions"
+  ON public.transactions FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own transactions"
+  ON public.transactions FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
 
 -- ── Business accounts ─────────────────────────────────────
 
