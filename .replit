@@ -24,13 +24,13 @@ args = "Vexa Preview"
 name = "Vexa Preview"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "PORT=5173 BASE_PATH=/ pnpm --filter @workspace/vexa-app run dev"
-waitForPort = 5173
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=19093 BASE_PATH=/ pnpm --filter @workspace/vexa-app run dev"
+waitForPort = 19093
 
 [agent]
 stack = "PNPM_WORKSPACE"
