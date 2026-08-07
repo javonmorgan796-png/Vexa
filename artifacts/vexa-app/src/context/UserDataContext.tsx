@@ -237,7 +237,7 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
 
   /* ── Derived referral totals ─────────────────────────────────── */
 
-  const referralCode         = user ? 'VEXA-' + (user.accountNumber?.slice(-4) ?? '0000') : '';
+  const referralCode         = user?.referralCode ?? '';
   const referralTotalEarned  = referrals.filter(r => r.status === 'paid').reduce((s, r) => s + r.earned, 0);
   const referralTotalPending = referrals.filter(r => r.status === 'pending').reduce((s, r) => s + r.earned, 0);
 

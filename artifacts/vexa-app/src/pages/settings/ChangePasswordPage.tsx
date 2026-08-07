@@ -28,8 +28,8 @@ export default function ChangePasswordPage() {
     const err = validate();
     if (err) { setError(err); return; }
     setLoading(true);
-    setTimeout(() => {
-      const res = updatePassword(current, newPass);
+      setTimeout(async () => {
+        const res = await updatePassword(current, newPass);
       setLoading(false);
       if (res.success) setSuccess(true);
       else setError(res.error ?? 'Failed to update password');

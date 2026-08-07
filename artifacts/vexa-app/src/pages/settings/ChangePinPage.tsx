@@ -33,8 +33,8 @@ export default function ChangePinPage() {
       if (confirmPin.length < 4) return;
       if (newPin !== confirmPin) { setError('PINs do not match. Try again.'); setConfirmPin(''); return; }
       setProcessing(true);
-      setTimeout(() => {
-        const res = updatePin(currentPin, newPin);
+      setTimeout(async () => {
+        const res = await updatePin(currentPin, newPin);
         setProcessing(false);
         if (res.success) setStep('success');
         else { setError(res.error ?? 'Failed'); setStep('current'); setCurrentPin(''); setNewPin(''); setConfirmPin(''); }

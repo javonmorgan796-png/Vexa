@@ -1,11 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { User, Mail, Phone, Hash, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 export default function ProfilePage() {
   const [, navigate] = useLocation();
-  const { user, updateProfile, profilePhoto, updateProfilePhoto } = useAuth();
+  const { user, loading, updateProfile, profilePhoto, updateProfilePhoto } = useAuth();
   const [editing, setEditing] = useState<'name' | 'email' | 'phone' | null>(null);
   const [draftName, setDraftName] = useState(user?.name ?? '');
   const [draftEmail, setDraftEmail] = useState(user?.email ?? '');
@@ -15,7 +15,21 @@ export default function ProfilePage() {
   const photo = profilePhoto;
   const fileRef = useRef<HTMLInputElement>(null);
 
-  if (!user) { navigate('/signin'); return null; }
+  useEffect(() => {
+    if (!loading && !user) navigate('/signin');
+  }, [loading, user, navigate]);
+
+  useEffect(() => {
+    if (!user) return;
+    setDraftName(user.name);
+    setDraftEmail(user.email);
+    setDraftPhone(user.phone);
+  }, [user]);
+
+  if (loading) {
+    return <div className="fixed inset-0 bg-[#F2F3F5] flex items-center justify-center text-[#162353] text-sm font-semibold">Loading your profile…</div>;
+  }
+  if (!user) return null;
 
   const initials = user.name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
 
@@ -25,7 +39,7 @@ export default function ProfilePage() {
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result as string;
-      updateProfilePhoto(dataUrl);
+      void updateProfilePhoto(dataUrl);
     };
     reader.readAsDataURL(file);
   }
@@ -38,11 +52,15 @@ export default function ProfilePage() {
     setEditing(field);
   }
 
-  function saveEdit() {
+  async function saveEdit() {
     if (editing === 'name' && !draftName.trim()) { setError('Name cannot be empty'); return; }
     if (editing === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draftEmail)) { setError('Invalid email'); return; }
     if (editing === 'phone' && draftPhone.replace(/\D/g,'').length < 10) { setError('Invalid phone number'); return; }
-    updateProfile(draftName.trim(), draftEmail.trim(), draftPhone.trim());
+    const result = await updateProfile(draftName.trim(), draftEmail.trim(), draftPhone.trim());
+    if (!result.success) {
+      setError(result.error ?? 'Failed to save profile');
+      return;
+    }
     setEditing(null);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);

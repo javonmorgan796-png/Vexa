@@ -339,7 +339,7 @@ function shouldLockNow(): boolean {
 const MAX_LOCK_ATTEMPTS = 5;
 
 function PasscodeLockScreen({ onUnlock, onSignOut }: { onUnlock: () => void; onSignOut: () => void }) {
-  const { user, profilePhoto } = useAuth();
+  const { user, profilePhoto, verifyPasscode } = useAuth();
   const [pin, setPin]           = useState('');
   const [shake, setShake]       = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -374,8 +374,8 @@ function PasscodeLockScreen({ onUnlock, onSignOut }: { onUnlock: () => void; onS
     setErrorMsg('');
   }
 
-  function verify(code: string) {
-    if (user && code === user.password) {
+  async function verify(code: string) {
+    if (user && await verifyPasscode(code)) {
       clearLockTimestamp();
       onUnlock();
       return;
@@ -509,8 +509,8 @@ function MoniepointHome() {
   const { user, profilePhoto } = useAuth();
   const { balance, cashbackTotal, referralTotalEarned, unreadNotificationsCount, transactions } = useUserData();
   const initials = (user?.name ?? 'C').split(' ').map((p: string) => p[0]).slice(0, 2).join('').toUpperCase();
-  const displayName = user?.name ?? 'Chibuzor Emmanuel Dike';
-  const accountNumber = user?.accountNumber ?? '9067212032';
+  const displayName = user?.name ?? 'Your account';
+  const accountNumber = user?.accountNumber ?? '—';
   return (
     <div className="fixed inset-0 bg-[#F2F3F5]">
       <div
@@ -847,7 +847,7 @@ type SettingsSection = { heading: string; items: { icon: React.ReactNode; label:
 
 function SettingsPage() {
   const [, navigate] = useLocation();
-  const { user, signOut, profilePhoto } = useAuth();
+  const { user, loading, signOut, profilePhoto } = useAuth();
   const [biometrics, setBiometrics] = useState(true);
   const [notifs, setNotifs] = useState(true);
   const [passcodeOnReturn, setPasscodeOnReturn] = useState(() =>
@@ -860,9 +860,9 @@ function SettingsPage() {
     localStorage.setItem(PASSCODE_RETURN_KEY, String(next));
   }
 
-  const userName = user?.name ?? 'Chibuzor Emmanuel Dike';
-  const accountNumber = user?.accountNumber ?? '9067212032';
-  const levelLabel = user ? `Level ${user.level} · ${user.verified ? 'Verified' : 'Unverified'}` : 'Level 3 · Verified';
+  const userName = user?.name ?? 'Your account';
+  const accountNumber = user?.accountNumber ?? '—';
+  const levelLabel = user ? `Level ${user.level} · ${user.verified ? 'Verified' : 'Unverified'}` : 'Loading…';
   const initials = userName.split(' ').map((p: string) => p[0]).slice(0, 2).join('').toUpperCase();
 
   const sections: SettingsSection[] = [
@@ -1790,6 +1790,7 @@ function AboutVexaPage() {
 /* ─── Deposit Page ───────────────────────────────────────────────────── */
 function DepositPage() {
   const [, navigate] = useLocation();
+  const { user } = useAuth();
   const [amount, setAmount] = useState('');
 
   function handleAmountChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -1804,8 +1805,8 @@ function DepositPage() {
   }
   const [copied, setCopied] = useState(false);
 
-  const accountNumber = '9067212032';
-  const accountName   = 'Chibuzor Emmanuel Dike';
+  const accountNumber = user?.accountNumber ?? '—';
+  const accountName   = user?.name ?? 'Your account';
   const bankName      = 'Vexa Bank';
 
   function copyAccount() {
@@ -3093,11 +3094,16 @@ function EducationPage() {
 const STMT_PERIODS = ['Last 7 days','Last 30 days','Last 3 months','Last 6 months','Custom'];
 function StatementPage() {
   const [, navigate] = useLocation();
+  const { user } = useAuth();
   const [period, setPeriod]   = useState('Last 30 days');
   const [format, setFormat]   = useState('PDF');
-  const [email, setEmail]     = useState('chibuzor@vexa.com');
+  const [email, setEmail]     = useState('');
   const [generating, setGen]  = useState(false);
   const [done, setDone]       = useState(false);
+
+  useEffect(() => {
+    if (user?.email) setEmail(user.email);
+  }, [user?.email]);
 
   function generate() {
     setGen(true);
@@ -3213,7 +3219,7 @@ function CardPage() {
   const [contactless, setContactless] = useState(true);
   const [intlPayments, setIntl] = useState(false);
 
-  const cardName = user ? user.name.split(' ').slice(0, 2).map(p => p.toUpperCase()).join(' ') : 'CHIBUZOR E DIKE';
+  const cardName = user ? user.name.split(' ').slice(0, 2).map(p => p.toUpperCase()).join(' ') : 'VEXA USER';
 
   const CARD_TXS = [
     { icon:'🛒', name:'Shoprite', date:'Today, 2:14 PM',    amount:'-₦4,500', color:'#EF4444' },
@@ -3873,7 +3879,7 @@ function Router() {
 function AppShell() {
   const [showSplash, setShowSplash] = useState(true);
   const [splashDone, setSplashDone] = useState(false);
-  const { isAuthenticated, signOut } = useAuth();
+  const { isAuthenticated, loading, signOut } = useAuth();
   const [path, navigate] = useLocation();
   const { clearVerification } = useBusinessSecurity();
   const prevPathRef = React.useRef('');
@@ -3943,10 +3949,10 @@ function AppShell() {
   }, [isAuthenticated, splashDone]);
 
   useEffect(() => {
-    if (splashDone && !isAuthenticated) {
+    if (splashDone && !loading && !isAuthenticated) {
       navigate('/signin');
     }
-  }, [splashDone, isAuthenticated]);
+  }, [splashDone, loading, isAuthenticated]);
 
   // Clear business verification when the user navigates away from the business section
   useEffect(() => {

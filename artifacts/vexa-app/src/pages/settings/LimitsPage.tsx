@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { Shield, CheckCircle, Lock } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -35,8 +35,16 @@ const TIERS = [
 
 export default function LimitsPage() {
   const [, navigate] = useLocation();
-  const { user } = useAuth();
-  if (!user) { navigate('/signin'); return null; }
+  const { user, loading } = useAuth();
+
+  useEffect(() => {
+    if (!loading && !user) navigate('/signin');
+  }, [loading, user, navigate]);
+
+  if (loading) {
+    return <div className="fixed inset-0 bg-[#F2F3F5] flex items-center justify-center text-[#162353] text-sm font-semibold">Loading your account…</div>;
+  }
+  if (!user) return null;
 
   return (
     <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
