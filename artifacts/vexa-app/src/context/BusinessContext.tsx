@@ -166,7 +166,14 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
       .eq('owner_id', user.id)
       .maybeSingle();
 
-    if (!bizData) { setBusinessLoading(false); return; }
+    if (!bizData) {
+      setBusiness(null);
+      setEmployees([]);
+      setSchedules([]);
+      setTransactions([]);
+      setBusinessLoading(false);
+      return;
+    }
 
     const biz = rowToBusiness(bizData as Record<string, unknown>);
     setBusiness(biz);

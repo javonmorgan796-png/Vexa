@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { Shield, CheckCircle, Lock } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -35,8 +35,15 @@ const TIERS = [
 
 export default function LimitsPage() {
   const [, navigate] = useLocation();
-  const { user } = useAuth();
-  if (!user) { navigate('/signin'); return null; }
+  const { user, session, loading, profileError } = useAuth();
+  useEffect(() => {
+    if (!loading && !session && !user) navigate('/signin');
+  }, [loading, session, user, navigate]);
+  if (loading) return <div className="fixed inset-0 bg-[#F2F3F5] flex items-center justify-center text-sm text-[#555]">Loading your verification status…</div>;
+  if (!user) {
+    if (profileError) return <div className="fixed inset-0 bg-[#F2F3F5] flex items-center justify-center px-6 text-center text-sm text-red-600">{profileError}</div>;
+    return null;
+  }
 
   return (
     <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>

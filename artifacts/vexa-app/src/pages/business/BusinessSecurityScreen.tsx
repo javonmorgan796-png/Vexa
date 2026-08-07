@@ -131,7 +131,7 @@ function BiometricIcon({ loading }: { loading: boolean }) {
 /* ── Main component ───────────────────────────────────────────── */
 export default function BusinessSecurityScreen() {
   const { hasBiometrics, pinState, maxAttempts, verifyPin, triggerBiometrics, resetBusinessPin } = useBusinessSecurity();
-  const { user } = useAuth();
+  const { user, verifyPasscode } = useAuth();
   const [, navigate] = useLocation();
 
   /* Which UI to show */
@@ -263,8 +263,8 @@ export default function BusinessSecurityScreen() {
     setRecoveryError('');
   }
 
-  function submitRecoveryPasscode(code: string) {
-    if (!user || code !== user.password) {
+  async function submitRecoveryPasscode(code: string) {
+    if (!user || !(await verifyPasscode(code))) {
       setRecoveryShake(true);
       setTimeout(() => setRecoveryShake(false), 500);
       setRecoveryInput('');

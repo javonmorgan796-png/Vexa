@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
 export interface User {
@@ -7,6 +8,7 @@ export interface User {
   email: string;
   phone: string;
   accountNumber: string;
+  referralCode: string;
   pin: string;
   level: number;
   verified: boolean;
@@ -14,9 +16,13 @@ export interface User {
 
 interface AuthContextType {
   user: User | null;
+  session: Session | null;
   isAuthenticated: boolean;
   profilePhoto: string | null;
   loading: boolean;
+  profileError: string | null;
+  refreshProfile: () => Promise<void>;
+  verifyPasscode: (passcode: string) => Promise<boolean>;
   signIn: (phone: string, passcode: string) => Promise<{ success: boolean; error?: string }>;
   signUp: (name: string, phone: string, passcode: string) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
@@ -43,33 +49,14 @@ function genAccountNumber(): string {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser]               = useState<User | null>(null);
+  const [session, setSession]         = useState<Session | null>(null);
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
   const [loading, setLoading]         = useState(true);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Restore session from Supabase on mount
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        fetchProfile(session.user.id);
-      } else {
-        setLoading(false);
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        fetchProfile(session.user.id);
-      } else {
-        setUser(null);
-        setProfilePhoto(null);
-        setLoading(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  async function fetchProfile(userId: string) {
+  const fetchProfile = useCallback(async (userId: string, showLoading = true) => {
+    if (showLoading) setLoading(true);
+    setProfileError(null);
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
@@ -79,6 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (error || !data) {
       console.error('[Auth] fetchProfile error:', error?.message);
       setLoading(false);
+      setProfileError('We could not load your profile. Your session is still active.');
       return;
     }
 
@@ -88,13 +76,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email:         data.email ?? '',
       phone:         data.phone,
       accountNumber: data.account_number,
+      referralCode:  data.referral_code ?? '',
       pin:           data.pin,
       level:         data.level,
       verified:      data.verified,
     });
     setProfilePhoto(data.profile_photo ?? null);
     setLoading(false);
-  }
+  }, []);
+
+  const refreshProfile = useCallback(async () => {
+    if (!session?.user) return;
+    await fetchProfile(session.user.id, false);
+  }, [fetchProfile, session?.user?.id]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const applySession = async (nextSession: Session | null) => {
+      if (!mounted) return;
+      setSession(nextSession);
+      if (!nextSession?.user) {
+        setUser(null);
+        setProfilePhoto(null);
+        setProfileError(null);
+        setLoading(false);
+        return;
+      }
+      await fetchProfile(nextSession.user.id);
+    };
+
+    // Subscribe before restoring the session so a refresh cannot miss an auth event.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      void applySession(nextSession);
+    });
+
+    void supabase.auth.getSession().then(({ data: { session: restoredSession } }) => {
+      void applySession(restoredSession);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [fetchProfile]);
 
   const signIn = async (phone: string, passcode: string): Promise<{ success: boolean; error?: string }> => {
     const email = phoneToEmail(phone);
@@ -191,21 +216,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { success: true };
   };
 
+  const verifyPasscode = async (passcode: string): Promise<boolean> => {
+    if (!user) return false;
+    const { error } = await supabase.auth.signInWithPassword({
+      email: phoneToEmail(user.phone),
+      password: passcode,
+    });
+    return !error;
+  };
+
   const updateProfile = async (name: string, email: string, phone: string): Promise<void> => {
     if (!user) return;
     const { error } = await supabase.from('profiles').update({ name, email, phone }).eq('id', user.id);
-    if (!error) setUser(prev => prev ? { ...prev, name, email, phone } : null);
+    if (!error) {
+      setUser(prev => prev ? { ...prev, name, email, phone } : null);
+      await refreshProfile();
+    }
   };
 
   const updateProfilePhoto = async (photo: string | null): Promise<void> => {
     if (!user) return;
     const { error } = await supabase.from('profiles').update({ profile_photo: photo }).eq('id', user.id);
-    if (!error) setProfilePhoto(photo);
+    if (!error) {
+      setProfilePhoto(photo);
+      await refreshProfile();
+    }
   };
 
   return (
     <AuthContext.Provider value={{
-      user, isAuthenticated: !!user, profilePhoto, loading,
+      user, session, isAuthenticated: !!user, profilePhoto, loading, profileError, refreshProfile, verifyPasscode,
       signIn, signUp, signOut,
       updatePin, setInitialTransferPin, updatePassword, updateProfile, updateProfilePhoto,
     }}>

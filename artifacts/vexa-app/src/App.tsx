@@ -22,7 +22,7 @@ import ProfilePage from '@/pages/settings/ProfilePage';
 import LimitsPage from '@/pages/settings/LimitsPage';
 import ChangePinPage from '@/pages/settings/ChangePinPage';
 import ChangePasswordPage from '@/pages/settings/ChangePasswordPage';
-import { BusinessProvider } from '@/context/BusinessContext';
+import { BusinessProvider, useBusiness } from '@/context/BusinessContext';
 import BusinessDashboard from '@/pages/business/BusinessDashboard';
 import BusinessOnboarding from '@/pages/business/BusinessOnboarding';
 import BusinessAnalytics from '@/pages/business/BusinessAnalytics';
@@ -339,7 +339,7 @@ function shouldLockNow(): boolean {
 const MAX_LOCK_ATTEMPTS = 5;
 
 function PasscodeLockScreen({ onUnlock, onSignOut }: { onUnlock: () => void; onSignOut: () => void }) {
-  const { user, profilePhoto } = useAuth();
+  const { user, profilePhoto, verifyPasscode } = useAuth();
   const [pin, setPin]           = useState('');
   const [shake, setShake]       = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -374,8 +374,8 @@ function PasscodeLockScreen({ onUnlock, onSignOut }: { onUnlock: () => void; onS
     setErrorMsg('');
   }
 
-  function verify(code: string) {
-    if (user && code === user.password) {
+  async function verify(code: string) {
+    if (user && await verifyPasscode(code)) {
       clearLockTimestamp();
       onUnlock();
       return;
@@ -3796,7 +3796,14 @@ function ReferralsPage() {
 
 /* ── Business security gate ─────────────────────────────────────────── */
 function BusinessSecurityGate({ children }: { children: React.ReactNode }) {
+  const [path, navigate] = useLocation();
+  const { business, businessLoading } = useBusiness();
   const { isVerified } = useBusinessSecurity();
+  useEffect(() => {
+    if (!businessLoading && !business) navigate('/business/onboarding');
+  }, [businessLoading, business, navigate]);
+  if (businessLoading) return <div className="fixed inset-0 bg-[#F2F3F5] flex items-center justify-center text-sm text-[#555]">Loading your business account…</div>;
+  if (!business || path === '/business/onboarding') return null;
   if (!isVerified) return <BusinessSecurityScreen />;
   return <>{children}</>;
 }
@@ -3873,7 +3880,7 @@ function Router() {
 function AppShell() {
   const [showSplash, setShowSplash] = useState(true);
   const [splashDone, setSplashDone] = useState(false);
-  const { isAuthenticated, signOut } = useAuth();
+  const { user, session, isAuthenticated, loading, profileError, refreshProfile, signOut } = useAuth();
   const [path, navigate] = useLocation();
   const { clearVerification } = useBusinessSecurity();
   const prevPathRef = React.useRef('');
@@ -3943,10 +3950,10 @@ function AppShell() {
   }, [isAuthenticated, splashDone]);
 
   useEffect(() => {
-    if (splashDone && !isAuthenticated) {
+    if (splashDone && !loading && !session && !user) {
       navigate('/signin');
     }
-  }, [splashDone, isAuthenticated]);
+  }, [splashDone, loading, session, user, navigate]);
 
   // Clear business verification when the user navigates away from the business section
   useEffect(() => {
@@ -3966,7 +3973,23 @@ function AppShell() {
           setSplashDone(true);
         }} />
       )}
-      <Router />
+      {!loading && profileError && session && !user && (
+        <div className="fixed top-3 left-1/2 z-[60] -translate-x-1/2 w-[min(92vw,420px)] rounded-xl bg-red-50 border border-red-200 px-4 py-3 shadow-lg">
+          <p className="text-[13px] font-semibold text-red-700">Your session is active, but your profile could not be loaded.</p>
+          <button onClick={() => void refreshProfile()} className="mt-2 text-[12px] font-bold text-[#162353]">Try again</button>
+        </div>
+      )}
+      {path.startsWith('/signin') || path.startsWith('/signup') ? <Router /> : (
+        !loading && !(profileError && session && !user) ? <Router /> : (
+          <div className="fixed inset-0 bg-[#F2F3F5] flex items-center justify-center px-6 text-center">
+            <p className="text-sm text-[#555]">
+              {profileError && session && !user
+                ? 'Your session is active, but your profile is temporarily unavailable.'
+                : 'Restoring your secure Vexa session…'}
+            </p>
+          </div>
+        )
+      )}
       {locked && (
         <PasscodeLockScreen
           onUnlock={() => { clearLockTimestamp(); setLocked(false); }}

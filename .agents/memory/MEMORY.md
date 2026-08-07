@@ -1,3 +1,4 @@
 - [Supabase phone-auth pattern](supabase-phone-auth.md) — phone+passcode is mapped to Supabase email auth using `{normalized_phone}@vexa.app`
 - [Supabase env injection](supabase-env-inject.md) — SUPABASE_URL/ANON_KEY injected into Vite bundle via `define` in vite.config.ts (not VITE_ prefix)
 - [Vexa app structure](vexa-app-structure.md) — all screens are in App.tsx; contexts in src/context/; schema in supabase-schema.sql at root
+- [Vexa preview setup](vexa-preview-setup.md) — imported Vexa previews need PORT=19093 and BASE_PATH=/ supplied to the Vite workflow

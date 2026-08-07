@@ -1,11 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { User, Mail, Phone, Hash, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 export default function ProfilePage() {
   const [, navigate] = useLocation();
-  const { user, updateProfile, profilePhoto, updateProfilePhoto } = useAuth();
+  const { user, session, loading, profileError, updateProfile, profilePhoto, updateProfilePhoto } = useAuth();
   const [editing, setEditing] = useState<'name' | 'email' | 'phone' | null>(null);
   const [draftName, setDraftName] = useState(user?.name ?? '');
   const [draftEmail, setDraftEmail] = useState(user?.email ?? '');
@@ -15,7 +15,23 @@ export default function ProfilePage() {
   const photo = profilePhoto;
   const fileRef = useRef<HTMLInputElement>(null);
 
-  if (!user) { navigate('/signin'); return null; }
+  useEffect(() => {
+    if (!loading && !session && !user) navigate('/signin');
+  }, [loading, session, user, navigate]);
+
+  useEffect(() => {
+    if (user) {
+      setDraftName(user.name);
+      setDraftEmail(user.email);
+      setDraftPhone(user.phone);
+    }
+  }, [user]);
+
+  if (loading) return <div className="fixed inset-0 bg-[#F2F3F5] flex items-center justify-center text-sm text-[#555]">Loading your profile…</div>;
+  if (!user) {
+    if (profileError) return <div className="fixed inset-0 bg-[#F2F3F5] flex items-center justify-center px-6 text-center text-sm text-red-600">{profileError}</div>;
+    return null;
+  }
 
   const initials = user.name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
 
