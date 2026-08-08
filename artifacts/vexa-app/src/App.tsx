@@ -3979,11 +3979,7 @@ function AppShell() {
           <button onClick={() => void refreshProfile()} className="mt-2 text-[12px] font-bold text-[#162353]">Try again</button>
         </div>
       )}
-      {path.startsWith('/signin') || path.startsWith('/signup') ? <Router /> : (
-        !loading && !(profileError && session && !user) ? <Router /> : (
-          <div className="fixed inset-0 bg-[#F2F3F5]" aria-busy="true" />
-        )
-      )}
+      <Router />
       {locked && (
         <PasscodeLockScreen
           onUnlock={() => { clearLockTimestamp(); setLocked(false); }}
