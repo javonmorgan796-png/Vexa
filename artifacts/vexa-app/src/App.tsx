@@ -3981,13 +3981,7 @@ function AppShell() {
       )}
       {path.startsWith('/signin') || path.startsWith('/signup') ? <Router /> : (
         !loading && !(profileError && session && !user) ? <Router /> : (
-          <div className="fixed inset-0 bg-[#F2F3F5] flex items-center justify-center px-6 text-center">
-            <p className="text-sm text-[#555]">
-              {profileError && session && !user
-                ? 'Your session is active, but your profile is temporarily unavailable.'
-                : 'Restoring your secure Vexa session…'}
-            </p>
-          </div>
+          <div className="fixed inset-0 bg-[#F2F3F5]" aria-busy="true" />
         )
       )}
       {locked && (
