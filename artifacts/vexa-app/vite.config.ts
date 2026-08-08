@@ -27,16 +27,52 @@ if (!basePath) {
   );
 }
 
+const supabaseEnvPlugin = {
+  name: 'vexa-supabase-env',
+  transform(source: string, id: string) {
+    if (!id.includes('/src/lib/supabase.ts')) return null;
+
+    return {
+      code: source
+        .replace(
+          /import\.meta\.env\.SUPABASE_URL/g,
+          JSON.stringify(process.env.SUPABASE_URL ?? ''),
+        )
+        .replace(
+          /import\.meta\.env\.SUPABASE_ANON_KEY/g,
+          JSON.stringify(process.env.SUPABASE_ANON_KEY ?? ''),
+        )
+        .replace(
+          /\b__SUPABASE_URL__\b/g,
+          JSON.stringify(process.env.SUPABASE_URL ?? ''),
+        )
+        .replace(
+          /\b__SUPABASE_ANON_KEY__\b/g,
+          JSON.stringify(process.env.SUPABASE_ANON_KEY ?? ''),
+        ),
+      map: null,
+    };
+  },
+};
+
 export default defineConfig({
   base: basePath,
+  // Expose only the public Supabase connection values to the browser bundle.
+  // These are required by the client-side auth/data layer.
+  envPrefix: ['VITE_', 'SUPABASE_'],
   define: {
-    // Inject Supabase secrets into the client bundle at build/dev time
-    __SUPABASE_URL__:      JSON.stringify(process.env.SUPABASE_URL      ?? ''),
+    // Inject the public Supabase connection values into the browser bundle.
+    // Explicit import.meta.env keys work with Replit secrets at dev and build time.
+    'import.meta.env.SUPABASE_URL': JSON.stringify(process.env.SUPABASE_URL ?? ''),
+    'import.meta.env.SUPABASE_ANON_KEY': JSON.stringify(process.env.SUPABASE_ANON_KEY ?? ''),
+    // Keep compatibility with older modules that reference these constants.
+    __SUPABASE_URL__: JSON.stringify(process.env.SUPABASE_URL ?? ''),
     __SUPABASE_ANON_KEY__: JSON.stringify(process.env.SUPABASE_ANON_KEY ?? ''),
   },
   plugins: [
     react(),
     tailwindcss(),
+    supabaseEnvPlugin,
     runtimeErrorOverlay(),
     ...(process.env.NODE_ENV !== 'production' &&
     process.env.REPL_ID !== undefined

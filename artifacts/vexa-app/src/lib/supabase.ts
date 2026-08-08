@@ -1,10 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-declare const __SUPABASE_URL__: string;
-declare const __SUPABASE_ANON_KEY__: string;
-
-const rawUrl = typeof __SUPABASE_URL__ !== 'undefined' ? __SUPABASE_URL__ : '';
-const key    = typeof __SUPABASE_ANON_KEY__ !== 'undefined' ? __SUPABASE_ANON_KEY__ : '';
+const rawUrl = import.meta.env.SUPABASE_URL || '';
+const key = import.meta.env.SUPABASE_ANON_KEY || '';
 
 // Normalize: keep only the origin (scheme + host) — strip any /rest/v1/ or trailing paths
 // that users sometimes accidentally copy from the Supabase dashboard
