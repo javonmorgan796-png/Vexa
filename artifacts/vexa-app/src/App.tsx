@@ -3878,8 +3878,10 @@ function Router() {
 
 /* Handles post-splash redirect — must live inside WouterRouter + AuthProvider */
 function AppShell() {
-  const [showSplash, setShowSplash] = useState(true);
-  const [splashDone, setSplashDone] = useState(false);
+  // Do not block the authenticated dashboard behind the splash animation.
+  // Supabase restores the session and profile in the background.
+  const [showSplash] = useState(false);
+  const [splashDone] = useState(true);
   const { user, session, isAuthenticated, loading, profileError, refreshProfile, signOut } = useAuth();
   const [path, navigate] = useLocation();
   const { clearVerification } = useBusinessSecurity();
@@ -3967,12 +3969,7 @@ function AppShell() {
 
   return (
     <>
-      {showSplash && (
-        <SplashScreen onDone={() => {
-          setShowSplash(false);
-          setSplashDone(true);
-        }} />
-      )}
+      {showSplash && <SplashScreen onDone={() => undefined} />}
       {!loading && profileError && session && !user && (
         <div className="fixed top-3 left-1/2 z-[60] -translate-x-1/2 w-[min(92vw,420px)] rounded-xl bg-red-50 border border-red-200 px-4 py-3 shadow-lg">
           <p className="text-[13px] font-semibold text-red-700">Your session is active, but your profile could not be loaded.</p>

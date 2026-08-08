@@ -215,7 +215,15 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (user) {
-      refreshAll();
+      // The profile query already returns the wallet balance. Show it
+      // immediately. Load only secondary dashboard collections here; making
+      // another profiles request during login delayed the balance render.
+      setBalance(user.balance);
+      setBalanceLoading(false);
+      fetchCashback();
+      fetchReferrals();
+      fetchNotifications();
+      fetchTransactions();
     } else {
       setBalance(0); setCashbackHistory([]); setReferrals([]);
       setNotifications([]); setTransactions([]);

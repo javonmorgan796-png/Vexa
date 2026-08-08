@@ -7,6 +7,7 @@ export interface User {
   name: string;
   email: string;
   phone: string;
+  balance: number;
   accountNumber: string;
   referralCode: string;
   pin: string;
@@ -88,6 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       name:          data.name,
       email:         data.email ?? '',
       phone:         data.phone,
+      balance:       Number(data.balance ?? 0),
       accountNumber: data.account_number,
       referralCode:  data.referral_code ?? '',
       pin:           data.pin,
