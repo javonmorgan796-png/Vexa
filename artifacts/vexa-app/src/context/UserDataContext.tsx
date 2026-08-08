@@ -39,6 +39,10 @@ export interface AppTransaction {
   amount: string;    // formatted: '1,000.00'
   note: string;
   raw_amount: number;
+  recipient_bank?: string;
+  recipient_account?: string;
+  sender_name?: string;
+  sender_account?: string;
 }
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
@@ -200,6 +204,10 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
         amount: fmtAmount(Number(d.amount)),
         note: d.note,
         raw_amount: Number(d.amount),
+        recipient_bank: d.recipient_bank ?? undefined,
+        recipient_account: d.recipient_account ?? undefined,
+        sender_name: d.sender_name ?? undefined,
+        sender_account: d.sender_account ?? undefined,
       })));
     }
     setTransactionsLoading(false);
@@ -306,6 +314,10 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
     const { data, error } = await supabase.from('transactions').insert({
       user_id: user.id, type: t.type, name: t.name,
       amount: t.raw_amount, note: t.note,
+      recipient_bank: t.recipient_bank ?? null,
+      recipient_account: t.recipient_account ?? null,
+      sender_name: t.sender_name ?? null,
+      sender_account: t.sender_account ?? null,
     }).select().single();
     if (error || !data) {
       console.error('[UserData] transaction insert error:', error?.message);
@@ -317,6 +329,10 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
         date: fmtTxDate(data.created_at),
         amount: fmtAmount(Number(data.amount)),
         note: t.note, raw_amount: Number(data.amount),
+        recipient_bank: data.recipient_bank ?? undefined,
+        recipient_account: data.recipient_account ?? undefined,
+        sender_name: data.sender_name ?? undefined,
+        sender_account: data.sender_account ?? undefined,
     } satisfies AppTransaction;
     setTransactions(prev => [savedTransaction, ...prev]);
     return savedTransaction;

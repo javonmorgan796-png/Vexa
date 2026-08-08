@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
+import { Route, Switch, Router as WouterRouter, useLocation, useRoute } from 'wouter';
 import {
   Headphones, Bell, Copy, EyeOff, Eye, Clock,
   ArrowLeftRight, PhoneCall, Tablet, Target,
@@ -823,7 +823,12 @@ function HistoryPage() {
           </div>
         )}
         {filtered.map(tx => (
-          <div key={tx.id} className="bg-white rounded-2xl px-4 py-3.5 border border-[#F0F0F0] flex items-center gap-3">
+          <button
+            key={tx.id}
+            onClick={() => navigate(`/receipt/${tx.id}`)}
+            className="w-full text-left bg-white rounded-2xl px-4 py-3.5 border border-[#F0F0F0] flex items-center gap-3 hover:border-[#C7D7FF] active:bg-[#F8F9FB] transition-colors"
+            aria-label={`View receipt for ${tx.name}`}
+          >
             <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${tx.type === 'in' ? 'bg-[#DCFCE7]' : 'bg-[#FEE2E2]'}`}>
               {tx.type === 'in'
                 ? <ArrowDown className="w-4 h-4 text-[#16A34A]" strokeWidth={2.5} />
@@ -836,7 +841,8 @@ function HistoryPage() {
             <span className={`text-[13px] font-bold shrink-0 ${tx.type === 'in' ? 'text-[#16A34A]' : 'text-[#DC2626]'}`}>
               {tx.type === 'in' ? '+' : '-'}₦{tx.amount}
             </span>
-          </div>
+            <ChevronRight className="w-4 h-4 text-[#B5BBC8] shrink-0" />
+          </button>
         ))}
       </div>
     </div>
@@ -2030,6 +2036,10 @@ function TransferPage() {
     const savedTransaction = await addTransaction({
       type: 'out', name: resolvedName, date: '',
       amount, note: narration || 'Transfer', raw_amount: amtValue,
+      recipient_bank: bank,
+      recipient_account: acctNo,
+      sender_name: user?.name,
+      sender_account: user?.accountNumber,
     });
     if (!savedTransaction) {
       // Restore the balance if the transaction could not be persisted. This
@@ -2584,6 +2594,56 @@ function TransferReceipt({
         </div>
       </div>
     </div>
+  );
+}
+
+function TransactionReceiptPage() {
+  const [, navigate] = useLocation();
+  const [, params] = useRoute('/receipt/:transactionId');
+  const { user } = useAuth();
+  const { transactions, transactionsLoading } = useUserData();
+  const transaction = transactions.find(tx => tx.id === params?.transactionId);
+
+  if (transactionsLoading) {
+    return (
+      <div className="fixed inset-0 bg-white flex items-center justify-center">
+        <svg className="animate-spin w-7 h-7 text-[#162353]" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40 20" />
+        </svg>
+      </div>
+    );
+  }
+
+  if (!transaction) {
+    return (
+      <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col items-center justify-center px-6 text-center">
+        <div className="w-16 h-16 rounded-full bg-[#EEF2FF] flex items-center justify-center mb-4">
+          <FileText className="w-7 h-7 text-[#162353]" />
+        </div>
+        <p className="text-[18px] font-bold text-[#111]">Receipt not found</p>
+        <p className="text-[13px] text-[#888] mt-2 mb-6">This transaction is not available in your account history.</p>
+        <button onClick={() => navigate('/history')} className="w-full max-w-xs h-[48px] rounded-xl bg-[#162353] text-white text-[14px] font-semibold">
+          Back to History
+        </button>
+      </div>
+    );
+  }
+
+  const receipt: TransferReceiptData = {
+    transaction,
+    recipientName: transaction.name,
+    bank: transaction.recipient_bank ?? 'Bank transfer',
+    accountNumber: transaction.recipient_account ?? 'Not recorded',
+    senderName: transaction.sender_name ?? user?.name ?? 'Vexa account',
+    senderAccountNumber: transaction.sender_account ?? user?.accountNumber ?? '—',
+  };
+
+  return (
+    <TransferReceipt
+      receipt={receipt}
+      onHome={() => navigate('/')}
+      onTransferAgain={() => navigate('/transfer')}
+    />
   );
 }
 
@@ -3977,6 +4037,7 @@ function Router() {
       <Route path="/deposit" component={DepositPage} />
       <Route path="/transfer" component={TransferPage} />
       <Route path="/history" component={HistoryPage} />
+      <Route path="/receipt/:transactionId" component={TransactionReceiptPage} />
       <Route path="/settings" component={SettingsPage} />
       <Route path="/airtime" component={AirtimePage} />
       <Route path="/data" component={DataPage} />

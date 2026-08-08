@@ -149,17 +149,16 @@ CREATE TABLE IF NOT EXISTS public.notifications (
 
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own notifications"
-  ON public.notifications FOR SELECT
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert own notifications"
-  ON public.notifications FOR INSERT
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.notifications TO authenticated;
+GRANT ALL ON public.notifications TO service_role;
+DROP POLICY IF EXISTS "Users can view own notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Users can insert own notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Users can update own notifications" ON public.notifications;
+DROP POLICY IF EXISTS "own notifications" ON public.notifications;
+CREATE POLICY "own notifications"
+  ON public.notifications FOR ALL TO authenticated
+  USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own notifications"
-  ON public.notifications FOR UPDATE
-  USING (auth.uid() = user_id);
 
 -- ── User transactions ─────────────────────────────────────
 
@@ -170,17 +169,27 @@ CREATE TABLE IF NOT EXISTS public.transactions (
   name       TEXT NOT NULL,
   amount     NUMERIC(15, 2) NOT NULL,
   note       TEXT NOT NULL DEFAULT '',
+  recipient_bank TEXT,
+  recipient_account TEXT,
+  sender_name TEXT,
+  sender_account TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS recipient_bank TEXT;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS recipient_account TEXT;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS sender_name TEXT;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS sender_account TEXT;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own transactions"
-  ON public.transactions FOR SELECT
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert own transactions"
-  ON public.transactions FOR INSERT
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.transactions TO authenticated;
+GRANT ALL ON public.transactions TO service_role;
+DROP POLICY IF EXISTS "Users can view own transactions" ON public.transactions;
+DROP POLICY IF EXISTS "Users can insert own transactions" ON public.transactions;
+DROP POLICY IF EXISTS "own transactions" ON public.transactions;
+CREATE POLICY "own transactions"
+  ON public.transactions FOR ALL TO authenticated
+  USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
 -- ── Business accounts ─────────────────────────────────────
