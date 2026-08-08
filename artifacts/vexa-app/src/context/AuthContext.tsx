@@ -47,6 +47,9 @@ function genAccountNumber(): string {
   return '9' + Array.from({ length: 9 }, () => Math.floor(Math.random() * 10)).join('');
 }
 
+const PROFILE_LOAD_TIMEOUT_MS = 10000;
+const SESSION_RESTORE_TIMEOUT_MS = 12000;
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser]               = useState<User | null>(null);
   const [session, setSession]         = useState<Session | null>(null);
@@ -57,11 +60,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const fetchProfile = useCallback(async (userId: string, showLoading = true) => {
     if (showLoading) setLoading(true);
     setProfileError(null);
-    const { data, error } = await supabase
+    const profileRequest = supabase
       .from('profiles')
       .select('*')
       .eq('id', userId)
       .single();
+    const timeoutRequest = new Promise<{
+      data: null;
+      error: { message: string };
+    }>(resolve => {
+      window.setTimeout(() => resolve({
+        data: null,
+        error: { message: 'Profile request timed out' },
+      }), PROFILE_LOAD_TIMEOUT_MS);
+    });
+    const { data, error } = await Promise.race([profileRequest, timeoutRequest]);
 
     if (error || !data) {
       console.error('[Auth] fetchProfile error:', error?.message);
@@ -92,6 +105,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+    let restoreSettled = false;
 
     const applySession = async (nextSession: Session | null) => {
       if (!mounted) return;
@@ -107,16 +121,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     // Subscribe before restoring the session so a refresh cannot miss an auth event.
+    // Supabase recommends keeping this callback synchronous: starting another
+    // Supabase request directly inside it can block session restoration.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      void applySession(nextSession);
+      window.setTimeout(() => {
+        if (mounted) void applySession(nextSession);
+      }, 0);
     });
 
-    void supabase.auth.getSession().then(({ data: { session: restoredSession } }) => {
-      void applySession(restoredSession);
-    });
+    const restoreTimer = window.setTimeout(() => {
+      if (!mounted || restoreSettled) return;
+      console.warn('[Auth] Session restoration timed out; showing sign-in.');
+      setSession(null);
+      setUser(null);
+      setProfilePhoto(null);
+      setProfileError(null);
+      setLoading(false);
+    }, SESSION_RESTORE_TIMEOUT_MS);
+
+    void supabase.auth.getSession()
+      .then(({ data: { session: restoredSession } }) => {
+        restoreSettled = true;
+        window.clearTimeout(restoreTimer);
+        void applySession(restoredSession);
+      })
+      .catch(error => {
+        restoreSettled = true;
+        window.clearTimeout(restoreTimer);
+        console.error('[Auth] Session restoration failed:', error);
+        if (!mounted) return;
+        setSession(null);
+        setUser(null);
+        setProfilePhoto(null);
+        setProfileError(null);
+        setLoading(false);
+      });
 
     return () => {
       mounted = false;
+      window.clearTimeout(restoreTimer);
       subscription.unsubscribe();
     };
   }, [fetchProfile]);
