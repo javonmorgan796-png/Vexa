@@ -64,7 +64,7 @@ interface BusinessContextType {
   payrollSchedules: PayrollSchedule[];
   transactions: BusinessTransaction[];
   businessLoading: boolean;
-  createBusiness: (data: Omit<BusinessAccount, 'id' | 'accountNumber' | 'balance' | 'createdAt' | 'twoFAEnabled' | 'transactionLimit' | 'notificationsEnabled'>) => void;
+  createBusiness: (data: Omit<BusinessAccount, 'id' | 'accountNumber' | 'balance' | 'createdAt' | 'twoFAEnabled' | 'transactionLimit' | 'notificationsEnabled'>) => Promise<{ success: boolean; error?: string }>;
   updateBusiness: (data: Partial<BusinessAccount>) => void;
   addEmployee: (emp: Omit<Employee, 'id'>) => void;
   updateEmployee: (id: string, data: Partial<Employee>) => void;
@@ -195,11 +195,11 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
 
   /* ── Mutations (optimistic local + async Supabase) ─────────────── */
 
-  function createBusiness(data: Omit<BusinessAccount, 'id' | 'accountNumber' | 'balance' | 'createdAt' | 'twoFAEnabled' | 'transactionLimit' | 'notificationsEnabled'>) {
-    if (!user) return;
+  async function createBusiness(data: Omit<BusinessAccount, 'id' | 'accountNumber' | 'balance' | 'createdAt' | 'twoFAEnabled' | 'transactionLimit' | 'notificationsEnabled'>): Promise<{ success: boolean; error?: string }> {
+    if (!user) return { success: false, error: 'You must be signed in to create a business account.' };
     const acct: BusinessAccount = {
       ...data,
-      id:                   genId(),
+      id:                   '',
       accountNumber:        genAccNum(),
       balance:              0,
       createdAt:            new Date().toISOString(),
@@ -207,14 +207,10 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
       transactionLimit:     5000000,
       notificationsEnabled: true,
     };
-    setBusiness(acct);
-    setEmployees([]);
-    setSchedules([]);
-    setTransactions([]);
 
-    // Persist to Supabase
-    supabase.from('business_accounts').insert({
-      id:                   acct.id,
+    // Let PostgreSQL generate the UUID primary key. The old client-generated
+    // short ID was not a valid UUID, so Supabase rejected the insert.
+    const { data: savedRow, error } = await supabase.from('business_accounts').insert({
       owner_id:             user.id,
       business_name:        acct.businessName,
       business_type:        acct.businessType,
@@ -229,7 +225,21 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
       two_fa_enabled:       false,
       transaction_limit:    5000000,
       notifications_enabled: true,
-    }).then(({ error }) => { if (error) console.error('[Business] createBusiness:', error.message); });
+    }).select('*').single();
+
+    if (error || !savedRow) {
+      console.error('[Business] createBusiness:', error);
+      return {
+        success: false,
+        error: error?.message || 'Business account could not be saved. Please try again.',
+      };
+    }
+
+    setBusiness(rowToBusiness(savedRow as Record<string, unknown>));
+    setEmployees([]);
+    setSchedules([]);
+    setTransactions([]);
+    return { success: true };
   }
 
   function updateBusiness(data: Partial<BusinessAccount>) {
