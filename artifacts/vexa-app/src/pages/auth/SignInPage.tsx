@@ -285,7 +285,7 @@ export default function SignInPage() {
             <div className="flex gap-2.5 justify-between" onPaste={handlePaste}>
               {passcode.map((digit, idx) => (
                 <input key={idx} ref={el => { inputRefs.current[idx] = el; }}
-                  type="text" inputMode="numeric" maxLength={1} value={digit}
+                  type="password" inputMode="numeric" maxLength={1} value={digit}
                   onChange={e => handleDigit(idx, e.target.value)}
                   onKeyDown={e => handleKeyDown(idx, e)}
                   disabled={isLocked}
@@ -359,13 +359,6 @@ export default function SignInPage() {
             </>
           )}
         </button>
-
-        {/* Demo hint */}
-        <div className="mt-6 bg-[#F0F4FF] rounded-xl px-4 py-3">
-          <p className="text-[11px] text-[#162353] font-semibold mb-0.5">Demo credentials</p>
-          <p className="text-[11px] text-[#555]">Phone: 08067212032</p>
-          <p className="text-[11px] text-[#555]">Passcode: 123456</p>
-        </div>
 
         {/* Sign up link */}
         <p className="text-center text-[13px] text-[#888] mt-6">
