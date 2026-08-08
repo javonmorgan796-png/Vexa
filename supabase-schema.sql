@@ -56,7 +56,7 @@ BEGIN
   ) VALUES (
     NEW.id,
     COALESCE(NEW.raw_user_meta_data->>'name', 'Vexa User'),
-    '',
+    COALESCE(NEW.email, ''),
     COALESCE(NEW.raw_user_meta_data->>'phone', ''),
     COALESCE(NEW.raw_user_meta_data->>'account_number', acc),
     '0000',
@@ -74,6 +74,16 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- ── Repair existing profile rows ─────────────────────────
+-- Auth owns the login identity; profiles owns the banking data. This fills
+-- only missing values and does not overwrite any profile edits.
+UPDATE public.profiles AS p
+SET email = u.email
+FROM auth.users AS u
+WHERE u.id = p.id
+  AND COALESCE(p.email, '') = ''
+  AND COALESCE(u.email, '') <> '';
 
 -- ── Cashback history ──────────────────────────────────────
 

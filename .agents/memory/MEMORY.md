@@ -2,3 +2,4 @@
 - [Supabase env injection](supabase-env-inject.md) — SUPABASE_URL/ANON_KEY injected into Vite bundle via `define` in vite.config.ts (not VITE_ prefix)
 - [Vexa app structure](vexa-app-structure.md) — all screens are in App.tsx; contexts in src/context/; schema in supabase-schema.sql at root
 - [Supabase profile loading](supabase-profile-loading.md) — wait for session restoration before protected redirects and use the profiles row for user-facing data
+- [Transfer receipts](transfer-receipts.md) — receipts derive from the saved transaction and only appear after debit plus persistence succeed

@@ -145,23 +145,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const storedReferralCode = typeof profile.referral_code === 'string' ? profile.referral_code : '';
     const referralCode = storedReferralCode || `VEXA-${String(profile.account_number ?? '').slice(-4)}`;
+    const profileEmail = profile.email || authUser.email || '';
 
-    // Older rows may have an empty referral code. Persist the value once so
-    // every screen reads the same code that is stored in Supabase.
-    if (!storedReferralCode && referralCode !== 'VEXA-') {
+    // Older rows may have an empty referral code or email. Persist these
+    // values once so every screen reads the same data that is stored in
+    // Supabase, while never overwriting a user-entered profile email.
+    if ((!storedReferralCode && referralCode !== 'VEXA-') || (!profile.email && authUser.email)) {
       const { error: referralError } = await supabase
         .from('profiles')
-        .update({ referral_code: referralCode })
+        .update({
+          ...(storedReferralCode ? {} : { referral_code: referralCode }),
+          ...(profile.email || !authUser.email ? {} : { email: authUser.email }),
+        })
         .eq('id', authUser.id);
       if (referralError) {
-        console.warn('[Auth] referral code backfill error:', referralError.message);
+        console.warn('[Auth] profile backfill error:', referralError.message);
       }
     }
 
     setUser({
       id:            profile.id,
       name:          profile.name ?? 'Vexa User',
-      email:         profile.email ?? '',
+      email:         profileEmail,
       phone:         profile.phone ?? '',
       accountNumber: profile.account_number ?? '',
       referralCode,
@@ -171,6 +176,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     setProfilePhoto(profile.profile_photo ?? null);
     setLoading(false);
+
+    // Supabase Auth is the credential/identity record. Keep the safe,
+    // non-secret account fields visible in raw_user_meta_data too, while
+    // public.profiles remains the source of truth for the app.
+    const currentMetadata = authUser.user_metadata ?? {};
+    const mirroredMetadata = {
+      ...currentMetadata,
+      name: profile.name ?? 'Vexa User',
+      phone: profile.phone ?? '',
+      account_number: profile.account_number ?? '',
+      referral_code: referralCode,
+    };
+    const metadataKeys = ['name', 'phone', 'account_number', 'referral_code'] as const;
+    const metadataChanged = metadataKeys
+      .some(key => currentMetadata[key] !== mirroredMetadata[key]);
+    if (metadataChanged) {
+      const { error: metadataError } = await supabase.auth.updateUser({ data: mirroredMetadata });
+      if (metadataError) {
+        console.warn('[Auth] auth metadata sync error:', metadataError.message);
+      }
+    }
   }
 
   const signIn = async (phone: string, passcode: string): Promise<{ success: boolean; error?: string }> => {
@@ -220,7 +246,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // all fields are correct in case the trigger ran with partial data.
     if (data.session) {
       await supabase.from('profiles').upsert({
-        id: data.user.id, name, email: '', phone,
+        id: data.user.id, name, email, phone,
         account_number: accountNumber, pin: '0000',
         level: 1, verified: false, balance: 0, referral_code: referralCode,
       }, { onConflict: 'id' });
@@ -284,6 +310,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.from('profiles').update({ name, email, phone }).eq('id', user.id);
     if (error) return { success: false, error: 'Failed to save profile. Please try again.' };
     setUser(prev => prev ? { ...prev, name, email, phone } : null);
+
+    const { error: metadataError } = await supabase.auth.updateUser({
+      data: {
+        name,
+        phone,
+        account_number: user.accountNumber,
+        referral_code: user.referralCode,
+      },
+    });
+    if (metadataError) {
+      console.warn('[Auth] profile metadata sync error:', metadataError.message);
+    }
+
     return { success: true };
   };
 

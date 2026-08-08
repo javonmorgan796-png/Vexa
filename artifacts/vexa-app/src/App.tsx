@@ -34,6 +34,7 @@ import EmployeeManagement from '@/pages/business/EmployeeManagement';
 import PayrollManagement from '@/pages/business/PayrollManagement';
 import { BusinessSecurityProvider, useBusinessSecurity } from '@/context/BusinessSecurityContext';
 import { UserDataProvider, useUserData } from '@/context/UserDataContext';
+import type { AppTransaction } from '@/context/UserDataContext';
 import BusinessSecurityScreen from '@/pages/business/BusinessSecurityScreen';
 
 const queryClient = new QueryClient();
@@ -1946,6 +1947,15 @@ const KNOWN_ACCOUNTS: Record<string, string> = {
 
 type TxStep = 'details' | 'amount' | 'create_pin' | 'pin' | 'success';
 
+interface TransferReceiptData {
+  transaction: AppTransaction;
+  recipientName: string;
+  bank: string;
+  accountNumber: string;
+  senderName: string;
+  senderAccountNumber: string;
+}
+
 function formatAmt(raw: string) {
   const clean = raw.replace(/,/g, '').replace(/[^0-9.]/g, '');
   const [intP, ...rest] = clean.split('.');
@@ -1956,7 +1966,7 @@ function formatAmt(raw: string) {
 function TransferPage() {
   const [, navigate] = useLocation();
   const { user, setInitialTransferPin } = useAuth();
-  const { debitBalance, addTransaction, addNotification } = useUserData();
+  const { debitBalance, creditBalance, addTransaction, addNotification } = useUserData();
   const [step, setStep]           = useState<TxStep>('details');
   const [bank, setBank]           = useState('');
   const [showBankList, setShowBankList] = useState(false);
@@ -1974,6 +1984,8 @@ function TransferPage() {
   const [confirmPinEntry, setConfirmPinEntry] = useState('');
   const [createPinError, setCreatePinError]   = useState('');
   const [savingPin, setSavingPin]             = useState(false);
+  const [submitError, setSubmitError]         = useState('');
+  const [receipt, setReceipt]                 = useState<TransferReceiptData | null>(null);
 
   // Simulate account name lookup when 10-digit acc entered + bank chosen
   useEffect(() => {
@@ -2005,18 +2017,44 @@ function TransferPage() {
       return;
     }
     setProcessing(true);
+    setSubmitError('');
     const amtValue = parseFloat(amount.replace(/,/g, '') || '0');
-    await debitBalance(amtValue);
-    await addTransaction({
+    const debited = await debitBalance(amtValue);
+    if (!debited) {
+      setProcessing(false);
+      setSubmitError('Transfer could not be completed. Please check your balance and try again.');
+      setPin('');
+      return;
+    }
+
+    const savedTransaction = await addTransaction({
       type: 'out', name: resolvedName, date: '',
       amount, note: narration || 'Transfer', raw_amount: amtValue,
     });
+    if (!savedTransaction) {
+      // Restore the balance if the transaction could not be persisted. This
+      // keeps the receipt and transaction history aligned with the balance.
+      await creditBalance(amtValue);
+      setProcessing(false);
+      setSubmitError('We could not save this transfer. Your balance was not changed. Please try again.');
+      setPin('');
+      return;
+    }
+
     await addNotification({
       type: 'debit',
       title: 'Transfer Successful',
       body: `Transfer of ₦${amount} to ${resolvedName} (${bank}) was successful.`,
     });
     setProcessing(false);
+    setReceipt({
+      transaction: savedTransaction,
+      recipientName: resolvedName,
+      bank,
+      accountNumber: acctNo,
+      senderName: user?.name ?? 'Vexa account',
+      senderAccountNumber: user?.accountNumber ?? '—',
+    });
     setStep('success');
   }
 
@@ -2035,45 +2073,17 @@ function TransferPage() {
   }
 
   /* ── STEP: SUCCESS ─────────────────────────────────── */
-  if (step === 'success') {
+  if (step === 'success' && receipt) {
     return (
-      <div className="fixed inset-0 bg-white flex flex-col items-center justify-center px-6" style={{ fontFamily: "'Inter', sans-serif" }}>
-        <div className="flex flex-col items-center gap-5 w-full max-w-xs">
-          {/* Green check circle */}
-          <div className="w-20 h-20 rounded-full bg-green-50 flex items-center justify-center">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
-          </div>
-          <div className="text-center">
-            <p className="text-[20px] font-bold text-[#111] mb-1">Transfer Successful</p>
-            <p className="text-[13px] text-[#888]">You sent</p>
-            <p className="text-[28px] font-extrabold text-[#111] my-1">₦{amount}</p>
-            <p className="text-[13px] text-[#555]">to <span className="font-semibold">{resolvedName}</span></p>
-            <p className="text-[12px] text-[#888] mt-0.5">{bank} · {acctNo}</p>
-          </div>
-          {/* Receipt card */}
-          <div className="w-full bg-[#F8F9FB] rounded-2xl p-4 text-[12px] text-[#555] space-y-2 border border-[#F0F0F0]">
-            {[
-              ['Date', new Date().toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' })],
-              ['Reference', 'VX' + Date.now().toString().slice(-8)],
-              ['Narration', narration || 'Transfer'],
-              ['Status', '✅ Completed'],
-            ].map(([k, v]) => (
-              <div key={k} className="flex justify-between">
-                <span className="text-[#888]">{k}</span>
-                <span className="font-semibold text-[#111] text-right max-w-[55%]">{v}</span>
-              </div>
-            ))}
-          </div>
-          <button
-            onClick={() => navigate('/')}
-            className="w-full bg-[#162353] rounded-xl h-[50px] text-[14px] font-semibold text-white"
-          >
-            Back to Home
-          </button>
-        </div>
-      </div>
+      <TransferReceipt
+        receipt={receipt}
+        onHome={() => navigate('/')}
+        onTransferAgain={() => {
+          setReceipt(null);
+          setPin('');
+          setStep('details');
+        }}
+      />
     );
   }
 
@@ -2190,7 +2200,11 @@ function TransferPage() {
                 <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${i < pin.length ? 'bg-[#162353] border-[#162353]' : 'border-[#CBD5E1] bg-transparent'}`} />
               ))}
             </div>
-            {pinError && <p className="text-[12px] text-red-500 -mt-2">Incorrect PIN. Please try again.</p>}
+            {(pinError || submitError) && (
+              <p className="text-[12px] text-red-500 -mt-2 text-center">
+                {submitError || 'Incorrect PIN. Please try again.'}
+              </p>
+            )}
           </div>
 
           {/* Keypad */}
@@ -2420,6 +2434,154 @@ function TransferPage() {
         >
           Continue
         </button>
+      </div>
+    </div>
+  );
+}
+
+function TransferReceipt({
+  receipt,
+  onHome,
+  onTransferAgain,
+}: {
+  receipt: TransferReceiptData;
+  onHome: () => void;
+  onTransferAgain: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const { transaction, recipientName, bank, accountNumber, senderName, senderAccountNumber } = receipt;
+  const reference = `VX${transaction.id.replace(/-/g, '').slice(0, 10).toUpperCase()}`;
+  const shareText = [
+    'Vexa Transfer Receipt',
+    `Status: Completed`,
+    `Amount: ₦${transaction.amount}`,
+    `Recipient: ${recipientName}`,
+    `Bank: ${bank}`,
+    `Account: ${accountNumber}`,
+    `Reference: ${reference}`,
+    `Date: ${transaction.date}`,
+  ].join('\n');
+
+  async function shareReceipt() {
+    if (navigator.share) {
+      await navigator.share({
+        title: 'Vexa Transfer Receipt',
+        text: shareText,
+      }).catch(() => {});
+      return;
+    }
+    await navigator.clipboard?.writeText(shareText).catch(() => {});
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function copyReference() {
+    await navigator.clipboard?.writeText(reference).catch(() => {});
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          .vexa-receipt, .vexa-receipt * { visibility: visible !important; }
+          .vexa-receipt { position: absolute; inset: 0; background: white !important; }
+          .receipt-actions, .receipt-header-action { display: none !important; }
+        }
+      `}</style>
+
+      <div className="receipt-header-action flex-none flex items-center justify-between px-4 pb-3 bg-white border-b border-[#E8EBF0]"
+        style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
+        <button onClick={onHome} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100" aria-label="Back to home">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 5l-7 7 7 7"/>
+          </svg>
+        </button>
+        <span className="text-[16px] font-bold text-[#111]">Transfer Receipt</span>
+        <button onClick={() => window.print()} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100" aria-label="Print receipt">
+          <FileText className="w-[18px] h-[18px] text-[#162353]" />
+        </button>
+      </div>
+
+      <div className="vexa-receipt flex-1 overflow-y-auto px-4 py-6" style={{ scrollbarWidth: 'none' }}>
+        <div className="max-w-md mx-auto">
+          <div className="flex flex-col items-center text-center mb-5">
+            <div className="w-[72px] h-[72px] rounded-full bg-green-100 flex items-center justify-center mb-4">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            </div>
+            <p className="text-[21px] font-extrabold text-[#111]">Transfer Successful</p>
+            <p className="text-[13px] text-[#888] mt-1">Your money has been sent securely</p>
+          </div>
+
+          <div className="bg-[#162353] rounded-2xl px-5 py-6 text-center text-white shadow-sm">
+            <p className="text-[11px] text-white/60 uppercase tracking-wider">Amount sent</p>
+            <p className="text-[32px] font-extrabold mt-1">₦{transaction.amount}</p>
+            <div className="inline-flex items-center gap-1.5 bg-green-400/15 rounded-full px-3 py-1 mt-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-300" />
+              <span className="text-[11px] font-semibold text-green-200">Completed</span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-[#E8EBF0] mt-4 overflow-hidden">
+            <div className="px-5 py-4 border-b border-[#F0F0F0]">
+              <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide">Recipient</p>
+              <div className="flex items-center gap-3 mt-3">
+                <div className="w-11 h-11 rounded-full bg-[#EEF2FF] flex items-center justify-center text-[#2563EB] text-[16px] font-bold">
+                  {recipientName.charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[14px] font-bold text-[#111] truncate">{recipientName}</p>
+                  <p className="text-[12px] text-[#888] mt-0.5">{bank} · {accountNumber}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 py-4 space-y-3 text-[12px]">
+              {[
+                ['From', `${senderName} · ${senderAccountNumber}`],
+                ['Date', transaction.date],
+                ['Narration', transaction.note || 'Transfer'],
+              ].map(([label, value]) => (
+                <div key={label} className="flex items-start justify-between gap-4">
+                  <span className="text-[#888]">{label}</span>
+                  <span className="font-semibold text-[#222] text-right max-w-[68%] break-words">{value}</span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between gap-4 pt-3 border-t border-[#F0F0F0]">
+                <span className="text-[#888]">Reference</span>
+                <button onClick={copyReference} className="flex items-center gap-1.5 font-semibold text-[#2563EB]" title="Copy reference">
+                  <span>{reference}</span>
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {copied && (
+            <p className="text-center text-[11px] text-green-600 font-semibold mt-3">Copied to clipboard</p>
+          )}
+
+          <div className="receipt-actions grid grid-cols-2 gap-3 mt-5">
+            <button onClick={shareReceipt} className="h-[48px] rounded-xl border border-[#D9E0EF] bg-white text-[#162353] text-[13px] font-semibold flex items-center justify-center gap-2 active:bg-[#F8F9FB]">
+              <Share2 className="w-4 h-4" />
+              Share Receipt
+            </button>
+            <button onClick={() => window.print()} className="h-[48px] rounded-xl border border-[#D9E0EF] bg-white text-[#162353] text-[13px] font-semibold flex items-center justify-center gap-2 active:bg-[#F8F9FB]">
+              <FileText className="w-4 h-4" />
+              Save / Print
+            </button>
+          </div>
+          <button onClick={onTransferAgain} className="receipt-actions w-full h-[50px] rounded-xl bg-[#162353] text-white text-[14px] font-semibold mt-3 active:opacity-80">
+            Make Another Transfer
+          </button>
+          <button onClick={onHome} className="receipt-actions w-full h-[46px] text-[#2563EB] text-[13px] font-semibold mt-1">
+            Back to Home
+          </button>
+        </div>
       </div>
     </div>
   );

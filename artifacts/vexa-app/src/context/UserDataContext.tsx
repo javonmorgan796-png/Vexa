@@ -94,7 +94,7 @@ interface UserDataContextType {
   /* Transactions */
   transactions: AppTransaction[];
   transactionsLoading: boolean;
-  addTransaction: (t: Omit<AppTransaction, 'id'>) => Promise<void>;
+  addTransaction: (t: Omit<AppTransaction, 'id'>) => Promise<AppTransaction | null>;
   /* Actions */
   redeemCashback: () => Promise<void>;
   refreshAll: () => void;
@@ -302,19 +302,24 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const addTransaction = async (t: Omit<AppTransaction, 'id'>) => {
-    if (!user) return;
-    const { data } = await supabase.from('transactions').insert({
+    if (!user) return null;
+    const { data, error } = await supabase.from('transactions').insert({
       user_id: user.id, type: t.type, name: t.name,
       amount: t.raw_amount, note: t.note,
     }).select().single();
-    if (data) {
-      setTransactions(prev => [{
+    if (error || !data) {
+      console.error('[UserData] transaction insert error:', error?.message);
+      return null;
+    }
+
+    const savedTransaction = {
         id: data.id, type: t.type, name: t.name,
         date: fmtTxDate(data.created_at),
         amount: fmtAmount(Number(data.amount)),
         note: t.note, raw_amount: Number(data.amount),
-      }, ...prev]);
-    }
+    } satisfies AppTransaction;
+    setTransactions(prev => [savedTransaction, ...prev]);
+    return savedTransaction;
   };
 
   return (
