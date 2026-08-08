@@ -50,11 +50,25 @@ function genAccountNumber(): string {
 
 const PROFILE_LOAD_TIMEOUT_MS = 10000;
 const SESSION_RESTORE_TIMEOUT_MS = 12000;
+const LAST_PROFILE_CACHE_KEY = 'vexa_last_profile_cache';
+
+function readCachedProfile(): { user: User; profilePhoto: string | null } | null {
+  try {
+    const raw = localStorage.getItem(LAST_PROFILE_CACHE_KEY);
+    if (!raw) return null;
+    const cached = JSON.parse(raw);
+    if (!cached?.user?.id || !cached.user.accountNumber) return null;
+    return cached;
+  } catch {
+    return null;
+  }
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser]               = useState<User | null>(null);
+  const cachedProfile = readCachedProfile();
+  const [user, setUser]               = useState<User | null>(cachedProfile?.user ?? null);
   const [session, setSession]         = useState<Session | null>(null);
-  const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(cachedProfile?.profilePhoto ?? null);
   const [loading, setLoading]         = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
 
@@ -97,6 +111,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       verified:      data.verified,
     });
     setProfilePhoto(data.profile_photo ?? null);
+    try {
+      localStorage.setItem(LAST_PROFILE_CACHE_KEY, JSON.stringify({
+        user: {
+          id: data.id,
+          name: data.name,
+          email: data.email ?? '',
+          phone: data.phone,
+          balance: Number(data.balance ?? 0),
+          accountNumber: data.account_number,
+          referralCode: data.referral_code ?? '',
+          pin: data.pin,
+          level: data.level,
+          verified: data.verified,
+        },
+        profilePhoto: data.profile_photo ?? null,
+      }));
+    } catch {
+      // Cached data is only an instant-render optimization.
+    }
     setLoading(false);
   }, []);
 
@@ -223,6 +256,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    try {
+      localStorage.removeItem(LAST_PROFILE_CACHE_KEY);
+    } catch {
+      // Ignore storage cleanup failures.
+    }
   };
 
   const setInitialTransferPin = async (newPin: string): Promise<{ success: boolean; error?: string }> => {

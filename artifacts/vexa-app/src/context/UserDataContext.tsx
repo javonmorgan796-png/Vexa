@@ -66,6 +66,47 @@ function fmtAmount(raw: number): string {
   return raw.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+type DashboardCache = {
+  userId: string;
+  balance: number;
+  cashbackHistory: CashbackItem[];
+  referrals: Referral[];
+  notifications: AppNotification[];
+  transactions: AppTransaction[];
+};
+
+function dashboardCacheKey(userId: string) {
+  return `vexa_dashboard_cache_${userId}`;
+}
+
+function readDashboardCache(userId?: string): DashboardCache | null {
+  if (!userId) return null;
+  try {
+    const raw = localStorage.getItem(dashboardCacheKey(userId));
+    if (!raw) return null;
+    const cached = JSON.parse(raw);
+    return cached?.userId === userId ? cached : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveDashboardCache(userId: string, patch: Partial<DashboardCache>) {
+  try {
+    const current = readDashboardCache(userId) ?? {
+      userId,
+      balance: 0,
+      cashbackHistory: [],
+      referrals: [],
+      notifications: [],
+      transactions: [],
+    };
+    localStorage.setItem(dashboardCacheKey(userId), JSON.stringify({ ...current, ...patch }));
+  } catch {
+    // Cached data is only an instant-render optimization.
+  }
+}
+
 /* ── Context type ───────────────────────────────────────────────────── */
 
 interface UserDataContextType {
@@ -108,21 +149,22 @@ const UserDataContext = createContext<UserDataContextType | null>(null);
 
 export function UserDataProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const initialCache = readDashboardCache(user?.id);
 
-  const [balance, setBalance]                       = useState(0);
-  const [balanceLoading, setBalanceLoading]         = useState(true);
+  const [balance, setBalance]                       = useState(initialCache?.balance ?? user?.balance ?? 0);
+  const [balanceLoading, setBalanceLoading]         = useState(!initialCache && !user?.balance);
 
-  const [cashbackHistory, setCashbackHistory]       = useState<CashbackItem[]>([]);
-  const [cashbackLoading, setCashbackLoading]       = useState(true);
+  const [cashbackHistory, setCashbackHistory]       = useState<CashbackItem[]>(initialCache?.cashbackHistory ?? []);
+  const [cashbackLoading, setCashbackLoading]       = useState(!initialCache);
 
-  const [referrals, setReferrals]                   = useState<Referral[]>([]);
-  const [referralsLoading, setReferralsLoading]     = useState(true);
+  const [referrals, setReferrals]                   = useState<Referral[]>(initialCache?.referrals ?? []);
+  const [referralsLoading, setReferralsLoading]     = useState(!initialCache);
 
-  const [notifications, setNotifications]           = useState<AppNotification[]>([]);
-  const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const [notifications, setNotifications]           = useState<AppNotification[]>(initialCache?.notifications ?? []);
+  const [notificationsLoading, setNotificationsLoading] = useState(!initialCache);
 
-  const [transactions, setTransactions]             = useState<AppTransaction[]>([]);
-  const [transactionsLoading, setTransactionsLoading] = useState(true);
+  const [transactions, setTransactions]             = useState<AppTransaction[]>(initialCache?.transactions ?? []);
+  const [transactionsLoading, setTransactionsLoading] = useState(!initialCache);
 
   /* ── Fetch helpers ─────────────────────────────────────────────── */
 
@@ -130,7 +172,11 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
     if (!user) { setBalance(0); setBalanceLoading(false); return; }
     setBalanceLoading(true);
     const { data } = await supabase.from('profiles').select('balance').eq('id', user.id).single();
-    if (data) setBalance(Number(data.balance));
+    if (data) {
+      const nextBalance = Number(data.balance);
+      setBalance(nextBalance);
+      saveDashboardCache(user.id, { balance: nextBalance });
+    }
     setBalanceLoading(false);
   }, [user]);
 
@@ -141,11 +187,13 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
       .from('cashback_history').select('*').eq('user_id', user.id)
       .order('created_at', { ascending: false });
     if (data) {
-      setCashbackHistory(data.map(d => ({
+      const nextCashback = data.map(d => ({
         id: d.id, desc: d.description, date: d.date,
         rate: d.rate, earned: Number(d.earned),
         status: d.status as CashbackItem['status'],
-      })));
+      }));
+      setCashbackHistory(nextCashback);
+      saveDashboardCache(user.id, { cashbackHistory: nextCashback });
     }
     setCashbackLoading(false);
   }, [user]);
@@ -157,11 +205,13 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
       .from('referrals').select('*').eq('referrer_id', user.id)
       .order('created_at', { ascending: false });
     if (data) {
-      setReferrals(data.map(d => ({
+      const nextReferrals = data.map(d => ({
         id: d.id, name: d.referred_name, phone: d.referred_phone,
         date: d.date, earned: Number(d.earned),
         status: d.status as Referral['status'],
-      })));
+      }));
+      setReferrals(nextReferrals);
+      saveDashboardCache(user.id, { referrals: nextReferrals });
     }
     setReferralsLoading(false);
   }, [user]);
@@ -173,14 +223,16 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
       .from('notifications').select('*').eq('user_id', user.id)
       .order('created_at', { ascending: false });
     if (data) {
-      setNotifications(data.map(d => ({
+      const nextNotifications = data.map(d => ({
         id: d.id,
         type: d.type as AppNotification['type'],
         title: d.title,
         body: d.body,
         read: d.read,
         time: timeAgo(d.created_at),
-      })));
+      }));
+      setNotifications(nextNotifications);
+      saveDashboardCache(user.id, { notifications: nextNotifications });
     }
     setNotificationsLoading(false);
   }, [user]);
@@ -192,7 +244,7 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
       .from('transactions').select('*').eq('user_id', user.id)
       .order('created_at', { ascending: false });
     if (data) {
-      setTransactions(data.map(d => ({
+      const nextTransactions = data.map(d => ({
         id: d.id,
         type: d.type as 'in' | 'out',
         name: d.name,
@@ -200,7 +252,9 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
         amount: fmtAmount(Number(d.amount)),
         note: d.note,
         raw_amount: Number(d.amount),
-      })));
+      }));
+      setTransactions(nextTransactions);
+      saveDashboardCache(user.id, { transactions: nextTransactions });
     }
     setTransactionsLoading(false);
   }, [user]);
@@ -220,6 +274,17 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
       // another profiles request during login delayed the balance render.
       setBalance(user.balance);
       setBalanceLoading(false);
+      const cached = readDashboardCache(user.id);
+      if (cached) {
+        setCashbackHistory(cached.cashbackHistory);
+        setReferrals(cached.referrals);
+        setNotifications(cached.notifications);
+        setTransactions(cached.transactions);
+        setCashbackLoading(false);
+        setReferralsLoading(false);
+        setNotificationsLoading(false);
+        setTransactionsLoading(false);
+      }
       fetchCashback();
       fetchReferrals();
       fetchNotifications();
