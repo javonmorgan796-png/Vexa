@@ -178,7 +178,7 @@ export default function SignInPage() {
     if (code.length < 6) { setError('Enter your 6-digit passcode'); return; }
 
     setLoading(true);
-    setTimeout(async () => {
+    void (async () => {
       const res = await signIn(phone, code);
       setLoading(false);
       if (res.success) {
@@ -197,7 +197,7 @@ export default function SignInPage() {
         setPasscode(['', '', '', '', '', '']);
         inputRefs.current[0]?.focus();
       }
-    }, 800);
+    })();
   }
 
   async function handleFingerprint() {
@@ -285,11 +285,11 @@ export default function SignInPage() {
             <div className="flex gap-2.5 justify-between" onPaste={handlePaste}>
               {passcode.map((digit, idx) => (
                 <input key={idx} ref={el => { inputRefs.current[idx] = el; }}
-                  type="password" inputMode="numeric" maxLength={1} value={digit}
+                  type="text" inputMode="numeric" maxLength={1} value={digit}
                   onChange={e => handleDigit(idx, e.target.value)}
                   onKeyDown={e => handleKeyDown(idx, e)}
                   disabled={isLocked}
-                  className="w-full h-[52px] rounded-xl border-2 border-[#E2E8F0] bg-[#F8F9FB] text-center text-[20px] font-bold text-[#111] focus:outline-none focus:border-[#162353] focus:bg-white transition-colors caret-transparent disabled:opacity-50"
+                  className="passcode-digit w-full h-[52px] rounded-xl border-2 border-[#E2E8F0] bg-[#F8F9FB] text-center text-[20px] font-bold text-[#111] focus:outline-none focus:border-[#162353] focus:bg-white transition-colors caret-transparent disabled:opacity-50"
                   style={{ maxWidth: 52 }} />
               ))}
             </div>
