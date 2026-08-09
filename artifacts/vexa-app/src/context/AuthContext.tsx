@@ -205,7 +205,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (error) {
       return { success: false, error: 'Invalid phone number or passcode' };
     }
-    if (data.user) await fetchProfile(data.user);
+    // The auth-state listener loads the profile once the session is established.
+    // Do not block sign-in on a duplicate profile request.
     return { success: true };
   };
 

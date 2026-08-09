@@ -10,6 +10,7 @@ import {
   MessageCircle, Phone, Mail, ExternalLink, Star, ChevronDown,
   Send, X, Bot, CheckCheck, Wifi, Paperclip, ImagePlus, FileUp, FileText as FileIcon,
   Gift, Users, Share2, Percent, TrendingUp, BadgeCheck, ChevronUp,
+  WalletCards, Plus, Trash2, Check,
 } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
@@ -44,9 +45,9 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
   const [fadeOut, setFadeOut] = useState(false);
 
   useEffect(() => {
-    // Start fade-out after 2.2s, call onDone after fade completes
-    const fadeTimer = setTimeout(() => setFadeOut(true), 6800);
-    const doneTimer = setTimeout(() => onDone(), 7400);
+    // Keep the branded intro brief so returning users reach the app quickly.
+    const fadeTimer = setTimeout(() => setFadeOut(true), 650);
+    const doneTimer = setTimeout(() => onDone(), 1050);
     return () => { clearTimeout(fadeTimer); clearTimeout(doneTimer); };
   }, [onDone]);
 
@@ -145,6 +146,7 @@ const services = [
   { label: 'Data',      Icon: Tablet          },
   { label: 'Betting',   Icon: Target          },
   { label: 'Savings',   Icon: PiggyBank       },
+  { label: 'Budget',    Icon: WalletCards     },
   { label: 'Education', Icon: BookOpen        },
   { label: 'Statement', Icon: FileText        },
   { label: 'More',      Icon: LayoutGrid      },
@@ -621,7 +623,7 @@ function MoniepointHome() {
                 const routes: Record<string,string> = {
                   Transfer:'/transfer', Airtime:'/airtime', Data:'/data',
                   Betting:'/betting', Savings:'/savings', Education:'/education',
-                  Statement:'/statement', More:'/more',
+                  Budget:'/budget', Statement:'/statement', More:'/more',
                 };
                 return (
                   <button
@@ -3396,6 +3398,267 @@ function StatementPage() {
   );
 }
 
+/* ─── Personal Budget Page ───────────────────────────────────────────── */
+type BudgetCategory = {
+  id: string;
+  label: string;
+  limit: number;
+  color: string;
+  icon: React.ReactNode;
+};
+
+const DEFAULT_BUDGET_CATEGORIES: BudgetCategory[] = [
+  { id: 'transfer', label: 'Transfers', limit: 100000, color: '#2563EB', icon: <ArrowLeftRight className="w-4 h-4" /> },
+  { id: 'bills', label: 'Bills & utilities', limit: 60000, color: '#7C3AED', icon: <FileText className="w-4 h-4" /> },
+  { id: 'food', label: 'Food & groceries', limit: 80000, color: '#EA580C', icon: <WalletCards className="w-4 h-4" /> },
+  { id: 'airtime', label: 'Airtime & data', limit: 30000, color: '#0891B2', icon: <Phone className="w-4 h-4" /> },
+  { id: 'other', label: 'Other spending', limit: 50000, color: '#64748B', icon: <MoreHorizontalIcon /> },
+];
+
+function MoreHorizontalIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+      <circle cx="5" cy="12" r="1" fill="currentColor" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" />
+      <circle cx="19" cy="12" r="1" fill="currentColor" />
+    </svg>
+  );
+}
+
+function budgetCategoryFor(transaction: AppTransaction): string {
+  const text = `${transaction.name} ${transaction.note}`.toLowerCase();
+  if (/airtime|data|mobile|internet|phone/.test(text)) return 'airtime';
+  if (/food|grocery|groceries|restaurant|market|supermarket|eat|kfc|shoprite/.test(text)) return 'food';
+  if (/bill|electric|power|water|rent|utility|subscription|netflix/.test(text)) return 'bills';
+  if (transaction.recipient_bank || /transfer|sent|send/.test(text)) return 'transfer';
+  return 'other';
+}
+
+function formatBudgetAmount(amount: number): string {
+  return amount.toLocaleString('en-NG', { maximumFractionDigits: 0 });
+}
+
+function BudgetPage() {
+  const [, navigate] = useLocation();
+  const { user } = useAuth();
+  const { transactions, transactionsLoading } = useUserData();
+  const storageKey = `vexa_budget_categories_${user?.id ?? 'guest'}`;
+  const [categories, setCategories] = useState<BudgetCategory[]>(DEFAULT_BUDGET_CATEGORIES);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [showAdd, setShowAdd] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newLimit, setNewLimit] = useState('');
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const limits = JSON.parse(saved) as Record<string, number>;
+        setCategories(prev => prev.map(category => ({
+          ...category,
+          limit: typeof limits[category.id] === 'number' ? limits[category.id] : category.limit,
+        })));
+      }
+    } catch {
+      // Keep the defaults if local storage is unavailable or malformed.
+    }
+  }, [storageKey]);
+
+  function persist(next: BudgetCategory[]) {
+    setCategories(next);
+    localStorage.setItem(storageKey, JSON.stringify(
+      Object.fromEntries(next.map(category => [category.id, category.limit])),
+    ));
+  }
+
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const monthTransactions = transactions.filter(transaction => {
+    if (transaction.type !== 'out') return false;
+    if (!transaction.createdAt) return true;
+    return new Date(transaction.createdAt) >= monthStart;
+  });
+  const spendingByCategory = categories.reduce<Record<string, number>>((totals, category) => {
+    totals[category.id] = monthTransactions
+      .filter(transaction => budgetCategoryFor(transaction) === category.id)
+      .reduce((sum, transaction) => sum + transaction.raw_amount, 0);
+    return totals;
+  }, {});
+  const totalSpent = Object.values(spendingByCategory).reduce((sum, amount) => sum + amount, 0);
+  const totalLimit = categories.reduce((sum, category) => sum + category.limit, 0);
+  const remaining = Math.max(0, totalLimit - totalSpent);
+  const overallPercent = totalLimit ? Math.min(100, (totalSpent / totalLimit) * 100) : 0;
+  const monthLabel = new Intl.DateTimeFormat('en-NG', { month: 'long', year: 'numeric' }).format(new Date());
+
+  function startEdit(category: BudgetCategory) {
+    setEditingId(category.id);
+    setEditValue(String(category.limit));
+  }
+
+  function saveEdit(categoryId: string) {
+    const limit = Number(editValue.replace(/\D/g, ''));
+    if (!Number.isFinite(limit) || limit <= 0) return;
+    persist(categories.map(category => category.id === categoryId ? { ...category, limit } : category));
+    setEditingId(null);
+  }
+
+  function addCategory() {
+    const label = newName.trim();
+    const limit = Number(newLimit.replace(/\D/g, ''));
+    if (!label || !Number.isFinite(limit) || limit <= 0) return;
+    const id = `${label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Date.now()}`;
+    persist([...categories, { id, label, limit, color: '#16A34A', icon: <WalletCards className="w-4 h-4" /> }]);
+    setNewName('');
+    setNewLimit('');
+    setShowAdd(false);
+  }
+
+  function removeCategory(categoryId: string) {
+    persist(categories.filter(category => category.id !== categoryId));
+    if (editingId === categoryId) setEditingId(null);
+  }
+
+  return (
+    <PageShell title="Personal Budget" back="/">
+      <div className="flex-1 overflow-y-auto px-4 py-4 pb-8" style={{ scrollbarWidth: 'none' }}>
+        <div className="rounded-3xl p-5 text-white mb-4 overflow-hidden relative"
+          style={{ background: 'linear-gradient(135deg, #162353 0%, #1E3A8A 58%, #0369A1 100%)' }}>
+          <div className="absolute -right-10 -top-12 w-36 h-36 rounded-full border-[20px] border-white/10" />
+          <div className="relative">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <p className="text-white/60 text-[11px] font-medium">{monthLabel}</p>
+                <p className="text-white text-[18px] font-extrabold mt-0.5">Your spending plan</p>
+              </div>
+              <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center">
+                <WalletCards className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="flex items-end justify-between">
+              <div>
+                <p className="text-white/60 text-[11px]">Spent this month</p>
+                <p className="text-[28px] font-extrabold tracking-tight mt-0.5">₦{formatBudgetAmount(totalSpent)}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-white/60 text-[11px]">Remaining</p>
+                <p className="text-[16px] font-bold mt-1">₦{formatBudgetAmount(remaining)}</p>
+              </div>
+            </div>
+            <div className="mt-5 h-2 bg-white/20 rounded-full overflow-hidden">
+              <div className={`h-full rounded-full ${overallPercent >= 90 ? 'bg-red-300' : 'bg-cyan-300'}`}
+                style={{ width: `${overallPercent}%` }} />
+            </div>
+            <p className="text-white/60 text-[10px] mt-2">
+              ₦{formatBudgetAmount(totalSpent)} of ₦{formatBudgetAmount(totalLimit)} planned
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2.5 mb-5">
+          {[
+            { label: 'Categories', value: String(categories.length) },
+            { label: 'Daily average', value: `₦${formatBudgetAmount(totalSpent / Math.max(1, new Date().getDate()))}` },
+            { label: 'On track', value: `${categories.filter(category => (spendingByCategory[category.id] ?? 0) <= category.limit).length}/${categories.length}` },
+          ].map(stat => (
+            <div key={stat.label} className="bg-white rounded-2xl border border-[#F0F0F0] px-2 py-3 text-center">
+              <p className="text-[15px] font-extrabold text-[#162353]">{stat.value}</p>
+              <p className="text-[10px] text-[#888] mt-1">{stat.label}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-between mb-2.5">
+          <div>
+            <p className="text-[14px] font-bold text-[#111]">Category limits</p>
+            <p className="text-[11px] text-[#888] mt-0.5">Tap a limit to adjust your plan</p>
+          </div>
+          <button onClick={() => setShowAdd(value => !value)}
+            className="flex items-center gap-1 text-[11px] font-bold text-[#2563EB]">
+            <Plus className="w-3.5 h-3.5" /> Add
+          </button>
+        </div>
+
+        {showAdd && (
+          <div className="bg-white rounded-2xl border border-[#C7D7FF] p-4 mb-3">
+            <div className="flex gap-2">
+              <input value={newName} onChange={event => setNewName(event.target.value)}
+                placeholder="Category name" className="flex-1 min-w-0 h-11 rounded-xl bg-[#F8F9FB] border border-[#E2E8F0] px-3 text-[13px] outline-none focus:border-[#2563EB]" />
+              <input value={newLimit} onChange={event => setNewLimit(event.target.value.replace(/\D/g, ''))}
+                inputMode="numeric" placeholder="Limit" className="w-24 h-11 rounded-xl bg-[#F8F9FB] border border-[#E2E8F0] px-3 text-[13px] outline-none focus:border-[#2563EB]" />
+            </div>
+            <div className="flex justify-end gap-2 mt-3">
+              <button onClick={() => setShowAdd(false)} className="px-3 py-2 text-[12px] font-semibold text-[#888]">Cancel</button>
+              <button onClick={addCategory} className="px-4 py-2 rounded-xl bg-[#162353] text-white text-[12px] font-bold">Add category</button>
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-2.5">
+          {categories.map(category => {
+            const spent = spendingByCategory[category.id] ?? 0;
+            const percent = category.limit ? Math.min(100, (spent / category.limit) * 100) : 0;
+            const over = spent > category.limit;
+            return (
+              <div key={category.id} className="bg-white rounded-2xl border border-[#F0F0F0] p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                    style={{ color: category.color, background: `${category.color}14` }}>
+                    {category.icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-bold text-[#111] truncate">{category.label}</p>
+                    <p className={`text-[11px] mt-0.5 ${over ? 'text-red-600 font-semibold' : 'text-[#888]'}`}>
+                      ₦{formatBudgetAmount(spent)} spent of ₦{formatBudgetAmount(category.limit)}
+                    </p>
+                  </div>
+                  {editingId === category.id ? (
+                    <div className="flex items-center gap-1">
+                      <input value={editValue} onChange={event => setEditValue(event.target.value.replace(/\D/g, ''))}
+                        autoFocus inputMode="numeric" className="w-20 h-8 rounded-lg border border-[#C7D7FF] px-2 text-[12px] outline-none" />
+                      <button onClick={() => saveEdit(category.id)} className="w-8 h-8 rounded-lg bg-[#DCFCE7] text-[#15803D] flex items-center justify-center">
+                        <Check className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={() => startEdit(category)} className="text-[11px] font-bold text-[#2563EB]">Edit</button>
+                  )}
+                </div>
+                <div className="mt-3 h-2 bg-[#EEF1F5] rounded-full overflow-hidden">
+                  <div className="h-full rounded-full transition-all"
+                    style={{ width: `${percent}%`, background: over ? '#EF4444' : category.color }} />
+                </div>
+                <div className="flex items-center justify-between mt-2">
+                  <p className={`text-[10px] font-semibold ${over ? 'text-red-600' : 'text-[#888]'}`}>
+                    {over ? `₦${formatBudgetAmount(spent - category.limit)} over limit` : `${Math.max(0, Math.round(percent))}% used`}
+                  </p>
+                  {categories.length > 1 && (
+                    <button onClick={() => removeCategory(category.id)} aria-label={`Remove ${category.label} budget`}
+                      className="text-[#B5BBC8] hover:text-red-500">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {transactionsLoading && (
+          <p className="text-center text-[11px] text-[#888] mt-4">Updating your spending…</p>
+        )}
+        {!transactionsLoading && transactions.length === 0 && (
+          <div className="mt-4 rounded-2xl bg-[#EEF2FF] border border-[#DCE5FF] px-4 py-3">
+            <p className="text-[12px] font-bold text-[#162353]">Your plan is ready</p>
+            <p className="text-[11px] text-[#555] mt-1">Your category progress will update automatically as you make transactions.</p>
+          </div>
+        )}
+      </div>
+    </PageShell>
+  );
+}
+
 /* ─── More Services Page ─────────────────────────────────────────────── */
 const MORE_SERVICES = [
   { label:'Transfer',  emoji:'↔️',  path:'/transfer'  },
@@ -3403,6 +3666,7 @@ const MORE_SERVICES = [
   { label:'Data',      emoji:'📶',  path:'/data'      },
   { label:'Betting',   emoji:'🎯',  path:'/betting'   },
   { label:'Savings',   emoji:'🐷',  path:'/savings'   },
+  { label:'Budget',    emoji:'📊',  path:'/budget'    },
   { label:'Education', emoji:'📚',  path:'/education' },
   { label:'Statement', emoji:'📄',  path:'/statement' },
   { label:'Deposit',   emoji:'💰',  path:'/deposit'   },
@@ -3696,6 +3960,7 @@ const SERVICE_GROUPS = [
   { heading:'Lifestyle', items:[
     { label:'Education', emoji:'📚',  path:'/education' },
     { label:'Savings',   emoji:'🐷',  path:'/savings'   },
+    { label:'Budget',    emoji:'📊',  path:'/budget'    },
   ]},
   { heading:'Account', items:[
     { label:'Statement', emoji:'📄',  path:'/statement' },
@@ -4045,6 +4310,7 @@ function Router() {
       <Route path="/savings" component={SavingsPage} />
       <Route path="/education" component={EducationPage} />
       <Route path="/statement" component={StatementPage} />
+      <Route path="/budget" component={BudgetPage} />
       <Route path="/more" component={MorePage} />
       <Route path="/card" component={CardPage} />
       <Route path="/services" component={ServicesTabPage} />

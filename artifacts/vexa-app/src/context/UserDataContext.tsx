@@ -39,6 +39,7 @@ export interface AppTransaction {
   amount: string;    // formatted: '1,000.00'
   note: string;
   raw_amount: number;
+  createdAt?: string;
   recipient_bank?: string;
   recipient_account?: string;
   sender_name?: string;
@@ -204,6 +205,7 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
         amount: fmtAmount(Number(d.amount)),
         note: d.note,
         raw_amount: Number(d.amount),
+        createdAt: d.created_at,
         recipient_bank: d.recipient_bank ?? undefined,
         recipient_account: d.recipient_account ?? undefined,
         sender_name: d.sender_name ?? undefined,
@@ -329,6 +331,7 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
         date: fmtTxDate(data.created_at),
         amount: fmtAmount(Number(data.amount)),
         note: t.note, raw_amount: Number(data.amount),
+        createdAt: data.created_at,
         recipient_bank: data.recipient_bank ?? undefined,
         recipient_account: data.recipient_account ?? undefined,
         sender_name: data.sender_name ?? undefined,
