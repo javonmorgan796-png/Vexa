@@ -10,7 +10,7 @@ import {
   MessageCircle, Phone, Mail, ExternalLink, Star, ChevronDown,
   Send, X, Bot, CheckCheck, Wifi, Paperclip, ImagePlus, FileUp, FileText as FileIcon,
   Gift, Users, Share2, Percent, TrendingUp, BadgeCheck, ChevronUp,
-  WalletCards, Plus, Trash2, Check,
+  WalletCards, Plus, Trash2, Check, Coins,
 } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
@@ -23,6 +23,10 @@ import ProfilePage from '@/pages/settings/ProfilePage';
 import LimitsPage from '@/pages/settings/LimitsPage';
 import ChangePinPage from '@/pages/settings/ChangePinPage';
 import ChangePasswordPage from '@/pages/settings/ChangePasswordPage';
+import TwoFactorSettingsPage from '@/pages/settings/TwoFactorSettingsPage';
+import TwoFactorChallenge from '@/pages/settings/TwoFactorChallenge';
+import CryptoExchangePage from '@/pages/crypto/CryptoExchangePage';
+import VexaTransferPage from '@/pages/transfer/VexaTransferPage';
 import { BusinessProvider } from '@/context/BusinessContext';
 import BusinessDashboard from '@/pages/business/BusinessDashboard';
 import BusinessOnboarding from '@/pages/business/BusinessOnboarding';
@@ -35,6 +39,7 @@ import EmployeeManagement from '@/pages/business/EmployeeManagement';
 import PayrollManagement from '@/pages/business/PayrollManagement';
 import { BusinessSecurityProvider, useBusinessSecurity } from '@/context/BusinessSecurityContext';
 import { UserDataProvider, useUserData } from '@/context/UserDataContext';
+import { VexaFinanceProvider } from '@/context/VexaFinanceContext';
 import type { AppTransaction } from '@/context/UserDataContext';
 import BusinessSecurityScreen from '@/pages/business/BusinessSecurityScreen';
 
@@ -149,6 +154,7 @@ const services = [
   { label: 'Budget',    Icon: WalletCards     },
   { label: 'Education', Icon: BookOpen        },
   { label: 'Statement', Icon: FileText        },
+  { label: 'Crypto',    Icon: Coins           },
   { label: 'More',      Icon: LayoutGrid      },
 ];
 
@@ -622,7 +628,7 @@ function MoniepointHome() {
               {services.map(({ label, Icon }) => {
                 const routes: Record<string,string> = {
                   Transfer:'/transfer', Airtime:'/airtime', Data:'/data',
-                  Betting:'/betting', Savings:'/savings', Education:'/education',
+                  Betting:'/betting', Savings:'/savings', Education:'/education', Crypto:'/crypto',
                   Budget:'/budget', Statement:'/statement', More:'/more',
                 };
                 return (
@@ -888,7 +894,8 @@ function SettingsPage() {
         { icon: <Lock className="w-5 h-5" />,        label: 'Change Transaction PIN', action: () => navigate('/change-pin') },
         { icon: <Fingerprint className="w-5 h-5" />, label: 'Biometric Login',        sub: biometrics ? 'On' : 'Off' },
         { icon: <Lock className="w-5 h-5" />,        label: 'Change Password',        action: () => navigate('/change-password') },
-        { icon: <Shield className="w-5 h-5" />,      label: 'Passcode on App Return', sub: passcodeOnReturn ? 'On · locks when you leave' : 'Off' },
+         { icon: <Shield className="w-5 h-5" />,      label: 'Passcode on App Return', sub: passcodeOnReturn ? 'On · locks when you leave' : 'Off' },
+         { icon: <MessageCircle className="w-5 h-5" />, label: 'Two-Factor Authentication', sub: user?.twoFactorEnabled ? 'Enabled via SMS' : 'Off', action: () => navigate('/two-factor') },
       ],
     },
     {
@@ -2342,6 +2349,7 @@ function TransferPage() {
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         </button>
         <span className="text-[16px] font-bold text-[#111]">Transfer</span>
+        <button onClick={() => navigate('/vexa-transfer')} className="ml-auto rounded-full bg-[#EAF2FF] text-[#2563EB] px-3 py-1.5 text-[10px] font-bold">Vexa user</button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4" style={{ scrollbarWidth: 'none' }}>
@@ -3673,6 +3681,7 @@ const MORE_SERVICES = [
   { label:'History',   emoji:'🕐',  path:'/history'   },
   { label:'Settings',  emoji:'⚙️',  path:'/settings'  },
   { label:'Card',      emoji:'💳',  path:'/card'      },
+  { label:'Crypto',    emoji:'₿',   path:'/crypto'    },
 ];
 
 function MorePage() {
@@ -4301,6 +4310,8 @@ function Router() {
       <Route path="/" component={MoniepointHome} />
       <Route path="/deposit" component={DepositPage} />
       <Route path="/transfer" component={TransferPage} />
+      <Route path="/vexa-transfer" component={VexaTransferPage} />
+      <Route path="/crypto" component={CryptoExchangePage} />
       <Route path="/history" component={HistoryPage} />
       <Route path="/receipt/:transactionId" component={TransactionReceiptPage} />
       <Route path="/settings" component={SettingsPage} />
@@ -4322,6 +4333,7 @@ function Router() {
       <Route path="/limits" component={LimitsPage} />
       <Route path="/change-pin" component={ChangePinPage} />
       <Route path="/change-password" component={ChangePasswordPage} />
+      <Route path="/two-factor" component={TwoFactorSettingsPage} />
       <Route path="/help-support" component={HelpSupportPage} />
       <Route path="/notifications" component={NotificationsPage} />
       <Route path="/about-vexa" component={AboutVexaPage} />
@@ -4368,7 +4380,7 @@ function Router() {
 function AppShell() {
   const [showSplash, setShowSplash] = useState(true);
   const [splashDone, setSplashDone] = useState(false);
-  const { isAuthenticated, loading, signOut } = useAuth();
+  const { isAuthenticated, loading, signOut, twoFactorPending } = useAuth();
   const [path, navigate] = useLocation();
   const { clearVerification } = useBusinessSecurity();
   const prevPathRef = React.useRef('');
@@ -4462,6 +4474,7 @@ function AppShell() {
         }} />
       )}
       <Router />
+      {twoFactorPending && <TwoFactorChallenge />}
       {locked && (
         <PasscodeLockScreen
           onUnlock={() => { clearLockTimestamp(); setLocked(false); }}
@@ -4477,6 +4490,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <UserDataProvider>
+        <VexaFinanceProvider>
         <BusinessProvider>
           <BusinessSecurityProvider>
             <TooltipProvider>
@@ -4487,6 +4501,7 @@ function App() {
             </TooltipProvider>
           </BusinessSecurityProvider>
         </BusinessProvider>
+        </VexaFinanceProvider>
         </UserDataProvider>
       </AuthProvider>
     </QueryClientProvider>

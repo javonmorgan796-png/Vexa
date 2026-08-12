@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 
 export interface User {
@@ -11,6 +11,7 @@ export interface User {
   pin: string;
   level: number;
   verified: boolean;
+  twoFactorEnabled: boolean;
 }
 
 interface AuthContextType {
@@ -18,6 +19,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   profilePhoto: string | null;
   loading: boolean;
+  twoFactorPending: boolean;
   signIn: (phone: string, passcode: string) => Promise<{ success: boolean; error?: string }>;
   signUp: (name: string, phone: string, passcode: string) => Promise<{ success: boolean; error?: string }>;
   verifyPasscode: (passcode: string) => Promise<boolean>;
@@ -27,6 +29,9 @@ interface AuthContextType {
   updatePassword: (oldPass: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
   updateProfile: (name: string, email: string, phone: string) => Promise<{ success: boolean; error?: string }>;
   updateProfilePhoto: (photo: string | null) => Promise<{ success: boolean; error?: string }>;
+  sendTwoFactorCode: () => Promise<{ success: boolean; error?: string }>;
+  verifyTwoFactorCode: (code: string) => Promise<{ success: boolean; error?: string }>;
+  updateTwoFactorEnabled: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -47,6 +52,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser]               = useState<User | null>(null);
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
   const [loading, setLoading]         = useState(true);
+  const [twoFactorPending, setTwoFactorPending] = useState(false);
+  const verifiedTwoFactorUser = useRef<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -77,6 +84,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         setUser(null);
         setProfilePhoto(null);
+        setTwoFactorPending(false);
+        verifiedTwoFactorUser.current = null;
         setLoading(false);
       }
     });
@@ -173,7 +182,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       pin:           profile.pin ?? '0000',
       level:         Number(profile.level ?? 1),
       verified:      Boolean(profile.verified),
+      twoFactorEnabled: Boolean(profile.two_factor_enabled),
     });
+    if (profile.two_factor_enabled && verifiedTwoFactorUser.current !== authUser.id) {
+      setTwoFactorPending(true);
+    }
     setProfilePhoto(profile.profile_photo ?? null);
     setLoading(false);
 
@@ -259,6 +272,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    setTwoFactorPending(false);
+    verifiedTwoFactorUser.current = null;
+  };
+
+  function smsPhone(phone: string) {
+    const digits = phone.replace(/\D/g, '');
+    if (digits.startsWith('234')) return `+${digits}`;
+    if (digits.startsWith('0')) return `+234${digits.slice(1)}`;
+    return phone.startsWith('+') ? phone : `+${digits}`;
+  }
+
+  const sendTwoFactorCode = async (): Promise<{ success: boolean; error?: string }> => {
+    if (!user?.phone) return { success: false, error: 'Add a phone number to your profile first' };
+    const { error } = await supabase.auth.signInWithOtp({
+      phone: smsPhone(user.phone),
+      options: { shouldCreateUser: false },
+    });
+    if (error) return { success: false, error: 'SMS could not be sent. Enable phone SMS in Supabase Auth first.' };
+    return { success: true };
+  };
+
+  const verifyTwoFactorCode = async (code: string): Promise<{ success: boolean; error?: string }> => {
+    if (!user?.phone) return { success: false, error: 'No phone number is available for verification' };
+    const { error } = await supabase.auth.verifyOtp({
+      phone: smsPhone(user.phone),
+      token: code,
+      type: 'sms',
+    });
+    if (error) return { success: false, error: 'That SMS code is invalid or expired' };
+    verifiedTwoFactorUser.current = user.id;
+    setTwoFactorPending(false);
+    return { success: true };
+  };
+
+  const updateTwoFactorEnabled = async (enabled: boolean): Promise<{ success: boolean; error?: string }> => {
+    if (!user) return { success: false, error: 'Not authenticated' };
+    const { error } = await supabase.from('profiles').update({
+      two_factor_enabled: enabled,
+      two_factor_phone: enabled ? user.phone : null,
+    }).eq('id', user.id);
+    if (error) return { success: false, error: 'Could not update two-factor authentication' };
+    setUser(prev => prev ? { ...prev, twoFactorEnabled: enabled } : null);
+    if (!enabled) setTwoFactorPending(false);
+    return { success: true };
   };
 
   const verifyPasscode = async (passcode: string): Promise<boolean> => {
@@ -337,9 +394,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, isAuthenticated: !!user, profilePhoto, loading,
+       user, isAuthenticated: !!user, profilePhoto, loading, twoFactorPending,
        signIn, signUp, verifyPasscode, signOut,
       updatePin, setInitialTransferPin, updatePassword, updateProfile, updateProfilePhoto,
+       sendTwoFactorCode, verifyTwoFactorCode, updateTwoFactorEnabled,
     }}>
       {children}
     </AuthContext.Provider>
