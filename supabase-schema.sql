@@ -28,14 +28,17 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
 CREATE POLICY "Users can view own profile"
   ON public.profiles FOR SELECT
   USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile"
   ON public.profiles FOR UPDATE
   USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
 CREATE POLICY "Users can insert own profile"
   ON public.profiles FOR INSERT
   WITH CHECK (auth.uid() = id);
@@ -105,14 +108,17 @@ CREATE TABLE IF NOT EXISTS public.cashback_history (
 
 ALTER TABLE public.cashback_history ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own cashback" ON public.cashback_history;
 CREATE POLICY "Users can view own cashback"
   ON public.cashback_history FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert own cashback" ON public.cashback_history;
 CREATE POLICY "Users can insert own cashback"
   ON public.cashback_history FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update own cashback" ON public.cashback_history;
 CREATE POLICY "Users can update own cashback"
   ON public.cashback_history FOR UPDATE
   USING (auth.uid() = user_id);
@@ -132,10 +138,12 @@ CREATE TABLE IF NOT EXISTS public.referrals (
 
 ALTER TABLE public.referrals ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own referrals" ON public.referrals;
 CREATE POLICY "Users can view own referrals"
   ON public.referrals FOR SELECT
   USING (auth.uid() = referrer_id);
 
+DROP POLICY IF EXISTS "Users can insert own referrals" ON public.referrals;
 CREATE POLICY "Users can insert own referrals"
   ON public.referrals FOR INSERT
   WITH CHECK (auth.uid() = referrer_id);
@@ -210,6 +218,7 @@ CREATE TABLE IF NOT EXISTS public.peer_transfers (
 );
 
 ALTER TABLE public.peer_transfers ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view peer transfers they sent or received" ON public.peer_transfers;
 CREATE POLICY "Users can view peer transfers they sent or received"
   ON public.peer_transfers FOR SELECT TO authenticated
   USING (auth.uid() = sender_id OR auth.uid() = recipient_id);
@@ -358,14 +367,17 @@ ALTER TABLE public.crypto_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.crypto_balances ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.crypto_transactions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can manage own crypto account" ON public.crypto_accounts;
 CREATE POLICY "Users can manage own crypto account"
   ON public.crypto_accounts FOR ALL TO authenticated
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can manage own crypto balances" ON public.crypto_balances;
 CREATE POLICY "Users can manage own crypto balances"
   ON public.crypto_balances FOR ALL TO authenticated
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can view own crypto transactions" ON public.crypto_transactions;
 CREATE POLICY "Users can view own crypto transactions"
   ON public.crypto_transactions FOR SELECT TO authenticated
   USING (auth.uid() = user_id);
@@ -537,6 +549,7 @@ CREATE TABLE IF NOT EXISTS public.business_accounts (
 
 ALTER TABLE public.business_accounts ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Business owners can manage their business" ON public.business_accounts;
 CREATE POLICY "Business owners can manage their business"
   ON public.business_accounts FOR ALL
   USING (auth.uid() = owner_id);
@@ -562,6 +575,7 @@ CREATE TABLE IF NOT EXISTS public.employees (
 
 ALTER TABLE public.employees ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Business owners can manage employees" ON public.employees;
 CREATE POLICY "Business owners can manage employees"
   ON public.employees FOR ALL
   USING (
@@ -586,6 +600,7 @@ CREATE TABLE IF NOT EXISTS public.payroll_schedules (
 
 ALTER TABLE public.payroll_schedules ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Business owners can manage payroll schedules" ON public.payroll_schedules;
 CREATE POLICY "Business owners can manage payroll schedules"
   ON public.payroll_schedules FOR ALL
   USING (
@@ -610,6 +625,7 @@ CREATE TABLE IF NOT EXISTS public.business_transactions (
 
 ALTER TABLE public.business_transactions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Business owners can manage business transactions" ON public.business_transactions;
 CREATE POLICY "Business owners can manage business transactions"
   ON public.business_transactions FOR ALL
   USING (
@@ -632,6 +648,7 @@ CREATE TABLE IF NOT EXISTS public.business_security (
 
 ALTER TABLE public.business_security ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can manage own business security" ON public.business_security;
 CREATE POLICY "Users can manage own business security"
   ON public.business_security FOR ALL
   USING (auth.uid() = user_id);
