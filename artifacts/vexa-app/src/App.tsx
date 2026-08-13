@@ -45,6 +45,18 @@ import BusinessSecurityScreen from '@/pages/business/BusinessSecurityScreen';
 
 const queryClient = new QueryClient();
 
+function timeSince(iso: string): string {
+  const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes === 1) return '1 minute ago';
+  if (minutes < 60) return `${minutes} minutes ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours === 1) return '1 hour ago';
+  if (hours < 24) return `${hours} hours ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+}
+
 /* ─── Splash / Loading screen ───────────────────────────────────────── */
 function SplashScreen({ onDone }: { onDone: () => void }) {
   const [fadeOut, setFadeOut] = useState(false);
@@ -516,7 +528,7 @@ function MoniepointHome() {
   const [balanceHidden, setBalanceHidden] = useState(false);
   const [, navigate] = useLocation();
   const { user, profilePhoto } = useAuth();
-  const { balance, cashbackTotal, referralTotalEarned, unreadNotificationsCount, transactions } = useUserData();
+  const { balance, lastBalanceUpdatedAt, cashbackTotal, referralTotalEarned, unreadNotificationsCount, transactions } = useUserData();
   const initials = (user?.name ?? 'C').split(' ').map((p: string) => p[0]).slice(0, 2).join('').toUpperCase();
   const displayName = user?.name ?? 'Your account';
   const accountNumber = user?.accountNumber ?? '—';
@@ -599,7 +611,7 @@ function MoniepointHome() {
 
             {/* last updated */}
             <p className="text-[11px] text-white font-normal mb-3">
-              Last updated 4 minutes ago
+              Last updated {lastBalanceUpdatedAt ? timeSince(lastBalanceUpdatedAt) : 'updating…'}
             </p>
 
             {/* action buttons — content-width pills, left-aligned */}
@@ -895,7 +907,7 @@ function SettingsPage() {
         { icon: <Fingerprint className="w-5 h-5" />, label: 'Biometric Login',        sub: biometrics ? 'On' : 'Off' },
         { icon: <Lock className="w-5 h-5" />,        label: 'Change Password',        action: () => navigate('/change-password') },
          { icon: <Shield className="w-5 h-5" />,      label: 'Passcode on App Return', sub: passcodeOnReturn ? 'On · locks when you leave' : 'Off' },
-         { icon: <MessageCircle className="w-5 h-5" />, label: 'Two-Factor Authentication', sub: user?.twoFactorEnabled ? 'Enabled via SMS' : 'Off', action: () => navigate('/two-factor') },
+         { icon: <i className="fa-solid fa-key text-[17px]" aria-hidden="true" />, label: 'Two-Factor Authentication', sub: user?.twoFactorEnabled ? 'Enabled via SMS' : 'Off', action: () => navigate('/two-factor') },
       ],
     },
     {

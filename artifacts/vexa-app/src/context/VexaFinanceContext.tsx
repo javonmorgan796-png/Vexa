@@ -28,7 +28,8 @@ interface VexaFinanceContextValue {
   cryptoTransactions: CryptoTransaction[];
   loading: boolean;
   error: string;
-  refreshFinance: () => Promise<void>;
+  lastUpdatedAt: string | null;
+  refreshFinance: (options?: { silent?: boolean }) => Promise<void>;
   transferVexaMoney: (accountNumber: string, amount: number, note: string, pin: string) => Promise<{ success: boolean; error?: string; transactionId?: string; recipientName?: string }>;
   depositToExchange: (amount: number) => Promise<{ success: boolean; error?: string }>;
   exchangeCrypto: (asset: CryptoAsset, side: 'buy' | 'sell', nairaAmount: number, rate: number) => Promise<{ success: boolean; error?: string }>;
@@ -49,16 +50,18 @@ export function VexaFinanceProvider({ children }: { children: React.ReactNode })
   const [cryptoTransactions, setCryptoTransactions] = useState<CryptoTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
 
-  const refreshFinance = useCallback(async () => {
+  const refreshFinance = useCallback(async (options?: { silent?: boolean }) => {
     if (!user) {
       setExchangeNaira(0);
       setCryptoBalances([]);
       setCryptoTransactions([]);
+      setLastUpdatedAt(null);
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if (!options?.silent) setLoading(true);
     const [accountRes, balancesRes, transactionsRes] = await Promise.all([
       supabase.from('crypto_accounts').select('naira_balance').eq('user_id', user.id).maybeSingle(),
       supabase.from('crypto_balances').select('asset, amount').eq('user_id', user.id),
@@ -80,10 +83,46 @@ export function VexaFinanceProvider({ children }: { children: React.ReactNode })
       note: row.note ?? '',
       createdAt: row.created_at,
     })));
+    setLastUpdatedAt(new Date().toISOString());
     setLoading(false);
   }, [user]);
 
   useEffect(() => { void refreshFinance(); }, [refreshFinance]);
+
+  // Keep the exchange current when another session changes a wallet, balance,
+  // or transaction. Polling keeps it fresh even before Realtime is enabled
+  // for these tables in the Supabase project.
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel(`vexa-finance:${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'crypto_accounts', filter: `user_id=eq.${user.id}` },
+        () => { void refreshFinance({ silent: true }); },
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'crypto_balances', filter: `user_id=eq.${user.id}` },
+        () => { void refreshFinance({ silent: true }); },
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'crypto_transactions', filter: `user_id=eq.${user.id}` },
+        () => { void refreshFinance({ silent: true }); },
+      )
+      .subscribe();
+
+    const interval = window.setInterval(() => {
+      void refreshFinance({ silent: true });
+    }, 15000);
+
+    return () => {
+      window.clearInterval(interval);
+      void supabase.removeChannel(channel);
+    };
+  }, [user?.id, refreshFinance]);
 
   const transferVexaMoney = async (accountNumber: string, amount: number, note: string, pin: string) => {
     const { data, error: rpcErr } = await supabase.rpc('transfer_vexa_money', {
@@ -134,6 +173,7 @@ export function VexaFinanceProvider({ children }: { children: React.ReactNode })
   return (
     <VexaFinanceContext.Provider value={{
       exchangeNaira, cryptoBalances, cryptoTransactions, loading, error,
+      lastUpdatedAt,
       refreshFinance, transferVexaMoney, depositToExchange, exchangeCrypto, transferCrypto,
     }}>
       {children}

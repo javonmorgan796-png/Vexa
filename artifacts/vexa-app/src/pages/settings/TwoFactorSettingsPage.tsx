@@ -59,7 +59,7 @@ export default function TwoFactorSettingsPage() {
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4" style={{ scrollbarWidth: 'none' }}>
         <div className="rounded-3xl bg-[#162353] text-white p-5">
-          <div className="flex items-center gap-3"><div className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center"><ShieldCheck className="w-6 h-6 text-[#8BE3FF]" /></div><div><p className="text-[16px] font-bold">Protect your Vexa account</p><p className="text-[11px] text-white/60 mt-1">A one-time SMS code will be required when you sign in.</p></div></div>
+          <div className="flex items-center gap-3"><div className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center"><i className="fa-solid fa-key text-[22px] text-[#8BE3FF]" aria-hidden="true" /></div><div><p className="text-[16px] font-bold">Protect your Vexa account</p><p className="text-[11px] text-white/60 mt-1">A one-time SMS code will be required when you sign in.</p></div></div>
         </div>
         {error && <div className="rounded-2xl bg-red-50 border border-red-200 px-4 py-3 text-[12px] text-red-600">{error}</div>}
         {message && <div className="rounded-2xl bg-green-50 border border-green-200 px-4 py-3 text-[12px] text-green-700">{message}</div>}

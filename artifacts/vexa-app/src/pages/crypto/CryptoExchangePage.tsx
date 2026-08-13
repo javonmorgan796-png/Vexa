@@ -1,5 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { ArrowDownToLine, ArrowLeftRight, ArrowUpRight, ChevronRight, Copy, RefreshCw, Send, WalletCards } from 'lucide-react';
+import { FaBitcoin, FaEthereum } from 'react-icons/fa6';
+import { SiTether } from 'react-icons/si';
+import type { IconType } from 'react-icons';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/context/AuthContext';
 import { useVexaFinance, type CryptoAsset } from '@/context/VexaFinanceContext';
@@ -10,10 +13,10 @@ const RATES: Record<CryptoAsset, number> = {
   USDT: 1_620,
 };
 
-const ASSET_META: Record<CryptoAsset, { name: string; color: string; description: string }> = {
-  BTC: { name: 'Bitcoin', color: '#F7931A', description: 'Store of value' },
-  ETH: { name: 'Ethereum', color: '#627EEA', description: 'Smart contracts' },
-  USDT: { name: 'Tether', color: '#26A17B', description: 'Dollar-backed stablecoin' },
+const ASSET_META: Record<CryptoAsset, { name: string; color: string; description: string; logo: IconType }> = {
+  BTC: { name: 'Bitcoin', color: '#F7931A', description: 'Store of value', logo: FaBitcoin },
+  ETH: { name: 'Ethereum', color: '#627EEA', description: 'Smart contracts', logo: FaEthereum },
+  USDT: { name: 'Tether', color: '#26A17B', description: 'Dollar-backed stablecoin', logo: SiTether },
 };
 
 function money(value: number) {
@@ -22,6 +25,21 @@ function money(value: number) {
 
 function crypto(value: number) {
   return value.toLocaleString('en-NG', { maximumFractionDigits: 8 });
+}
+
+function timeSince(iso: string): string {
+  const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes === 1) return '1 minute ago';
+  if (minutes < 60) return `${minutes} minutes ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours === 1) return '1 hour ago';
+  return `${hours} hours ago`;
+}
+
+function CryptoLogo({ asset, size = 22 }: { asset: CryptoAsset; size?: number }) {
+  const Logo = ASSET_META[asset].logo;
+  return <Logo size={size} color="#fff" aria-hidden="true" />;
 }
 
 function PageHeader({ title, onBack }: { title: string; onBack: () => void }) {
@@ -39,7 +57,7 @@ function PageHeader({ title, onBack }: { title: string; onBack: () => void }) {
 export default function CryptoExchangePage() {
   const [, navigate] = useLocation();
   const { user } = useAuth();
-  const { exchangeNaira, cryptoBalances, cryptoTransactions, loading, error, refreshFinance, depositToExchange, exchangeCrypto, transferCrypto } = useVexaFinance();
+  const { exchangeNaira, cryptoBalances, cryptoTransactions, loading, error, lastUpdatedAt, refreshFinance, depositToExchange, exchangeCrypto, transferCrypto } = useVexaFinance();
   const [tab, setTab] = useState<'overview' | 'exchange' | 'transfer'>('overview');
   const [depositAmount, setDepositAmount] = useState('');
   const [asset, setAsset] = useState<CryptoAsset>('BTC');
@@ -107,6 +125,9 @@ export default function CryptoExchangePage() {
               </div>
             </div>
             <p className="text-white/60 text-[11px] mt-2">Use your Vexa balance to buy, sell, and send supported assets.</p>
+            <p className="text-white/50 text-[10px] mt-1">
+              Live sync · Last updated {lastUpdatedAt ? timeSince(lastUpdatedAt) : 'updating…'}
+            </p>
             <button onClick={() => setTab('overview')} className="mt-4 inline-flex items-center gap-2 text-[11px] font-semibold text-[#8BE3FF]">
               <WalletCards className="w-3.5 h-3.5" /> {user?.accountNumber ?? 'Vexa account'}
             </button>
@@ -140,8 +161,8 @@ export default function CryptoExchangePage() {
                 const meta = ASSET_META[item];
                 const amount = cryptoBalances.find(balance => balance.asset === item)?.amount ?? 0;
                 return (
-                  <div key={item} className="bg-white rounded-2xl border border-[#F0F0F0] px-4 py-4 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-extrabold text-[13px]" style={{ backgroundColor: meta.color }}>{item === 'USDT' ? '$' : item[0]}</div>
+                   <div key={item} className="bg-white rounded-2xl border border-[#F0F0F0] px-4 py-4 flex items-center gap-3">
+                     <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: meta.color }}><CryptoLogo asset={item} size={22} /></div>
                     <div className="flex-1">
                       <p className="text-[14px] font-bold text-[#111]">{meta.name}</p>
                       <p className="text-[11px] text-[#888]">{amount ? crypto(amount) : '0'} {item} · {meta.description}</p>
@@ -192,7 +213,7 @@ export default function CryptoExchangePage() {
               {(['buy', 'sell'] as const).map(item => <button key={item} onClick={() => setSide(item)} className={`py-3 rounded-xl text-[12px] font-bold capitalize ${side === item ? 'bg-[#162353] text-white' : 'bg-[#F5F6F8] text-[#555]'}`}>{item}</button>)}
             </div>
             <div className="grid grid-cols-3 gap-2">
-              {(Object.keys(ASSET_META) as CryptoAsset[]).map(item => <button key={item} onClick={() => setAsset(item)} className={`py-3 rounded-xl text-[12px] font-bold ${asset === item ? 'bg-[#EAF2FF] text-[#1D4ED8] border border-[#BFD7FF]' : 'bg-[#F8F9FB] text-[#555]'}`}>{item}</button>)}
+              {(Object.keys(ASSET_META) as CryptoAsset[]).map(item => <button key={item} onClick={() => setAsset(item)} className={`py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 ${asset === item ? 'bg-[#EAF2FF] text-[#1D4ED8] border border-[#BFD7FF]' : 'bg-[#F8F9FB] text-[#555]'}`}><span className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: ASSET_META[item].color }}><CryptoLogo asset={item} size={12} /></span>{item}</button>)}
             </div>
             <div className="rounded-xl bg-[#F8F9FB] px-4 py-3 flex justify-between text-[12px]"><span className="text-[#777]">Rate</span><b>{money(RATES[asset])} / {asset}</b></div>
             <input value={exchangeAmount} onChange={e => setExchangeAmount(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" placeholder={side === 'buy' ? 'Naira amount' : `Naira value to sell (${crypto(selectedBalance)} ${asset} available)`} className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#162353]" />
@@ -203,7 +224,7 @@ export default function CryptoExchangePage() {
         {tab === 'transfer' && (
           <div className="bg-white rounded-2xl border border-[#F0F0F0] p-5 space-y-4">
             <div><p className="text-[16px] font-bold text-[#111]">Send crypto to a Vexa user</p><p className="text-[11px] text-[#888] mt-1">Transfers settle instantly to their Vexa exchange balance.</p></div>
-            <div className="grid grid-cols-3 gap-2">{(Object.keys(ASSET_META) as CryptoAsset[]).map(item => <button key={item} onClick={() => setAsset(item)} className={`py-3 rounded-xl text-[12px] font-bold ${asset === item ? 'bg-[#EAF2FF] text-[#1D4ED8] border border-[#BFD7FF]' : 'bg-[#F8F9FB] text-[#555]'}`}>{item}</button>)}</div>
+            <div className="grid grid-cols-3 gap-2">{(Object.keys(ASSET_META) as CryptoAsset[]).map(item => <button key={item} onClick={() => setAsset(item)} className={`py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 ${asset === item ? 'bg-[#EAF2FF] text-[#1D4ED8] border border-[#BFD7FF]' : 'bg-[#F8F9FB] text-[#555]'}`}><span className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: ASSET_META[item].color }}><CryptoLogo asset={item} size={12} /></span>{item}</button>)}</div>
             <div><label className="block text-[11px] font-bold text-[#555] mb-1.5">Recipient account number</label><input value={recipient} onChange={e => setRecipient(e.target.value.replace(/\D/g, '').slice(0, 10))} inputMode="numeric" placeholder="10-digit Vexa account" className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#162353]" /></div>
             <div><label className="block text-[11px] font-bold text-[#555] mb-1.5">Amount ({asset})</label><input value={transferAmount} onChange={e => setTransferAmount(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" placeholder={`Available: ${crypto(selectedBalance)} ${asset}`} className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#162353]" /></div>
             <button disabled={busy} onClick={() => void submitTransfer()} className="w-full rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold disabled:opacity-50"><span className="inline-flex items-center gap-2">{busy ? 'Sending…' : <><Send className="w-4 h-4" /> Send {asset}</>}</span></button>

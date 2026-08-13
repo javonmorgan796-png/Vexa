@@ -77,6 +77,7 @@ interface UserDataContextType {
   /* Balance */
   balance: number;
   balanceLoading: boolean;
+  lastBalanceUpdatedAt: string | null;
   /* Cashback */
   cashbackTotal: number;
   cashbackPending: number;
@@ -116,6 +117,7 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
 
   const [balance, setBalance]                       = useState(0);
   const [balanceLoading, setBalanceLoading]         = useState(true);
+  const [lastBalanceUpdatedAt, setLastBalanceUpdatedAt] = useState<string | null>(null);
 
   const [cashbackHistory, setCashbackHistory]       = useState<CashbackItem[]>([]);
   const [cashbackLoading, setCashbackLoading]       = useState(true);
@@ -132,10 +134,18 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
   /* ── Fetch helpers ─────────────────────────────────────────────── */
 
   const fetchBalance = useCallback(async () => {
-    if (!user) { setBalance(0); setBalanceLoading(false); return; }
+    if (!user) {
+      setBalance(0);
+      setLastBalanceUpdatedAt(null);
+      setBalanceLoading(false);
+      return;
+    }
     setBalanceLoading(true);
     const { data } = await supabase.from('profiles').select('balance').eq('id', user.id).single();
-    if (data) setBalance(Number(data.balance));
+    if (data) {
+      setBalance(Number(data.balance));
+      setLastBalanceUpdatedAt(new Date().toISOString());
+    }
     setBalanceLoading(false);
   }, [user]);
 
@@ -235,6 +245,31 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
+
+  // Balance updates can come from another Vexa session, a peer transfer, or
+  // an exchange deposit. Realtime is preferred, with polling as a fallback
+  // when the table is not enabled in Supabase's realtime publication.
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel(`vexa-profile-balance:${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` },
+        () => { void fetchBalance(); },
+      )
+      .subscribe();
+
+    const interval = window.setInterval(() => {
+      void fetchBalance();
+    }, 15000);
+
+    return () => {
+      window.clearInterval(interval);
+      void supabase.removeChannel(channel);
+    };
+  }, [user?.id, fetchBalance]);
 
   /* ── Derived cashback totals ─────────────────────────────────── */
 
@@ -344,6 +379,7 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
   return (
     <UserDataContext.Provider value={{
       balance, balanceLoading,
+      lastBalanceUpdatedAt,
       cashbackTotal, cashbackPending, cashbackRedeemable,
       cashbackHistory, cashbackLoading,
       referrals, referralCode, referralTotalEarned, referralTotalPending, referralsLoading,
