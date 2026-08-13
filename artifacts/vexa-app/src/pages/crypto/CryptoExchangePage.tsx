@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowDownToLine, ArrowLeftRight, ArrowUpRight, ChevronRight, Copy, RefreshCw, Send, WalletCards } from 'lucide-react';
 import { FaBitcoin, FaEthereum } from 'react-icons/fa6';
 import { SiTether } from 'react-icons/si';
@@ -7,7 +7,7 @@ import { useLocation } from 'wouter';
 import { useAuth } from '@/context/AuthContext';
 import { useVexaFinance, type CryptoAsset } from '@/context/VexaFinanceContext';
 
-const RATES: Record<CryptoAsset, number> = {
+const FALLBACK_RATES: Record<CryptoAsset, number> = {
   BTC: 155_000_000,
   ETH: 5_800_000,
   USDT: 1_620,
@@ -37,6 +37,10 @@ function timeSince(iso: string): string {
   return `${hours} hours ago`;
 }
 
+function signedPercent(value: number) {
+  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
+}
+
 function CryptoLogo({ asset, size = 22 }: { asset: CryptoAsset; size?: number }) {
   const Logo = ASSET_META[asset].logo;
   return <Logo size={size} color="#fff" aria-hidden="true" />;
@@ -58,6 +62,11 @@ export default function CryptoExchangePage() {
   const [, navigate] = useLocation();
   const { user } = useAuth();
   const { exchangeNaira, cryptoBalances, cryptoTransactions, loading, error, lastUpdatedAt, refreshFinance, depositToExchange, exchangeCrypto, transferCrypto } = useVexaFinance();
+  const [rates, setRates] = useState<Record<CryptoAsset, number>>(FALLBACK_RATES);
+  const [priceChanges, setPriceChanges] = useState<Record<CryptoAsset, number>>({ BTC: 0, ETH: 0, USDT: 0 });
+  const [priceUpdatedAt, setPriceUpdatedAt] = useState<string | null>(null);
+  const [priceError, setPriceError] = useState('');
+  const [priceStale, setPriceStale] = useState(false);
   const [tab, setTab] = useState<'overview' | 'exchange' | 'transfer'>('overview');
   const [depositAmount, setDepositAmount] = useState('');
   const [asset, setAsset] = useState<CryptoAsset>('BTC');
@@ -68,6 +77,53 @@ export default function CryptoExchangePage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [formError, setFormError] = useState('');
+
+  const fetchPrices = useCallback(async () => {
+    try {
+      const response = await fetch('/api/crypto/prices', {
+        headers: { accept: 'application/json' },
+      });
+      const body = (await response.json()) as {
+        prices?: Partial<Record<CryptoAsset, { ngn?: number; change24h?: number }>>;
+        fetchedAt?: string;
+        stale?: boolean;
+        message?: string;
+      };
+      if (!response.ok || !body.prices || !body.fetchedAt) {
+        throw new Error(body.message ?? 'Live crypto prices are unavailable');
+      }
+
+      const nextRates = {} as Record<CryptoAsset, number>;
+      const nextChanges = {} as Record<CryptoAsset, number>;
+      (Object.keys(ASSET_META) as CryptoAsset[]).forEach(item => {
+        const price = body.prices?.[item];
+        if (!price?.ngn || !Number.isFinite(price.ngn)) {
+          throw new Error('Live crypto prices are incomplete');
+        }
+        nextRates[item] = price.ngn;
+        nextChanges[item] = Number(price.change24h ?? 0);
+      });
+      setRates(nextRates);
+      setPriceChanges(nextChanges);
+      setPriceUpdatedAt(body.fetchedAt);
+      setPriceStale(Boolean(body.stale));
+      setPriceError(body.stale ? 'Live provider is unavailable. Showing the last received rates.' : '');
+    } catch (priceFetchError) {
+      setPriceError(priceFetchError instanceof Error ? priceFetchError.message : 'Live crypto prices are unavailable');
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchPrices();
+    const interval = window.setInterval(() => { void fetchPrices(); }, 30000);
+    return () => window.clearInterval(interval);
+  }, [fetchPrices]);
+
+  const portfolioValue = useMemo(
+    () => cryptoBalances.reduce((total, item) => total + item.amount * rates[item.asset], 0),
+    [cryptoBalances, rates],
+  );
+  const livePricesReady = Boolean(priceUpdatedAt && !priceStale);
 
   const selectedBalance = useMemo(
     () => cryptoBalances.find(item => item.asset === asset)?.amount ?? 0,
@@ -87,9 +143,10 @@ export default function CryptoExchangePage() {
   const submitExchange = async () => {
     const amount = Number(exchangeAmount.replace(/,/g, ''));
     if (!amount || amount <= 0) return setFormError('Enter a valid Naira amount');
-    if (side === 'sell' && amount > selectedBalance * RATES[asset]) return setFormError(`Your ${asset} balance is too low`);
+    if (!livePricesReady) return setFormError('Live crypto rates are not available yet. Please try again shortly.');
+    if (side === 'sell' && amount > selectedBalance * rates[asset]) return setFormError(`Your ${asset} balance is too low`);
     setBusy(true); setFormError(''); setMessage('');
-    const result = await exchangeCrypto(asset, side, amount, RATES[asset]);
+    const result = await exchangeCrypto(asset, side, amount, rates[asset]);
     setBusy(false);
     if (!result.success) return setFormError(result.error ?? 'Exchange failed');
     setExchangeAmount('');
@@ -118,7 +175,7 @@ export default function CryptoExchangePage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-white/60 text-[11px] uppercase tracking-[0.18em]">Exchange balance</p>
-                <p className="text-[28px] font-extrabold mt-1">{money(exchangeNaira)}</p>
+            <p className="text-[28px] font-extrabold mt-1">{money(exchangeNaira)}</p>
               </div>
               <div className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center">
                 <ArrowLeftRight className="w-5 h-5 text-[#68D9FF]" />
@@ -128,6 +185,28 @@ export default function CryptoExchangePage() {
             <p className="text-white/50 text-[10px] mt-1">
               Live sync · Last updated {lastUpdatedAt ? timeSince(lastUpdatedAt) : 'updating…'}
             </p>
+            <div className="mt-4 border-t border-white/10 pt-3">
+              <div className="flex items-center justify-between">
+                <span className="text-white/60 text-[10px]">Crypto holdings value</span>
+                <b className="text-[13px]">{money(portfolioValue)}</b>
+              </div>
+              <div className="grid grid-cols-3 gap-2 mt-3">
+                {(Object.keys(ASSET_META) as CryptoAsset[]).map(item => (
+                  <div key={item} className="rounded-xl bg-white/10 px-2 py-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: ASSET_META[item].color }}>
+                        <CryptoLogo asset={item} size={11} />
+                      </span>
+                      <span className="text-[10px] font-bold">{item}</span>
+                    </div>
+                    <p className="text-[10px] font-bold mt-1 truncate">{money(rates[item])}</p>
+                    <p className={`text-[9px] mt-0.5 ${priceChanges[item] >= 0 ? 'text-[#83F0B7]' : 'text-[#FF9A9A]'}`}>
+                      {signedPercent(priceChanges[item])}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
             <button onClick={() => setTab('overview')} className="mt-4 inline-flex items-center gap-2 text-[11px] font-semibold text-[#8BE3FF]">
               <WalletCards className="w-3.5 h-3.5" /> {user?.accountNumber ?? 'Vexa account'}
             </button>
@@ -143,7 +222,8 @@ export default function CryptoExchangePage() {
           ))}
         </div>
 
-        {error && <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-[12px] text-amber-700">{error}. Run the latest supabase-schema.sql migration to enable exchange data.</div>}
+         {error && <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-[12px] text-amber-700">{error}. Run the latest supabase-schema.sql migration to enable exchange data.</div>}
+         {priceError && <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-[12px] text-amber-700">{priceError}</div>}
         {formError && <div className="rounded-2xl bg-red-50 border border-red-200 px-4 py-3 text-[12px] text-red-600">{formError}</div>}
         {message && <div className="rounded-2xl bg-green-50 border border-green-200 px-4 py-3 text-[12px] text-green-700">{message}</div>}
 
@@ -168,8 +248,8 @@ export default function CryptoExchangePage() {
                       <p className="text-[11px] text-[#888]">{amount ? crypto(amount) : '0'} {item} · {meta.description}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-[13px] font-bold text-[#111]">{money(amount * RATES[item])}</p>
-                      <p className="text-[10px] text-[#999]">₦{RATES[item].toLocaleString('en-NG')} / {item}</p>
+                       <p className="text-[13px] font-bold text-[#111]">{money(amount * rates[item])}</p>
+                       <p className="text-[10px] text-[#999]">₦{rates[item].toLocaleString('en-NG')} / {item}</p>
                     </div>
                   </div>
                 );
@@ -215,9 +295,9 @@ export default function CryptoExchangePage() {
             <div className="grid grid-cols-3 gap-2">
               {(Object.keys(ASSET_META) as CryptoAsset[]).map(item => <button key={item} onClick={() => setAsset(item)} className={`py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 ${asset === item ? 'bg-[#EAF2FF] text-[#1D4ED8] border border-[#BFD7FF]' : 'bg-[#F8F9FB] text-[#555]'}`}><span className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: ASSET_META[item].color }}><CryptoLogo asset={item} size={12} /></span>{item}</button>)}
             </div>
-            <div className="rounded-xl bg-[#F8F9FB] px-4 py-3 flex justify-between text-[12px]"><span className="text-[#777]">Rate</span><b>{money(RATES[asset])} / {asset}</b></div>
+             <div className="rounded-xl bg-[#F8F9FB] px-4 py-3 flex justify-between text-[12px]"><span className="text-[#777]">Live rate {priceUpdatedAt ? `· ${timeSince(priceUpdatedAt)}` : ''}</span><b>{money(rates[asset])} / {asset}</b></div>
             <input value={exchangeAmount} onChange={e => setExchangeAmount(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" placeholder={side === 'buy' ? 'Naira amount' : `Naira value to sell (${crypto(selectedBalance)} ${asset} available)`} className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#162353]" />
-            <button disabled={busy} onClick={() => void submitExchange()} className="w-full rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold disabled:opacity-50">{busy ? 'Processing…' : `${side === 'buy' ? 'Buy' : 'Sell'} ${asset}`}</button>
+             <button disabled={busy || !livePricesReady} onClick={() => void submitExchange()} className="w-full rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold disabled:opacity-50">{busy ? 'Processing…' : !livePricesReady ? 'Waiting for live rate…' : `${side === 'buy' ? 'Buy' : 'Sell'} ${asset}`}</button>
           </div>
         )}
 
