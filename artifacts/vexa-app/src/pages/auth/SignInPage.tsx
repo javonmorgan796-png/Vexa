@@ -72,6 +72,7 @@ export default function SignInPage() {
   const [challenge, setChallenge] = useState(genChallenge());
   const [challengeInput, setChallengeInput] = useState('');
   const [challengeError, setChallengeError] = useState('');
+  const challengeRef = useRef<HTMLInputElement | null>(null);
 
   /* Recompute lockout every second */
   useEffect(() => {
@@ -89,6 +90,10 @@ export default function SignInPage() {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [phone]);
+
+  useEffect(() => {
+    if (challengeVisible) challengeRef.current?.focus();
+  }, [challengeVisible]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -162,6 +167,7 @@ export default function SignInPage() {
         setChallenge(genChallenge());
         setChallengeInput('');
         setChallengeError('');
+        setError('Complete the security check below, then tap Sign In again.');
         return;
       }
       if (challengeInput.trim() !== challenge.answer) {
@@ -303,7 +309,7 @@ export default function SignInPage() {
               <p className="text-[13px] text-amber-900 mb-3 font-medium">
                 What is <span className="font-bold">{challenge.a} + {challenge.b}</span> ?
               </p>
-              <input type="tel" inputMode="numeric" placeholder="Your answer" value={challengeInput}
+              <input ref={challengeRef} type="tel" inputMode="numeric" aria-label="Security check answer" placeholder="Enter the answer" value={challengeInput}
                 onChange={e => { setChallengeInput(e.target.value.replace(/\D/g, '')); setChallengeError(''); }}
                 className="w-full h-[44px] rounded-xl border border-amber-300 bg-white px-4 text-[14px] text-[#111] focus:outline-none focus:border-amber-500 transition-colors" />
               {challengeError && <p className="text-[11px] text-red-600 mt-1.5 font-medium">{challengeError}</p>}
@@ -311,7 +317,7 @@ export default function SignInPage() {
           )}
 
           {/* CTA */}
-          <button type="submit" disabled={loading || !passcodeComplete || isLocked}
+          <button type="submit" disabled={loading || !passcodeComplete || isLocked || (challengeVisible && !challengeInput.trim())}
             className="w-full h-[52px] rounded-xl bg-[#162353] text-white text-[15px] font-bold mt-2 disabled:opacity-60 transition-opacity active:scale-[0.98]">
             {loading ? (
               <span className="flex items-center justify-center gap-2">
