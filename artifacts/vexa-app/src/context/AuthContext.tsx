@@ -37,11 +37,26 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 function normalizePhone(phone: string): string {
-  return phone.replace(/\D/g, '');
+  const digits = phone.replace(/\D/g, '');
+  // Keep one canonical Nigerian representation so 080... and +234...
+  // resolve to the same Supabase Auth identity.
+  if (digits.startsWith('234') && digits.length === 13) {
+    return `0${digits.slice(3)}`;
+  }
+  return digits;
 }
 
 function phoneToEmail(phone: string): string {
   return `${normalizePhone(phone)}@vexa.app`;
+}
+
+function phoneToEmailCandidates(phone: string): string[] {
+  const digits = phone.replace(/\D/g, '');
+  const candidates = [
+    phoneToEmail(phone),
+    digits ? `${digits}@vexa.app` : '',
+  ];
+  return [...new Set(candidates.filter(Boolean))];
 }
 
 function genAccountNumber(): string {
@@ -96,7 +111,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  async function fetchProfile(authUser: { id: string; email?: string | null; user_metadata?: Record<string, unknown> | null }) {
+  async function fetchProfile(
+    authUser: { id: string; email?: string | null; user_metadata?: Record<string, unknown> | null },
+  ): Promise<{ success: boolean; error?: string }> {
     setLoading(true);
     const { data, error } = await supabase
       .from('profiles')
@@ -109,7 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       setProfilePhoto(null);
       setLoading(false);
-      return;
+      return { success: false, error: 'Could not load your account profile' };
     }
 
     // A profile is normally created by the database trigger. If an older
@@ -147,7 +164,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         setProfilePhoto(null);
         setLoading(false);
-        return;
+        return { success: false, error: 'Could not create your account profile' };
       }
       profile = createdProfile;
     }
@@ -210,17 +227,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.warn('[Auth] auth metadata sync error:', metadataError.message);
       }
     }
+
+    return { success: true };
   }
 
   const signIn = async (phone: string, passcode: string): Promise<{ success: boolean; error?: string }> => {
-    const email = phoneToEmail(phone);
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password: passcode });
-    if (error) {
-      return { success: false, error: 'Invalid phone number or passcode' };
+    const candidates = phoneToEmailCandidates(phone);
+    if (!candidates.length || passcode.length !== 6) {
+      return { success: false, error: 'Enter a valid phone number and 6-digit passcode' };
     }
-    // The auth-state listener loads the profile once the session is established.
-    // Do not block sign-in on a duplicate profile request.
-    return { success: true };
+
+    let lastError: string | undefined;
+    for (const email of candidates) {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password: passcode });
+      if (error || !data.user) {
+        lastError = error?.message;
+        continue;
+      }
+
+      // Wait for the profile before reporting success. The route guard relies
+      // on this state and must not redirect a valid user back to sign-in.
+      const profileResult = await fetchProfile(data.user);
+      if (!profileResult.success) {
+        await supabase.auth.signOut();
+        return { success: false, error: profileResult.error };
+      }
+      return { success: true };
+    }
+
+    // Keep the UI message generic while logging only the provider's error
+    // category locally during development; never expose auth internals.
+    if (lastError) console.warn('[Auth] sign-in rejected');
+    return { success: false, error: 'Invalid phone number or passcode' };
   };
 
   const signUp = async (
@@ -320,7 +358,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const verifyPasscode = async (passcode: string): Promise<boolean> => {
     if (!user) return false;
-    const { error } = await supabase.auth.signInWithPassword({
+      const { error } = await supabase.auth.signInWithPassword({
       email: phoneToEmail(user.phone),
       password: passcode,
     });

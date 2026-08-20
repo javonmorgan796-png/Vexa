@@ -202,15 +202,11 @@ export default function SignInPage() {
 
   async function handleFingerprint() {
     setFingerprintLoading(true);
-    setTimeout(() => {
-      setFingerprintLoading(false);
-      setFingerprintSuccess(true);
-      setTimeout(async () => {
-        const res = await signIn('08067212032', '123456');
-        if (res.success) navigate('/');
-        else setFingerprintSuccess(false);
-      }, 800);
-    }, 1400);
+    setError('');
+    await new Promise(resolve => setTimeout(resolve, 500));
+    setFingerprintLoading(false);
+    setFingerprintSuccess(false);
+    setError('Biometric sign-in is not set up for this account yet. Use your phone and passcode.');
   }
 
   const passcodeComplete = passcode.every(d => d !== '');

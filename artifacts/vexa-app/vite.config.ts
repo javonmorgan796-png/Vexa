@@ -57,9 +57,9 @@ const supabaseEnvPlugin = {
 
 export default defineConfig({
   base: basePath,
-  // Expose only the public Supabase connection values to the browser bundle.
-  // These are required by the client-side auth/data layer.
-  envPrefix: ['VITE_', 'SUPABASE_'],
+  // Do not expose arbitrary SUPABASE_* values. Only the URL and anon key
+  // below are intentionally injected because the browser auth client needs
+  // them. Never add a service-role key here.
   define: {
     // Inject the public Supabase connection values into the browser bundle.
     // Explicit import.meta.env keys work with Replit secrets at dev and build time.
