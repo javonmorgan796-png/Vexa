@@ -7,4 +7,4 @@ Protected pages must distinguish “session is still restoring” from “there 
 
 **Why:** Redirecting on the first render while Supabase was restoring the session sent valid users from Settings → Profile back to sign-in, while recomputed or demo values made profile data inconsistent.
 
-**How to apply:** Keep auth loading state in the provider, delay protected-route redirects until loading is false, and map all user-facing profile values from the authenticated `profiles` record.
+**How to apply:** Keep auth loading state in the provider, delay protected-route redirects until loading is false, await profile hydration inside sign-in before navigating, and map all user-facing profile values from the authenticated `profiles` record.
