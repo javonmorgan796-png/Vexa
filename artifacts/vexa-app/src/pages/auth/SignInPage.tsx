@@ -31,13 +31,6 @@ function clearAttempts(phone: string) {
   localStorage.removeItem(ATTEMPT_KEY(phone));
 }
 
-function lockoutMs(count: number): number | null {
-  if (count >= 10) return 30 * 60 * 1000;  // 30 min
-  if (count >= 5)  return  5 * 60 * 1000;  // 5 min
-  if (count >= 3)  return     30 * 1000;   // 30 sec
-  return null;
-}
-
 function fmtTime(ms: number): string {
   const s = Math.max(0, Math.ceil(ms / 1000));
   const m = Math.floor(s / 60);
@@ -74,21 +67,10 @@ export default function SignInPage() {
   const [challengeError, setChallengeError] = useState('');
   const challengeRef = useRef<HTMLInputElement | null>(null);
 
-  /* Recompute lockout every second */
+  /* Keep the sign-in form responsive. Failed attempts require a challenge,
+     but a browser-local lock must never block valid credentials. */
   useEffect(() => {
-    const tick = () => {
-      const clean = phone.replace(/\D/g, '');
-      if (!clean) { setLockRemaining(0); return; }
-      const rec = loadAttempts(clean);
-      if (rec.lockedUntil && rec.lockedUntil > Date.now()) {
-        setLockRemaining(rec.lockedUntil - Date.now());
-      } else {
-        setLockRemaining(0);
-      }
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
+    setLockRemaining(0);
   }, [phone]);
 
   useEffect(() => {
@@ -137,10 +119,9 @@ export default function SignInPage() {
   function recordFailure(cleanPhone: string) {
     const rec = loadAttempts(cleanPhone);
     const newCount = rec.count + 1;
-    const ms = lockoutMs(newCount);
     const newRec: AttemptRecord = {
       count: newCount,
-      lockedUntil: ms ? Date.now() + ms : null,
+      lockedUntil: null,
     };
     saveAttempts(cleanPhone, newRec);
     return newRec;
@@ -153,12 +134,7 @@ export default function SignInPage() {
     const cleanPhone = phone.replace(/\D/g, '');
     if (cleanPhone.length < 10) { setError('Enter a valid phone number'); return; }
 
-    /* Check lockout */
     const rec = loadAttempts(cleanPhone);
-    if (rec.lockedUntil && rec.lockedUntil > Date.now()) {
-      setError(`Account temporarily locked. Try again in ${fmtTime(rec.lockedUntil - Date.now())}`);
-      return;
-    }
 
     /* CAPTCHA check if ≥3 prior failures */
     if (rec.count >= 3) {
@@ -192,14 +168,10 @@ export default function SignInPage() {
         navigate('/');
       } else {
         const updated = recordFailure(cleanPhone);
-        if (updated.lockedUntil && updated.lockedUntil > Date.now()) {
-          setError(`Too many failed attempts. Locked for ${fmtTime(updated.lockedUntil - Date.now())}.`);
-        } else {
-          const left = 3 - updated.count;
-          setError(left > 0
-            ? `${res.error ?? 'Sign in failed'} (${left} attempt${left !== 1 ? 's' : ''} before lockout)`
-            : (res.error ?? 'Sign in failed'));
-        }
+        const left = 3 - updated.count;
+        setError(left > 0
+          ? `${res.error ?? 'Sign in failed'} (${left} attempt${left !== 1 ? 's' : ''} before security check)`
+          : (res.error ?? 'Sign in failed'));
         setPasscode(['', '', '', '', '', '']);
         inputRefs.current[0]?.focus();
       }
