@@ -40,10 +40,10 @@ function normalizePhone(phone: string): string {
   const digits = phone.replace(/\D/g, '');
   // Keep one canonical Nigerian representation so 080... and +234...
   // resolve to the same Supabase Auth identity.
-  if (digits.startsWith('234') && digits.length === 13) {
-    return `0${digits.slice(3)}`;
+  if (digits.startsWith('234')) {
+    return `0${digits.slice(3).replace(/^0/, '')}`;
   }
-  return digits;
+  return digits.startsWith('0') ? digits : `0${digits}`;
 }
 
 function phoneToEmail(phone: string): string {
@@ -51,10 +51,8 @@ function phoneToEmail(phone: string): string {
 }
 
 function phoneToEmailCandidates(phone: string): string[] {
-  let digits = phone.replace(/\D/g, '');
-  if (digits.startsWith('234')) digits = `0${digits.slice(3)}`;
-  if (digits.startsWith('2340')) digits = `0${digits.slice(4)}`;
-  const local = digits.startsWith('0') ? digits : `0${digits}`;
+  const digits = phone.replace(/\D/g, '');
+  const local = normalizePhone(phone);
   const candidates = [
     `${local}@vexa.app`,
     `${local.slice(1)}@vexa.app`,
