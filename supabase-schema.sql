@@ -526,6 +526,26 @@ GRANT EXECUTE ON FUNCTION public.deposit_to_crypto(NUMERIC) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.exchange_crypto(TEXT, TEXT, NUMERIC, NUMERIC) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.transfer_crypto(TEXT, TEXT, NUMERIC) TO authenticated;
 
+-- ── External crypto deposit addresses ──────────────────────
+CREATE TABLE IF NOT EXISTS public.crypto_deposit_addresses (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  asset      TEXT NOT NULL CHECK (asset IN ('BTC', 'ETH', 'USDT')),
+  address    TEXT NOT NULL,
+  network    TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, asset),
+  UNIQUE (asset, address)
+);
+
+ALTER TABLE public.crypto_deposit_addresses ENABLE ROW LEVEL SECURITY;
+GRANT SELECT ON public.crypto_deposit_addresses TO authenticated;
+GRANT ALL ON public.crypto_deposit_addresses TO service_role;
+DROP POLICY IF EXISTS "Users can view own crypto deposit addresses" ON public.crypto_deposit_addresses;
+CREATE POLICY "Users can view own crypto deposit addresses"
+  ON public.crypto_deposit_addresses FOR SELECT TO authenticated
+  USING (auth.uid() = user_id);
+
 -- ── Business accounts ─────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS public.business_accounts (

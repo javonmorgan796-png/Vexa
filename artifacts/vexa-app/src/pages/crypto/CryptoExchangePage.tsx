@@ -6,6 +6,8 @@ import type { IconType } from 'react-icons';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/context/AuthContext';
 import { useVexaFinance, type CryptoAsset } from '@/context/VexaFinanceContext';
+import { supabase } from '@/lib/supabase';
+import { QRCodeSVG } from 'qrcode.react';
 
 const FALLBACK_RATES: Record<CryptoAsset, number> = {
   BTC: 155_000_000,
@@ -41,6 +43,8 @@ function signedPercent(value: number) {
   return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
 }
 
+type DepositAddress = { asset: CryptoAsset; address: string; network: string; createdAt: string };
+
 function CryptoLogo({ asset, size = 22 }: { asset: CryptoAsset; size?: number }) {
   const Logo = ASSET_META[asset].logo;
   return <Logo size={size} color="#fff" aria-hidden="true" />;
@@ -67,7 +71,7 @@ export default function CryptoExchangePage() {
   const [priceUpdatedAt, setPriceUpdatedAt] = useState<string | null>(null);
   const [priceError, setPriceError] = useState('');
   const [priceStale, setPriceStale] = useState(false);
-  const [tab, setTab] = useState<'overview' | 'exchange' | 'transfer'>('overview');
+  const [tab, setTab] = useState<'overview' | 'exchange' | 'transfer' | 'receive'>('overview');
   const [depositAmount, setDepositAmount] = useState('');
   const [asset, setAsset] = useState<CryptoAsset>('BTC');
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
@@ -77,6 +81,8 @@ export default function CryptoExchangePage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [formError, setFormError] = useState('');
+  const [depositAddress, setDepositAddress] = useState<DepositAddress | null>(null);
+  const [addressLoading, setAddressLoading] = useState(false);
 
   const fetchPrices = useCallback(async () => {
     try {
@@ -129,6 +135,30 @@ export default function CryptoExchangePage() {
     () => cryptoBalances.find(item => item.asset === asset)?.amount ?? 0,
     [asset, cryptoBalances],
   );
+
+  const loadDepositAddress = useCallback(async () => {
+    setAddressLoading(true);
+    setFormError('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Your session has expired. Please sign in again.');
+      const response = await fetch(`/api/crypto/deposit-address?asset=${asset}`, {
+        headers: { accept: 'application/json', Authorization: `Bearer ${session.access_token}` },
+      });
+      const body = await response.json() as DepositAddress & { message?: string };
+      if (!response.ok || !body.address) throw new Error(body.message ?? 'Could not load your deposit address');
+      setDepositAddress(body);
+    } catch (addressError) {
+      setDepositAddress(null);
+      setFormError(addressError instanceof Error ? addressError.message : 'Could not load your deposit address');
+    } finally {
+      setAddressLoading(false);
+    }
+  }, [asset]);
+
+  useEffect(() => {
+    if (tab === 'receive') void loadDepositAddress();
+  }, [tab, loadDepositAddress]);
 
   const submitDeposit = async () => {
     const amount = Number(depositAmount.replace(/,/g, ''));
@@ -213,11 +243,11 @@ export default function CryptoExchangePage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 bg-white rounded-2xl p-1 border border-[#ECEEF2]">
-          {(['overview', 'exchange', 'transfer'] as const).map(item => (
+        <div className="grid grid-cols-4 gap-2 bg-white rounded-2xl p-1 border border-[#ECEEF2]">
+          {(['overview', 'exchange', 'transfer', 'receive'] as const).map(item => (
             <button key={item} onClick={() => { setTab(item); setMessage(''); setFormError(''); }}
               className={`rounded-xl py-2.5 text-[11px] font-bold capitalize transition-colors ${tab === item ? 'bg-[#162353] text-white' : 'text-[#777]'}`}>
-              {item}
+               {item === 'receive' ? 'Receive' : item}
             </button>
           ))}
         </div>
@@ -308,6 +338,35 @@ export default function CryptoExchangePage() {
             <div><label className="block text-[11px] font-bold text-[#555] mb-1.5">Recipient account number</label><input value={recipient} onChange={e => setRecipient(e.target.value.replace(/\D/g, '').slice(0, 10))} inputMode="numeric" placeholder="10-digit Vexa account" className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#162353]" /></div>
             <div><label className="block text-[11px] font-bold text-[#555] mb-1.5">Amount ({asset})</label><input value={transferAmount} onChange={e => setTransferAmount(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" placeholder={`Available: ${crypto(selectedBalance)} ${asset}`} className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#162353]" /></div>
             <button disabled={busy} onClick={() => void submitTransfer()} className="w-full rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold disabled:opacity-50"><span className="inline-flex items-center gap-2">{busy ? 'Sending…' : <><Send className="w-4 h-4" /> Send {asset}</>}</span></button>
+          </div>
+        )}
+
+        {tab === 'receive' && (
+          <div className="bg-white rounded-2xl border border-[#F0F0F0] p-5 space-y-4">
+            <div>
+              <p className="text-[16px] font-bold text-[#111]">Receive crypto</p>
+              <p className="text-[11px] text-[#888] mt-1">Send only the selected asset to this address. Your address is unique to your Vexa account.</p>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {(Object.keys(ASSET_META) as CryptoAsset[]).map(item => (
+                <button key={item} onClick={() => { setAsset(item); setDepositAddress(null); }} className={`py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 ${asset === item ? 'bg-[#EAF2FF] text-[#1D4ED8] border border-[#BFD7FF]' : 'bg-[#F8F9FB] text-[#555]'}`}>
+                  <span className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: ASSET_META[item].color }}><CryptoLogo asset={item} size={12} /></span>{item}
+                </button>
+              ))}
+            </div>
+            {addressLoading && <div className="rounded-2xl bg-[#F8F9FB] py-10 text-center text-[12px] text-[#777]">Creating your secure {asset} address…</div>}
+            {depositAddress && !addressLoading && (
+              <div className="rounded-2xl bg-[#F8F9FB] p-4 text-center">
+                <div className="inline-flex rounded-2xl bg-white p-3 border border-[#E8EBF0]"><QRCodeSVG value={depositAddress.address} size={180} includeMargin /></div>
+                <p className="text-[12px] font-bold text-[#111] mt-3">{depositAddress.network}</p>
+                <p className="text-[10px] text-[#888] mt-1">Scan to receive {asset}</p>
+                <div className="mt-3 flex items-center gap-2 rounded-xl bg-white border border-[#E8EBF0] px-3 py-2 text-left">
+                  <p className="flex-1 break-all text-[11px] text-[#333] font-mono">{depositAddress.address}</p>
+                  <button onClick={() => { void navigator.clipboard?.writeText(depositAddress.address); setMessage('Deposit address copied.'); }} className="shrink-0 p-2 text-[#2563EB]" aria-label="Copy deposit address"><Copy className="w-4 h-4" /></button>
+                </div>
+                <p className="text-[10px] text-amber-700 mt-3">Only send {asset} on the {depositAddress.network} network. Sending another asset or network may permanently lose funds.</p>
+              </div>
+            )}
           </div>
         )}
       </div>
