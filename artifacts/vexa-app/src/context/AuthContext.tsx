@@ -51,10 +51,15 @@ function phoneToEmail(phone: string): string {
 }
 
 function phoneToEmailCandidates(phone: string): string[] {
-  const digits = phone.replace(/\D/g, '');
+  let digits = phone.replace(/\D/g, '');
+  if (digits.startsWith('234')) digits = `0${digits.slice(3)}`;
+  if (digits.startsWith('2340')) digits = `0${digits.slice(4)}`;
+  const local = digits.startsWith('0') ? digits : `0${digits}`;
   const candidates = [
+    `${local}@vexa.app`,
+    `${local.slice(1)}@vexa.app`,
+    `${digits}@vexa.app`,
     phoneToEmail(phone),
-    digits ? `${digits}@vexa.app` : '',
   ];
   return [...new Set(candidates.filter(Boolean))];
 }
@@ -275,7 +280,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Keep the UI message generic while logging only the provider's error
     // category locally during development; never expose auth internals.
-    if (lastError) console.warn('[Auth] sign-in rejected');
+    if (lastError) {
+      console.warn('[Auth] sign-in rejected');
+      if (lastError.toLowerCase().includes('email not confirmed')) {
+        return {
+          success: false,
+          error: 'Your account was created but is not activated yet. Disable email confirmations in Supabase Auth, then create the account again.',
+        };
+      }
+    }
     return { success: false, error: 'Invalid phone number or passcode' };
   };
 
@@ -310,18 +323,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!data.user) {
       return { success: false, error: 'Sign up failed. Please try again.' };
     }
+    if (!data.session) {
+      return {
+        success: false,
+        error: 'Account created but not activated. Disable email confirmations in Supabase Auth so phone-based Vexa accounts can sign in immediately.',
+      };
+    }
 
     // The DB trigger (handle_new_user) creates the profile automatically.
     // If there is a session (email confirmation OFF), also upsert to ensure
     // all fields are correct in case the trigger ran with partial data.
-    if (data.session) {
-      await supabase.from('profiles').upsert({
-        id: data.user.id, name, email, phone,
-        account_number: accountNumber, pin: '0000',
-        level: 1, verified: false, balance: 0, referral_code: referralCode,
-      }, { onConflict: 'id' });
-      await fetchProfile(data.user);
-    }
+    await supabase.from('profiles').upsert({
+      id: data.user.id, name, email, phone: normalizePhone(phone),
+      account_number: accountNumber, pin: '0000',
+      level: 1, verified: false, balance: 0, referral_code: referralCode,
+    }, { onConflict: 'id' });
+    await fetchProfile(data.user);
 
     return { success: true };
   };
