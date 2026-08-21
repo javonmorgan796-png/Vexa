@@ -69,6 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading]         = useState(true);
   const [twoFactorPending, setTwoFactorPending] = useState(false);
   const verifiedTwoFactorUser = useRef<string | null>(null);
+  const profileRequestRef = useRef<{ userId: string; promise: Promise<{ success: boolean; error?: string }> } | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -112,6 +113,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   async function fetchProfile(
+    authUser: { id: string; email?: string | null; user_metadata?: Record<string, unknown> | null },
+  ): Promise<{ success: boolean; error?: string }> {
+    const existing = profileRequestRef.current;
+    if (existing?.userId === authUser.id) return existing.promise;
+
+    const promise = hydrateProfile(authUser);
+    profileRequestRef.current = { userId: authUser.id, promise };
+    try {
+      return await promise;
+    } finally {
+      if (profileRequestRef.current?.promise === promise) {
+        profileRequestRef.current = null;
+      }
+    }
+  }
+
+  async function hydrateProfile(
     authUser: { id: string; email?: string | null; user_metadata?: Record<string, unknown> | null },
   ): Promise<{ success: boolean; error?: string }> {
     setLoading(true);
