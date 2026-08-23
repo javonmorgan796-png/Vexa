@@ -50,6 +50,9 @@ app.use(cors({
     : false,
   credentials: false,
 }));
+// Tatum signs the exact bytes it sends. Capture this route before the JSON
+// parser so the webhook handler can verify x-payload-hash correctly.
+app.use("/api/crypto/webhooks/tatum", express.raw({ type: "application/json", limit: "100kb" }));
 app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 app.use("/api", (req, res, next) => {
