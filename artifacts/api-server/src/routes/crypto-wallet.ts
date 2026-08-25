@@ -68,7 +68,24 @@ async function findAddress(address: string) {
 
 async function createTatumSubscription(row: DepositAddressRow) {
   if (!TATUM_API_KEY) throw new Error("Tatum wallet provider is not configured");
-  if (row.tatum_subscription_id) return row.tatum_subscription_id;
+  if (row.tatum_subscription_id) {
+    const existing = await fetch(`https://api.tatum.io/v4/subscription/${encodeURIComponent(row.tatum_subscription_id)}`, {
+      headers: { accept: "application/json", "x-api-key": TATUM_API_KEY },
+    });
+    if (existing.ok) return row.tatum_subscription_id;
+
+    const details = (await existing.json().catch(() => null)) as { errorCode?: string } | null;
+    if (existing.status !== 404 && details?.errorCode !== "subscription.not.exists") {
+      throw new Error(`Could not verify Tatum subscription (${existing.status})`);
+    }
+
+    const cleared = await supabaseRequest(`crypto_deposit_addresses?id=eq.${encodeURIComponent(row.id)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ tatum_subscription_id: null, tatum_subscription_status: "pending" }),
+    });
+    if (!cleared.ok) throw new Error("Could not clear the stale Tatum subscription");
+  }
 
   // Claim the row before calling Tatum. This prevents two simultaneous
   // address requests from creating two subscriptions for the same address.
