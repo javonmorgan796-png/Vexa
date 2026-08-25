@@ -10,10 +10,10 @@ const TATUM_API_KEY = process.env["TATUM_API_KEY"];
 const TATUM_WEBHOOK_SECRET = process.env["TATUM_WEBHOOK_SECRET"];
 const TATUM_WEBHOOK_URL =
   process.env["TATUM_WEBHOOK_URL"] ??
-  "https://vexa--theopatrick04.replit.app/api/crypto/webhooks/tatum";
+  "https://vexa--greenbull848.replit.app/api/crypto/webhooks/tatum";
 
 function assetConfig(asset: Asset): { wallet: string; address: string; network: Network; tatumChain: string; confirmations: number; finality?: "final" } {
-  if (asset === "BTC") return { wallet: "bitcoin", address: "bitcoin", network: "Bitcoin", tatumChain: "bitcoin-mainnet", confirmations: 3 };
+  if (asset === "BTC") return { wallet: "bitcoin", address: "bitcoin", network: "Bitcoin", tatumChain: "bitcoin-testnet", confirmations: 3 };
   if (asset === "ETH") return { wallet: "ethereum", address: "ethereum", network: "Ethereum", tatumChain: "ethereum-mainnet", confirmations: 12, finality: "final" };
   return { wallet: "tron", address: "tron", network: "Tron (TRC-20)", tatumChain: "tron-mainnet", confirmations: 20, finality: "final" };
 }
@@ -137,20 +137,29 @@ async function supabaseRpc(name: string, body: Record<string, unknown>) {
   });
 }
 
-function verifyTatumSignature(rawBody: Buffer, suppliedHash: string | undefined) {
+function verifyTatumSignature(eventBody: Record<string, unknown>, suppliedHash: string | undefined) {
   if (!TATUM_WEBHOOK_SECRET || !suppliedHash) return false;
-  const expected = createHmac("sha512", TATUM_WEBHOOK_SECRET).update(rawBody).digest("base64");
+  const expected = createHmac("sha512", TATUM_WEBHOOK_SECRET)
+    .update(JSON.stringify(eventBody))
+    .digest("base64");
   const expectedBuffer = Buffer.from(expected, "utf8");
   const suppliedBuffer = Buffer.from(suppliedHash, "utf8");
   return expectedBuffer.length === suppliedBuffer.length && timingSafeEqual(expectedBuffer, suppliedBuffer);
 }
 
-function webhookEvent(payload: Record<string, unknown>) {
+function nestedWebhookEvent(payload: Record<string, unknown>) {
   const nested = payload.event;
-  if (nested && typeof nested === "object" && "body" in nested && nested.body && typeof nested.body === "object") {
-    return nested.body as Record<string, unknown>;
+  if (
+    !nested ||
+    typeof nested !== "object" ||
+    !("body" in nested) ||
+    !nested.body ||
+    typeof nested.body !== "object" ||
+    Array.isArray(nested.body)
+  ) {
+    return null;
   }
-  return payload;
+  return nested.body as Record<string, unknown>;
 }
 
 function stringValue(value: unknown) {
@@ -233,14 +242,13 @@ router.get("/crypto/deposit-address", async (req, res) => {
 
 router.post("/crypto/webhooks/tatum", async (req, res) => {
   const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from("");
-  if (!verifyTatumSignature(rawBody, req.header("x-payload-hash"))) {
-    res.status(401).json({ message: "Invalid webhook signature" });
-    return;
-  }
-
   try {
     const payload = JSON.parse(rawBody.toString("utf8")) as Record<string, unknown>;
-    const event = webhookEvent(payload);
+    const event = nestedWebhookEvent(payload);
+    if (!event || !verifyTatumSignature(event, req.header("x-payload-hash"))) {
+      res.status(401).json({ message: "Invalid webhook signature" });
+      return;
+    }
     const address = stringValue(event.address) ?? stringValue(event.to) ?? stringValue(event.destinationAddress);
     const txHash = stringValue(event.txId) ?? stringValue(event.txHash) ?? stringValue(event.hash);
     const amount = stringValue(event.amount) ?? (numberValue(event.amount)?.toString() ?? null);
