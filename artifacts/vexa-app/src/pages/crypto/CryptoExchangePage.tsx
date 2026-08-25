@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowDownToLine, ArrowLeftRight, ArrowUpRight, ChevronRight, Copy, RefreshCw, Send, WalletCards } from 'lucide-react';
+import { ArrowDownToLine, ArrowLeftRight, ArrowUpRight, Check, Copy, RefreshCw, Send, WalletCards, X } from 'lucide-react';
 import { FaBitcoin, FaEthereum } from 'react-icons/fa6';
 import { SiTether } from 'react-icons/si';
 import type { IconType } from 'react-icons';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/context/AuthContext';
-import { useVexaFinance, type CryptoAsset } from '@/context/VexaFinanceContext';
+import { useVexaFinance, type CryptoAsset, type CryptoTransaction } from '@/context/VexaFinanceContext';
 import { supabase } from '@/lib/supabase';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -62,6 +62,88 @@ function PageHeader({ title, onBack }: { title: string; onBack: () => void }) {
   );
 }
 
+function CryptoActivityDetails({ transaction, onClose }: { transaction: NonNullable<CryptoTransaction>; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const meta = ASSET_META[transaction.asset as CryptoAsset] ?? ASSET_META.BTC;
+  const isOutgoing = transaction.kind === 'transfer_out' || transaction.kind === 'sell';
+  const kindLabel = transaction.kind.replace('_', ' ');
+
+  const copyId = async () => {
+    await navigator.clipboard?.writeText(transaction.id);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1800);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#07122B]/55 px-0 sm:items-center sm:px-4" onClick={onClose}>
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="crypto-receipt-title"
+        className="w-full max-w-[430px] max-h-[88vh] overflow-y-auto rounded-t-3xl bg-white px-5 pb-7 pt-4 shadow-2xl sm:rounded-3xl"
+        onClick={event => event.stopPropagation()}
+      >
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-[#D9DDE5] sm:hidden" />
+        <div className="flex items-center justify-between">
+          <p id="crypto-receipt-title" className="text-[16px] font-bold text-[#111]">Activity details</p>
+          <button onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full bg-[#F5F6F8] text-[#555]" aria-label="Close activity details">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mt-5 rounded-2xl bg-[#F7F9FC] px-4 py-5 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full" style={{ backgroundColor: meta.color }}>
+            <CryptoLogo asset={transaction.asset as CryptoAsset} size={25} />
+          </div>
+          <p className="mt-3 text-[13px] font-semibold capitalize text-[#555]">{kindLabel}</p>
+          <p className={`mt-1 text-[28px] font-extrabold ${isOutgoing ? 'text-[#D44A4A]' : 'text-[#159669]'}`}>
+            {isOutgoing ? '-' : '+'}{crypto(transaction.amount)} {transaction.asset}
+          </p>
+          <p className="mt-1 text-[12px] text-[#888]">{new Date(transaction.createdAt).toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' })}</p>
+        </div>
+
+        <div className="mt-5 divide-y divide-[#F0F1F4] rounded-2xl border border-[#ECEEF2] px-4">
+          <div className="flex items-center justify-between py-3">
+            <span className="text-[12px] text-[#888]">Status</span>
+            <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#159669]"><Check className="h-3.5 w-3.5" /> Completed</span>
+          </div>
+          <div className="flex items-center justify-between gap-4 py-3">
+            <span className="text-[12px] text-[#888]">Naira value</span>
+            <span className="text-right text-[12px] font-semibold text-[#222]">{money(transaction.nairaAmount)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4 py-3">
+            <span className="text-[12px] text-[#888]">Exchange rate</span>
+            <span className="text-right text-[12px] font-semibold text-[#222]">{money(transaction.rate)} / {transaction.asset}</span>
+          </div>
+          {transaction.counterpartyAccount && (
+            <div className="flex items-center justify-between gap-4 py-3">
+              <span className="text-[12px] text-[#888]">{transaction.kind === 'transfer_in' ? 'From account' : 'To account'}</span>
+              <span className="text-right text-[12px] font-semibold text-[#222]">{transaction.counterpartyAccount}</span>
+            </div>
+          )}
+          {transaction.note && (
+            <div className="flex items-start justify-between gap-4 py-3">
+              <span className="text-[12px] text-[#888]">Note</span>
+              <span className="max-w-[62%] text-right text-[12px] font-semibold text-[#222]">{transaction.note}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 rounded-2xl bg-[#F7F9FC] px-4 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-[#999]">Transaction ID</p>
+          <div className="mt-1 flex items-center gap-2">
+            <p className="min-w-0 flex-1 break-all font-mono text-[10px] text-[#444]">{transaction.id}</p>
+            <button onClick={() => void copyId()} className="shrink-0 rounded-lg p-2 text-[#2563EB] hover:bg-white" aria-label="Copy transaction ID">
+              {copied ? <Check className="h-4 w-4 text-[#159669]" /> : <Copy className="h-4 w-4" />}
+            </button>
+          </div>
+          {copied && <p className="mt-1 text-[10px] text-[#159669]">Transaction ID copied.</p>}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export default function CryptoExchangePage() {
   const [, navigate] = useLocation();
   const { user } = useAuth();
@@ -83,6 +165,7 @@ export default function CryptoExchangePage() {
   const [formError, setFormError] = useState('');
   const [depositAddress, setDepositAddress] = useState<DepositAddress | null>(null);
   const [addressLoading, setAddressLoading] = useState(false);
+  const [selectedActivity, setSelectedActivity] = useState<CryptoTransaction | null>(null);
 
   const fetchPrices = useCallback(async () => {
     try {
@@ -300,13 +383,13 @@ export default function CryptoExchangePage() {
               <div className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
                 {cryptoTransactions.length === 0 && <p className="px-4 py-5 text-[12px] text-[#888]">No exchange activity yet.</p>}
                 {cryptoTransactions.slice(0, 5).map(item => (
-                  <div key={item.id} className="px-4 py-3 border-b border-[#F5F5F5] last:border-0 flex items-center gap-3">
+                  <button key={item.id} onClick={() => setSelectedActivity(item)} className="w-full px-4 py-3 border-b border-[#F5F5F5] last:border-0 flex items-center gap-3 text-left hover:bg-[#FAFBFD] active:bg-[#F5F6F8]">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center ${item.kind === 'transfer_in' ? 'bg-green-50 text-green-600' : 'bg-[#EEF2FF] text-[#2563EB]'}`}>
                       {item.kind === 'transfer_out' ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownToLine className="w-4 h-4" />}
                     </div>
                     <div className="flex-1"><p className="text-[12px] font-semibold text-[#222] capitalize">{item.kind.replace('_', ' ')}</p><p className="text-[10px] text-[#999]">{new Date(item.createdAt).toLocaleString('en-NG')}</p></div>
                     <p className="text-[12px] font-bold text-[#333]">{crypto(item.amount)} {item.asset}</p>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -370,6 +453,7 @@ export default function CryptoExchangePage() {
           </div>
         )}
       </div>
+      {selectedActivity && <CryptoActivityDetails transaction={selectedActivity} onClose={() => setSelectedActivity(null)} />}
     </div>
   );
 }
