@@ -1,45 +1,52 @@
-# [Project name]
+# Vexa Banking App
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A full-featured Nigerian digital banking app with personal wallet, business banking, payroll, cashback, and referral features. All user data is stored in Supabase — no demo data, no localStorage for anything user-specific.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/vexa-app run dev` — run the Vexa frontend (port auto-assigned via workflow)
+- `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080)
 - `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+
+## Supabase Setup
+
+**Before users can sign up, run `supabase-schema.sql` in Supabase → SQL Editor.**
+
+Also in Supabase → Authentication → Settings: **disable "Enable email confirmations"** so users can sign up and log in instantly.
+
+The latest schema also adds Vexa-to-Vexa transfers, the Vexa Exchange ledger, and SMS 2FA settings. For SMS 2FA, enable Supabase Authentication → Providers → Phone and configure an SMS provider before users enable it in Settings. Crypto exchange deposits currently move Naira from the Vexa wallet into the internal Vexa Exchange ledger; on-chain deposits require a separate custody/on-ramp provider.
+
+Required secrets (already set in Replit Secrets):
+- `SUPABASE_URL` — your Supabase project URL
+- `SUPABASE_ANON_KEY` — your Supabase anon/public key
+
+The Vite config injects these at build/dev time via `define` in `vite.config.ts`.
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- Frontend: React 19 + Vite + TailwindCSS + Wouter (routing)
+- Auth & DB: Supabase (Auth + PostgreSQL)
+- UI: shadcn/ui components + Radix UI primitives
+- Backend: Express 5 (api-server artifact)
 
-## Where things live
+## Where Things Live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/vexa-app/src/App.tsx` — all pages/screens (3900+ lines)
+- `artifacts/vexa-app/src/context/AuthContext.tsx` — Supabase auth (phone + passcode)
+- `artifacts/vexa-app/src/context/UserDataContext.tsx` — balance, cashback, referrals (live from Supabase)
+- `artifacts/vexa-app/src/context/BusinessContext.tsx` — business banking data (Supabase)
+- `artifacts/vexa-app/src/context/BusinessSecurityContext.tsx` — business PIN (Supabase)
+- `artifacts/vexa-app/src/lib/supabase.ts` — Supabase client
+- `supabase-schema.sql` — full DB schema to run in Supabase dashboard
 
-## Architecture decisions
+## Auth Scheme
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+Phone-based auth is mapped to Supabase email auth:
+- Email stored as `{normalized_phone}@vexa.app`
+- Password is the user's 6-digit passcode
+- Profile data (name, balance, PIN, referral code, photo) in `profiles` table
 
-## Product
-
-_Describe the high-level user-facing capabilities of this app once they exist._
-
-## User preferences
+## User Preferences
 
 _Populate as you build — explicit user instructions worth remembering across sessions._
-
-## Gotchas
-
-_Populate as you build — sharp edges, "always run X before Y" rules._
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
