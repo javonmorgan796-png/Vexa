@@ -5,3 +5,4 @@
 - [Transfer receipts](transfer-receipts.md) — receipts derive from the saved transaction and only appear after debit plus persistence succeed
 - [Tatum deposit wallets](tatum-deposit-wallets.md) — wallet addresses are generated server-side, persisted per user and asset, and never expose provider credentials to the client
 - [Tatum webhooks](tatum-webhooks.md) — verify raw-body HMAC and request explicit finality for address-event subscriptions before crediting balances
+- [Monorepo import installation](monorepo-import-install.md) — reconcile imported workspace dependencies with pnpm before restarting the preview
