@@ -8,9 +8,11 @@ const SUPABASE_URL = process.env["SUPABASE_URL"]?.replace(/\/$/, "");
 const SUPABASE_SERVICE_ROLE_KEY = process.env["SUPABASE_SERVICE_ROLE_KEY"];
 const TATUM_API_KEY = process.env["TATUM_API_KEY"];
 const TATUM_WEBHOOK_SECRET = process.env["TATUM_WEBHOOK_SECRET"];
+const DEFAULT_TATUM_WEBHOOK_URL =
+  "https://vexa-superbase-connect-1--myp847842.replit.app/api/crypto/webhooks/tatum";
 const TATUM_WEBHOOK_URL =
-  process.env["TATUM_WEBHOOK_URL"] ??
-  "https://vexa--greenbull848.replit.app/api/crypto/webhooks/tatum";
+  process.env["TATUM_WEBHOOK_URL"]?.trim() ||
+  DEFAULT_TATUM_WEBHOOK_URL;
 
 function assetConfig(asset: Asset): { wallet: string; address: string; network: Network; tatumChain: string; confirmations: number; finality?: "final" } {
   if (asset === "BTC") return { wallet: "bitcoin", address: "bitcoin", network: "Bitcoin", tatumChain: "bitcoin-testnet", confirmations: 3 };
