@@ -42,3 +42,8 @@ timeoutMs = 20000
 
 [nix]
 channel = "stable-25_05"
+
+[userenv]
+
+[userenv.shared]
+TATUM_WEBHOOK_URL = "https://vexa-superbase-connect-1--myp847842.replit.app/api/crypto/webhooks/tatum"
