@@ -3,7 +3,7 @@ import { Router, type IRouter, type Request } from "express";
 
 const router: IRouter = Router();
 type Asset = "BTC" | "ETH" | "USDT";
-type Network = "Bitcoin Mainnet" | "Ethereum Mainnet" | "Tron Mainnet (TRC-20)";
+type Network = "Bitcoin Testnet" | "Ethereum Sepolia Testnet" | "Tron Shasta Testnet (TRC-20)";
 const SUPABASE_URL = process.env["SUPABASE_URL"]?.replace(/\/$/, "");
 const SUPABASE_SERVICE_ROLE_KEY = process.env["SUPABASE_SERVICE_ROLE_KEY"];
 const TATUM_API_KEY = process.env["TATUM_API_KEY"];
@@ -11,9 +11,9 @@ const TATUM_WEBHOOK_SECRET = process.env["TATUM_WEBHOOK_SECRET"];
 const TATUM_WEBHOOK_URL = process.env["TATUM_WEBHOOK_URL"];
 
 function assetConfig(asset: Asset): { wallet: string; address: string; network: Network; tatumChain: string; confirmations: number; finality?: "final" } {
-  if (asset === "BTC") return { wallet: "bitcoin", address: "bitcoin", network: "Bitcoin Mainnet", tatumChain: "bitcoin-mainnet", confirmations: 3 };
-  if (asset === "ETH") return { wallet: "ethereum", address: "ethereum", network: "Ethereum Mainnet", tatumChain: "ethereum-mainnet", confirmations: 12, finality: "final" };
-  return { wallet: "tron", address: "tron", network: "Tron Mainnet (TRC-20)", tatumChain: "tron-mainnet", confirmations: 20, finality: "final" };
+  if (asset === "BTC") return { wallet: "bitcoin", address: "bitcoin", network: "Bitcoin Testnet", tatumChain: "bitcoin-testnet", confirmations: 3 };
+  if (asset === "ETH") return { wallet: "ethereum", address: "ethereum", network: "Ethereum Sepolia Testnet", tatumChain: "ethereum-sepolia", confirmations: 12, finality: "final" };
+  return { wallet: "tron", address: "tron", network: "Tron Shasta Testnet (TRC-20)", tatumChain: "tron-testnet", confirmations: 20, finality: "final" };
 }
 
 function bearer(req: Request) {
@@ -177,10 +177,10 @@ async function supabaseRpc(name: string, body: Record<string, unknown>) {
   });
 }
 
-function verifyTatumSignature(rawBody: Buffer, suppliedHash: string | undefined) {
+function verifyTatumSignature(eventBody: Record<string, unknown>, suppliedHash: string | undefined) {
   if (!TATUM_WEBHOOK_SECRET || !suppliedHash) return false;
   const expected = createHmac("sha512", TATUM_WEBHOOK_SECRET)
-    .update(rawBody)
+    .update(JSON.stringify(eventBody))
     .digest("base64");
   const expectedBuffer = Buffer.from(expected, "utf8");
   const suppliedBuffer = Buffer.from(suppliedHash, "utf8");
@@ -283,15 +283,14 @@ router.get("/crypto/deposit-address", async (req, res) => {
 router.post("/crypto/webhooks/tatum", async (req, res) => {
   const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from("");
   try {
-    // Tatum signs the exact bytes sent over HTTP. Do not parse or stringify
-    // before checking the HMAC: whitespace/key order changes would invalidate
-    // the signature.
-    if (!verifyTatumSignature(rawBody, req.header("x-payload-hash"))) {
+    const payload = JSON.parse(rawBody.toString("utf8")) as Record<string, unknown>;
+    const event = nestedWebhookEvent(payload) ?? payload;
+    // Tatum signs JSON.stringify(event.body), not the outer notification
+    // envelope. Keep this aligned with Tatum's current webhook HMAC contract.
+    if (!verifyTatumSignature(event, req.header("x-payload-hash"))) {
       res.status(401).json({ message: "Invalid webhook signature" });
       return;
     }
-    const payload = JSON.parse(rawBody.toString("utf8")) as Record<string, unknown>;
-    const event = nestedWebhookEvent(payload) ?? payload;
     const address = stringValue(event.address) ?? stringValue(event.to) ?? stringValue(event.destinationAddress);
     const txHash = stringValue(event.txId) ?? stringValue(event.txHash) ?? stringValue(event.hash);
     const amount = stringValue(event.amount) ?? (numberValue(event.amount)?.toString() ?? null);

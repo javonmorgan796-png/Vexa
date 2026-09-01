@@ -46,4 +46,4 @@ channel = "stable-25_05"
 [userenv]
 
 [userenv.shared]
-TATUM_WEBHOOK_URL = "https://8f23f7bf-d5cb-4a8e-9281-8f7325258124-00-1vhn7ewafbjo6.picard.replit.dev/api/crypto/webhooks/tatum"
+TATUM_WEBHOOK_URL = "https://vexa-import--javonmorgan796.replit.app/api/crypto/webhooks/tatum"
