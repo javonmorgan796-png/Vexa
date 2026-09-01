@@ -3,7 +3,7 @@ import { Router, type IRouter, type Request } from "express";
 
 const router: IRouter = Router();
 type Asset = "BTC" | "ETH" | "USDT";
-type Network = "Bitcoin Mainnet" | "Ethereum" | "Tron Mainnet (TRC-20)";
+type Network = "Bitcoin Mainnet" | "Ethereum Mainnet" | "Tron Mainnet (TRC-20)";
 const SUPABASE_URL = process.env["SUPABASE_URL"]?.replace(/\/$/, "");
 const SUPABASE_SERVICE_ROLE_KEY = process.env["SUPABASE_SERVICE_ROLE_KEY"];
 const TATUM_API_KEY = process.env["TATUM_API_KEY"];
@@ -12,7 +12,7 @@ const TATUM_WEBHOOK_URL = process.env["TATUM_WEBHOOK_URL"];
 
 function assetConfig(asset: Asset): { wallet: string; address: string; network: Network; tatumChain: string; confirmations: number; finality?: "final" } {
   if (asset === "BTC") return { wallet: "bitcoin", address: "bitcoin", network: "Bitcoin Mainnet", tatumChain: "bitcoin-mainnet", confirmations: 3 };
-  if (asset === "ETH") return { wallet: "ethereum", address: "ethereum", network: "Ethereum", tatumChain: "ethereum-mainnet", confirmations: 12, finality: "final" };
+  if (asset === "ETH") return { wallet: "ethereum", address: "ethereum", network: "Ethereum Mainnet", tatumChain: "ethereum-mainnet", confirmations: 12, finality: "final" };
   return { wallet: "tron", address: "tron", network: "Tron Mainnet (TRC-20)", tatumChain: "tron-mainnet", confirmations: 20, finality: "final" };
 }
 

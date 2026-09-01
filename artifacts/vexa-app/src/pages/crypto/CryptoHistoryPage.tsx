@@ -39,6 +39,7 @@ function labelFor(kind: CryptoTransaction['kind'], direction: Direction) {
 }
 
 function belongsToDirection(item: CryptoTransaction, direction: Direction) {
+  if (!['BTC', 'ETH', 'USDT'].includes(item.asset)) return false;
   if (direction === 'incoming') return item.kind === 'deposit' || item.kind === 'transfer_in' || item.kind === 'buy';
   return item.kind === 'transfer_out' || item.kind === 'sell';
 }
