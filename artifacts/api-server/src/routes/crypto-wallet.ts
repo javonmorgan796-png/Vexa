@@ -13,7 +13,7 @@ const TATUM_WEBHOOK_URL = process.env["TATUM_WEBHOOK_URL"];
 function assetConfig(asset: Asset): { wallet: string; address: string; network: Network; tatumChain: string; confirmations: number; finality?: "final" } {
   if (asset === "BTC") return { wallet: "bitcoin", address: "bitcoin", network: "Bitcoin Testnet", tatumChain: "bitcoin-testnet", confirmations: 3 };
   if (asset === "ETH") return { wallet: "ethereum", address: "ethereum", network: "Ethereum Sepolia Testnet", tatumChain: "ethereum-sepolia", confirmations: 12, finality: "final" };
-  return { wallet: "tron", address: "tron", network: "Tron Shasta Testnet (TRC-20)", tatumChain: "tron-testnet", confirmations: 20, finality: "final" };
+  return { wallet: "tron", address: "tron", network: "Tron Shasta Testnet (TRC-20)", tatumChain: "tron-testnet", confirmations: 20 };
 }
 
 function bearer(req: Request) {
