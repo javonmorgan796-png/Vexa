@@ -74,14 +74,16 @@ async function createTatumSubscription(row: DepositAddressRow) {
     });
     if (existing.ok) {
       const details = (await existing.json().catch(() => null)) as {
-        attr?: { chain?: string };
+        attr?: { chain?: string; url?: string };
         chain?: string;
       } | null;
-      const existingChain = details?.attr?.chain ?? details?.chain;
-      if (!existingChain || existingChain === config.tatumChain) return row.tatum_subscription_id;
+      const existingChain = details?.chain ?? details?.attr?.chain;
+      const existingUrl = details?.attr?.url;
+      if (existingChain === config.tatumChain && existingUrl === TATUM_WEBHOOK_URL) {
+        return row.tatum_subscription_id;
+      }
 
-      // A previous deployment could have registered BTC on testnet. Remove
-      // that subscription before creating the mainnet replacement so the same
+      // Replace alerts from a previous network or webhook host so the same
       // persisted address never has two competing webhook subscriptions.
       const removed = await fetch(`https://api.tatum.io/v4/subscription/${encodeURIComponent(row.tatum_subscription_id)}`, {
         method: "DELETE",
