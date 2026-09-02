@@ -143,7 +143,16 @@ async function createTatumSubscription(row: DepositAddressRow) {
         },
       }),
     });
-    if (!response.ok) throw new Error(`Tatum subscription creation failed (${response.status})`);
+    if (!response.ok) {
+      const providerError = (await response.json().catch(() => null)) as {
+        errorCode?: unknown;
+        message?: unknown;
+      } | null;
+      const errorCode = typeof providerError?.errorCode === "string" ? providerError.errorCode : "";
+      const message = typeof providerError?.message === "string" ? providerError.message : "";
+      const detail = [errorCode, message].filter(Boolean).join(": ");
+      throw new Error(`Tatum subscription creation failed (${response.status})${detail ? `: ${detail}` : ""}`);
+    }
     const body = (await response.json()) as { id?: string };
     if (!body.id) throw new Error("Tatum did not return a subscription ID");
 
