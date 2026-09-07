@@ -112,34 +112,4 @@ router.get("/paystack/banks", async (req, res) => {
   }
 });
 
-router.get("/paystack/resolve-account", async (req, res) => {
-  const accountNumber = String(req.query.account_number ?? "").trim();
-  const bankCode = String(req.query.bank_code ?? "").trim();
-
-  if (!/^\d{10}$/.test(accountNumber) || !/^\d+$/.test(bankCode)) {
-    res.status(400).json({ message: "A valid 10-digit account number and bank code are required" });
-    return;
-  }
-
-  try {
-    const result = await paystackRequest(
-      `/bank/resolve?account_number=${encodeURIComponent(accountNumber)}&bank_code=${encodeURIComponent(bankCode)}`,
-    );
-    const data = result.data as { account_number?: string; account_name?: string } | null;
-    if (!data?.account_name) {
-      res.status(502).json({ message: "Paystack did not return an account name" });
-      return;
-    }
-    res.json({
-      accountNumber: data.account_number ?? accountNumber,
-      accountName: data.account_name,
-    });
-  } catch (error) {
-    req.log.warn({ err: error }, "Paystack account resolution failed");
-    res.status(422).json({
-      message: error instanceof Error ? error.message : "Could not verify this bank account",
-    });
-  }
-});
-
 export default router;

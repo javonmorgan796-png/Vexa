@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useBusiness } from '@/context/BusinessContext';
 import { useBusinessSecurity } from '@/context/BusinessSecurityContext';
@@ -6,7 +6,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 function fmt(n: number) { return '₦' + n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
-const BANKS = ['Access Bank', 'GTBank', 'Zenith Bank', 'UBA', 'First Bank', 'Polaris Bank', 'Stanbic IBTC', 'Wema Bank', 'Fidelity Bank', 'Ecobank'];
+interface PaystackBank {
+  name: string;
+  slug: string;
+  code: string;
+  logoUrl: string | null;
+}
 
 type Step = 'form' | 'confirm' | 'pin' | 'success';
 
@@ -176,7 +181,13 @@ export default function BusinessTransfers() {
   const [recipientType, setRecipientType] = useState<'employee' | 'external'>('external');
   const [selectedEmpId, setSelectedEmpId] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
-  const [bankName, setBankName] = useState('GTBank');
+  const [bankName, setBankName] = useState('');
+  const [bankCode, setBankCode] = useState('');
+  const [banks, setBanks] = useState<PaystackBank[]>([]);
+  const [banksLoading, setBanksLoading] = useState(true);
+  const [banksError, setBanksError] = useState('');
+  const [showBankList, setShowBankList] = useState(false);
+  const [bankSearch, setBankSearch] = useState('');
   const [recipientName, setRecipientName] = useState('');
   const [amount, setAmount] = useState('');
   const [narration, setNarration] = useState('');
@@ -184,6 +195,32 @@ export default function BusinessTransfers() {
   const [copied, setCopied] = useState(false);
 
   const activeEmployees = employees.filter(e => e.active);
+  const filteredBanks = banks.filter(bank =>
+    bank.name.toLowerCase().includes(bankSearch.toLowerCase()),
+  );
+
+  useEffect(() => {
+    let mounted = true;
+    setBanksLoading(true);
+    setBanksError('');
+    void fetch('/api/paystack/banks')
+      .then(async response => {
+        const body = await response.json().catch(() => null) as { banks?: PaystackBank[]; message?: string } | null;
+        if (!response.ok) throw new Error(body?.message || 'Could not load the bank list');
+        return body?.banks ?? [];
+      })
+      .then(nextBanks => {
+        if (!mounted) return;
+        setBanks(nextBanks);
+        setBanksLoading(false);
+      })
+      .catch(error => {
+        if (!mounted) return;
+        setBanksError(error instanceof Error ? error.message : 'Could not load the bank list');
+        setBanksLoading(false);
+      });
+    return () => { mounted = false; };
+  }, []);
 
   function handleSend() {
     setError('');
@@ -191,6 +228,7 @@ export default function BusinessTransfers() {
     if (!amount || isNaN(num) || num <= 0) { setError('Enter a valid amount'); return; }
     if (recipientType === 'employee' && !selectedEmpId) { setError('Select an employee'); return; }
     if (recipientType === 'external') {
+      if (!bankName || !bankCode) { setError('Select a destination bank'); return; }
       if (!accountNumber || accountNumber.replace(/\D/g, '').length < 10) { setError('Enter a valid account number'); return; }
       if (!recipientName.trim()) { setError('Enter recipient name'); return; }
     }
@@ -205,7 +243,7 @@ export default function BusinessTransfers() {
     setStep('success');
   }
 
-  function reset() { setStep('form'); setAmount(''); setNarration(''); setRecipientName(''); setAccountNumber(''); setSelectedEmpId(''); setError(''); }
+  function reset() { setStep('form'); setAmount(''); setNarration(''); setRecipientName(''); setAccountNumber(''); setSelectedEmpId(''); setBankName(''); setBankCode(''); setError(''); }
 
   if (!business) return null;
   const emp = employees.find(e => e.id === selectedEmpId);
@@ -282,15 +320,70 @@ export default function BusinessTransfers() {
               <div className="space-y-3">
                 <div>
                   <p className="text-[12px] font-semibold text-[#444] mb-1.5">Bank</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {BANKS.map(b => (
-                      <button key={b} onClick={() => setBankName(b)}
-                        className={`px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all ${bankName === b ? 'bg-[#162353] text-white' : 'bg-white border border-[#E2E8F0] text-[#555]'}`}>
-                        {b}
-                      </button>
-                    ))}
+                  <button
+                    type="button"
+                    onClick={() => setShowBankList(value => !value)}
+                    disabled={banksLoading || banks.length === 0}
+                    className="w-full flex items-center justify-between h-[48px] rounded-xl border border-[#E2E8F0] bg-white px-3 text-left disabled:opacity-60"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      {bankName && (
+                        <span className="w-7 h-7 rounded-full bg-[#F2F3F5] flex items-center justify-center overflow-hidden shrink-0">
+                          {banks.find(item => item.code === bankCode)?.logoUrl ? (
+                            <img src={banks.find(item => item.code === bankCode)?.logoUrl ?? ''} alt="" className="w-6 h-6 object-contain" />
+                          ) : (
+                            <span className="text-[10px] font-bold text-[#162353]">{bankName.slice(0, 1)}</span>
+                          )}
+                        </span>
+                      )}
+                      <span className={`truncate text-[13px] ${bankName ? 'font-semibold text-[#111]' : 'text-[#A0A8B5]'}`}>
+                        {banksLoading ? 'Loading banks…' : bankName || 'Choose destination bank…'}
+                      </span>
+                    </span>
+                    <span className="text-[#888]">{showBankList ? '⌃' : '⌄'}</span>
+                  </button>
+                  {banksError && <p className="mt-1.5 text-[11px] text-red-500">{banksError}</p>}
+                  {showBankList && (
+                    <div className="mt-2 overflow-hidden rounded-xl border border-[#E2E8F0] bg-white">
+                      <div className="border-b border-[#F0F0F0] px-3 py-2">
+                        <input
+                          type="text"
+                          autoFocus
+                          value={bankSearch}
+                          onChange={event => setBankSearch(event.target.value)}
+                          placeholder="Search bank…"
+                          className="w-full text-[13px] outline-none placeholder:text-[#C0C8D4]"
+                        />
+                      </div>
+                      <div className="max-h-[190px] overflow-y-auto">
+                        {filteredBanks.map(bank => (
+                          <button
+                            key={bank.code}
+                            type="button"
+                            onClick={() => {
+                              setBankName(bank.name);
+                              setBankCode(bank.code);
+                              setShowBankList(false);
+                              setBankSearch('');
+                              setError('');
+                            }}
+                            className={`w-full flex items-center gap-3 border-b border-[#F8F9FB] px-3 py-2.5 text-left last:border-0 hover:bg-[#F8F9FB] ${bankCode === bank.code ? 'font-semibold text-[#162353]' : 'text-[#333]'}`}
+                          >
+                            <span className="w-8 h-8 rounded-full bg-[#F2F3F5] flex items-center justify-center overflow-hidden shrink-0">
+                              {bank.logoUrl ? (
+                                <img src={bank.logoUrl} alt="" className="w-7 h-7 object-contain" />
+                              ) : (
+                                <span className="text-[10px] font-bold text-[#162353]">{bank.name.slice(0, 1)}</span>
+                              )}
+                            </span>
+                            <span className="truncate text-[12px]">{bank.name}</span>
+                          </button>
+                        ))}
+                        {!filteredBanks.length && <p className="px-3 py-3 text-[12px] text-[#888]">No banks found</p>}
+                      </div>
+                    </div>
+                  )}
                   </div>
-                </div>
                 <div>
                   <p className="text-[12px] font-semibold text-[#444] mb-1.5">Account Number</p>
                   <input type="tel" inputMode="numeric" placeholder="10-digit account number" maxLength={10} value={accountNumber} onChange={e => { setAccountNumber(e.target.value.replace(/\D/g, '')); setError(''); }}
