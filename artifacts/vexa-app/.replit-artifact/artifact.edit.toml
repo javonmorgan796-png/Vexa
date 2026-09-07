@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "Vexa Banking App"
+version = "1.0.0"
+id = "artifacts/vexa-app"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19093
+
+[services.development]
+run = "pnpm --filter @workspace/vexa-app run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/vexa-app", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/vexa-app/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19093"
+BASE_PATH = "/"
