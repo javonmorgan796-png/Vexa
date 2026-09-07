@@ -26,6 +26,7 @@ import ChangePasswordPage from '@/pages/settings/ChangePasswordPage';
 import TwoFactorSettingsPage from '@/pages/settings/TwoFactorSettingsPage';
 import TwoFactorChallenge from '@/pages/settings/TwoFactorChallenge';
 import CryptoExchangePage from '@/pages/crypto/CryptoExchangePage';
+import { IncomingCryptoPage, OutgoingCryptoPage } from '@/pages/crypto/CryptoHistoryPage';
 import VexaTransferPage from '@/pages/transfer/VexaTransferPage';
 import { BusinessProvider } from '@/context/BusinessContext';
 import BusinessDashboard from '@/pages/business/BusinessDashboard';
@@ -4324,6 +4325,8 @@ function Router() {
       <Route path="/transfer" component={TransferPage} />
       <Route path="/vexa-transfer" component={VexaTransferPage} />
       <Route path="/crypto" component={CryptoExchangePage} />
+      <Route path="/crypto/incoming" component={IncomingCryptoPage} />
+      <Route path="/crypto/outgoing" component={OutgoingCryptoPage} />
       <Route path="/history" component={HistoryPage} />
       <Route path="/receipt/:transactionId" component={TransactionReceiptPage} />
       <Route path="/settings" component={SettingsPage} />

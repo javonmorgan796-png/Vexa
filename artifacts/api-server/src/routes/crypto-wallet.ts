@@ -3,7 +3,7 @@ import { Router, type IRouter, type Request } from "express";
 
 const router: IRouter = Router();
 type Asset = "BTC" | "ETH" | "USDT";
-type Network = "Bitcoin" | "Ethereum" | "Tron (TRC-20)";
+type Network = "Bitcoin Testnet" | "Ethereum Sepolia Testnet" | "Tron Shasta Testnet (TRC-20)";
 const SUPABASE_URL = process.env["SUPABASE_URL"]?.replace(/\/$/, "");
 const SUPABASE_SERVICE_ROLE_KEY = process.env["SUPABASE_SERVICE_ROLE_KEY"];
 const TATUM_API_KEY = process.env["TATUM_API_KEY"];
@@ -15,9 +15,9 @@ const TATUM_WEBHOOK_URL =
   DEFAULT_TATUM_WEBHOOK_URL;
 
 function assetConfig(asset: Asset): { wallet: string; address: string; network: Network; tatumChain: string; confirmations: number; finality?: "final" } {
-  if (asset === "BTC") return { wallet: "bitcoin", address: "bitcoin", network: "Bitcoin", tatumChain: "bitcoin-testnet", confirmations: 3 };
-  if (asset === "ETH") return { wallet: "ethereum", address: "ethereum", network: "Ethereum", tatumChain: "ethereum-mainnet", confirmations: 12, finality: "final" };
-  return { wallet: "tron", address: "tron", network: "Tron (TRC-20)", tatumChain: "tron-mainnet", confirmations: 20, finality: "final" };
+  if (asset === "BTC") return { wallet: "bitcoin", address: "bitcoin", network: "Bitcoin Testnet", tatumChain: "bitcoin-testnet", confirmations: 3 };
+  if (asset === "ETH") return { wallet: "ethereum", address: "ethereum", network: "Ethereum Sepolia Testnet", tatumChain: "ethereum-sepolia", confirmations: 12, finality: "final" };
+  return { wallet: "tron", address: "tron", network: "Tron Shasta Testnet (TRC-20)", tatumChain: "tron-testnet", confirmations: 20 };
 }
 
 function bearer(req: Request) {
@@ -70,23 +70,51 @@ async function findAddress(address: string) {
 
 async function createTatumSubscription(row: DepositAddressRow) {
   if (!TATUM_API_KEY) throw new Error("Tatum wallet provider is not configured");
+  if (!TATUM_WEBHOOK_URL) throw new Error("Tatum webhook URL is not configured");
+  const config = assetConfig(row.asset);
   if (row.tatum_subscription_id) {
     const existing = await fetch(`https://api.tatum.io/v4/subscription/${encodeURIComponent(row.tatum_subscription_id)}`, {
       headers: { accept: "application/json", "x-api-key": TATUM_API_KEY },
     });
-    if (existing.ok) return row.tatum_subscription_id;
+    if (existing.ok) {
+      const details = (await existing.json().catch(() => null)) as {
+        attr?: { chain?: string; url?: string };
+        chain?: string;
+      } | null;
+      const existingChain = details?.chain ?? details?.attr?.chain;
+      const existingUrl = details?.attr?.url;
+      if (existingChain === config.tatumChain && existingUrl === TATUM_WEBHOOK_URL) {
+        return row.tatum_subscription_id;
+      }
 
-    const details = (await existing.json().catch(() => null)) as { errorCode?: string } | null;
-    if (existing.status !== 404 && details?.errorCode !== "subscription.not.exists") {
-      throw new Error(`Could not verify Tatum subscription (${existing.status})`);
+      // Replace alerts from a previous network or webhook host so the same
+      // persisted address never has two competing webhook subscriptions.
+      const removed = await fetch(`https://api.tatum.io/v4/subscription/${encodeURIComponent(row.tatum_subscription_id)}`, {
+        method: "DELETE",
+        headers: { accept: "application/json", "x-api-key": TATUM_API_KEY },
+      });
+      if (!removed.ok && removed.status !== 404) {
+        throw new Error(`Could not replace the old Tatum ${existingChain} subscription (${removed.status})`);
+      }
+      const cleared = await supabaseRequest(`crypto_deposit_addresses?id=eq.${encodeURIComponent(row.id)}`, {
+        method: "PATCH",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({ tatum_subscription_id: null, tatum_subscription_status: "pending" }),
+      });
+      if (!cleared.ok) throw new Error("Could not clear the old Tatum subscription");
+    } else {
+      const details = (await existing.json().catch(() => null)) as { errorCode?: string } | null;
+      if (existing.status !== 404 && details?.errorCode !== "subscription.not.exists") {
+        throw new Error(`Could not verify Tatum subscription (${existing.status})`);
+      }
+
+      const cleared = await supabaseRequest(`crypto_deposit_addresses?id=eq.${encodeURIComponent(row.id)}`, {
+        method: "PATCH",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({ tatum_subscription_id: null, tatum_subscription_status: "pending" }),
+      });
+      if (!cleared.ok) throw new Error("Could not clear the stale Tatum subscription");
     }
-
-    const cleared = await supabaseRequest(`crypto_deposit_addresses?id=eq.${encodeURIComponent(row.id)}`, {
-      method: "PATCH",
-      headers: { Prefer: "return=minimal" },
-      body: JSON.stringify({ tatum_subscription_id: null, tatum_subscription_status: "pending" }),
-    });
-    if (!cleared.ok) throw new Error("Could not clear the stale Tatum subscription");
   }
 
   // Claim the row before calling Tatum. This prevents two simultaneous
@@ -107,7 +135,6 @@ async function createTatumSubscription(row: DepositAddressRow) {
     throw new Error("Tatum subscription is already being created");
   }
 
-  const config = assetConfig(row.asset);
   try {
     const response = await fetch("https://api.tatum.io/v4/subscription", {
       method: "POST",
@@ -122,7 +149,16 @@ async function createTatumSubscription(row: DepositAddressRow) {
         },
       }),
     });
-    if (!response.ok) throw new Error(`Tatum subscription creation failed (${response.status})`);
+    if (!response.ok) {
+      const providerError = (await response.json().catch(() => null)) as {
+        errorCode?: unknown;
+        message?: unknown;
+      } | null;
+      const errorCode = typeof providerError?.errorCode === "string" ? providerError.errorCode : "";
+      const message = typeof providerError?.message === "string" ? providerError.message : "";
+      const detail = [errorCode, message].filter(Boolean).join(": ");
+      throw new Error(`Tatum subscription creation failed (${response.status})${detail ? `: ${detail}` : ""}`);
+    }
     const body = (await response.json()) as { id?: string };
     if (!body.id) throw new Error("Tatum did not return a subscription ID");
 
@@ -218,7 +254,7 @@ router.get("/crypto/deposit-address", async (req, res) => {
     const rows = (await existing.json()) as DepositAddressRow[];
     if (rows[0]) {
       await createTatumSubscription(rows[0]);
-      res.json({ asset: rows[0].asset, address: rows[0].address, network: rows[0].network, createdAt: rows[0].created_at });
+      res.json({ asset: rows[0].asset, address: rows[0].address, network: assetConfig(rows[0].asset).network, createdAt: rows[0].created_at });
       return;
     }
     if (!TATUM_API_KEY) throw new Error("Tatum wallet provider is not configured");
@@ -263,8 +299,10 @@ router.post("/crypto/webhooks/tatum", async (req, res) => {
   const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from("");
   try {
     const payload = JSON.parse(rawBody.toString("utf8")) as Record<string, unknown>;
-    const event = nestedWebhookEvent(payload);
-    if (!event || !verifyTatumSignature(event, req.header("x-payload-hash"))) {
+    const event = nestedWebhookEvent(payload) ?? payload;
+    // Tatum signs JSON.stringify(event.body), not the outer notification
+    // envelope. Keep this aligned with Tatum's current webhook HMAC contract.
+    if (!verifyTatumSignature(event, req.header("x-payload-hash"))) {
       res.status(401).json({ message: "Invalid webhook signature" });
       return;
     }

@@ -379,7 +379,14 @@ export default function CryptoExchangePage() {
               </div>
             </div>
             <div>
-              <p className="text-[11px] font-bold text-[#888] uppercase tracking-wide mb-2">Recent activity</p>
+              <div className="mb-2 flex items-center justify-between px-1">
+                <p className="text-[11px] font-bold text-[#888] uppercase tracking-wide">Recent activity</p>
+                <div className="flex gap-2">
+                  <button onClick={() => navigate('/crypto/incoming')} className="text-[10px] font-bold text-[#159669]">Incoming</button>
+                  <span className="text-[10px] text-[#D5D8DE]">·</span>
+                  <button onClick={() => navigate('/crypto/outgoing')} className="text-[10px] font-bold text-[#2563EB]">Outgoing</button>
+                </div>
+              </div>
               <div className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
                 {cryptoTransactions.length === 0 && <p className="px-4 py-5 text-[12px] text-[#888]">No exchange activity yet.</p>}
                 {cryptoTransactions.slice(0, 5).map(item => (

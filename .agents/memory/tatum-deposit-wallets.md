@@ -7,4 +7,4 @@ Generate deposit wallets only from the backend with the Tatum credential kept in
 
 **Why:** A browser-generated or client-cached address cannot safely protect provider credentials or guarantee a stable deposit destination across devices.
 
-**How to apply:** Authenticate API requests with the Supabase access token, validate the user server-side, and keep network selection explicit (BTC Bitcoin, ETH Ethereum, USDT Tron TRC-20).
+**How to apply:** Authenticate API requests with the Supabase access token, validate the user server-side, and keep network selection explicit. The current Tatum subscription configuration uses Bitcoin Testnet, Ethereum Sepolia Testnet, and Tron Shasta Testnet (TRC-20).
