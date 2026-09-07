@@ -1959,19 +1959,12 @@ function DepositPage() {
 }
 
 /* ─── Transfer Page ──────────────────────────────────────────────────── */
-const BANKS = [
-  'Access Bank', 'First Bank', 'GTBank', 'Zenith Bank', 'UBA',
-  'Fidelity Bank', 'Sterling Bank', 'Polaris Bank', 'Kuda Bank',
-  'Opay', 'PalmPay', 'Moniepoint MFB', 'Vexa Bank',
-];
-
-// Simulated account lookup: known acc numbers → names
-const KNOWN_ACCOUNTS: Record<string, string> = {
-  '0000000001': 'Ada Okonkwo',
-  '0000000002': 'Emeka Nwosu',
-  '1234567890': 'Tunde Bakare',
-  '9067212032': 'Chibuzor Emmanuel Dike',
-};
+interface PaystackBank {
+  name: string;
+  slug: string;
+  code: string;
+  logoUrl: string | null;
+}
 
 type TxStep = 'details' | 'amount' | 'create_pin' | 'pin' | 'success';
 
@@ -1997,6 +1990,10 @@ function TransferPage() {
   const { debitBalance, creditBalance, addTransaction, addNotification } = useUserData();
   const [step, setStep]           = useState<TxStep>('details');
   const [bank, setBank]           = useState('');
+  const [bankCode, setBankCode]   = useState('');
+  const [banks, setBanks]         = useState<PaystackBank[]>([]);
+  const [banksLoading, setBanksLoading] = useState(true);
+  const [banksError, setBanksError] = useState('');
   const [showBankList, setShowBankList] = useState(false);
   const [bankSearch, setBankSearch] = useState('');
   const [acctNo, setAcctNo]       = useState('');
@@ -2015,21 +2012,62 @@ function TransferPage() {
   const [submitError, setSubmitError]         = useState('');
   const [receipt, setReceipt]                 = useState<TransferReceiptData | null>(null);
 
-  // Simulate account name lookup when 10-digit acc entered + bank chosen
   useEffect(() => {
-    if (acctNo.length === 10 && bank) {
+    let mounted = true;
+    setBanksLoading(true);
+    setBanksError('');
+    void fetch('/api/paystack/banks')
+      .then(async response => {
+        const body = await response.json().catch(() => null) as { banks?: PaystackBank[]; message?: string } | null;
+        if (!response.ok) throw new Error(body?.message || 'Could not load the bank list');
+        return body?.banks ?? [];
+      })
+      .then(nextBanks => {
+        if (!mounted) return;
+        setBanks(nextBanks);
+        setBanksLoading(false);
+      })
+      .catch(error => {
+        if (!mounted) return;
+        setBanksError(error instanceof Error ? error.message : 'Could not load the bank list');
+        setBanksLoading(false);
+      });
+    return () => { mounted = false; };
+  }, []);
+
+  // Resolve the destination account through Paystack once the bank and
+  // account number are complete. Never show a simulated account name.
+  useEffect(() => {
+    if (acctNo.length === 10 && bankCode) {
       setLookingUp(true);
       setResolvedName('');
-      const t = setTimeout(() => {
-        const name = KNOWN_ACCOUNTS[acctNo] ?? 'Account Holder';
-        setResolvedName(name);
-        setLookingUp(false);
-      }, 1200);
-      return () => clearTimeout(t);
+      setSubmitError('');
+      const controller = new AbortController();
+      void fetch(`/api/paystack/resolve-account?account_number=${encodeURIComponent(acctNo)}&bank_code=${encodeURIComponent(bankCode)}`, {
+        signal: controller.signal,
+      })
+        .then(async response => {
+          const body = await response.json().catch(() => null) as { accountName?: string; message?: string } | null;
+          if (!response.ok) throw new Error(body?.message || 'Could not verify this bank account');
+          return body;
+        })
+        .then(body => {
+          if (controller.signal.aborted) return;
+          setResolvedName(body?.accountName ?? '');
+          setLookingUp(false);
+        })
+        .catch(error => {
+          if (controller.signal.aborted) return;
+          setResolvedName('');
+          setLookingUp(false);
+          setSubmitError(error instanceof Error ? error.message : 'Could not verify this bank account');
+        });
+      return () => controller.abort();
     }
     setResolvedName('');
+    setLookingUp(false);
     return undefined;
-  }, [acctNo, bank]);
+  }, [acctNo, bankCode]);
 
   function handlePinKey(k: string) {
     if (pin.length < 4) setPin(p => p + k);
@@ -2090,8 +2128,8 @@ function TransferPage() {
     setStep('success');
   }
 
-  const filteredBanks = BANKS.filter(b =>
-    b.toLowerCase().includes(bankSearch.toLowerCase())
+  const filteredBanks = banks.filter(b =>
+    b.name.toLowerCase().includes(bankSearch.toLowerCase())
   );
 
   const amtNum = parseFloat(amount.replace(/,/g, '') || '0');
@@ -2372,15 +2410,35 @@ function TransferPage() {
           <p className="text-[12px] font-semibold text-[#444] mb-3">Select Bank</p>
           <button
             onClick={() => setShowBankList(v => !v)}
-            className="w-full flex items-center justify-between border border-[#E0E0E0] rounded-xl px-4 py-3 focus:border-[#2563EB] transition-colors"
+            disabled={banksLoading || banks.length === 0}
+            className="w-full flex items-center justify-between border border-[#E0E0E0] rounded-xl px-4 py-3 focus:border-[#2563EB] transition-colors disabled:opacity-60"
           >
-            <span className={`text-[14px] ${bank ? 'text-[#111] font-semibold' : 'text-[#CCC]'}`}>
-              {bank || 'Choose bank…'}
+            <span className="flex min-w-0 items-center gap-2">
+              {bank ? (
+                <span className="w-7 h-7 rounded-full bg-[#F2F3F5] flex items-center justify-center overflow-hidden shrink-0">
+                  {banks.find(item => item.code === bankCode)?.logoUrl ? (
+                    <img
+                      src={banks.find(item => item.code === bankCode)?.logoUrl ?? ''}
+                      alt=""
+                      className="w-6 h-6 object-contain"
+                    />
+                  ) : (
+                    <span className="text-[10px] font-bold text-[#162353]">{bank.slice(0, 1)}</span>
+                  )}
+                </span>
+              ) : null}
+              <span className={`truncate text-[14px] ${bank ? 'text-[#111] font-semibold' : 'text-[#CCC]'}`}>
+                {banksLoading ? 'Loading banks…' : bank || 'Choose bank…'}
+              </span>
             </span>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points={showBankList ? '18 15 12 9 6 15' : '6 9 12 15 18 9'}/>
             </svg>
           </button>
+
+          {banksError && (
+            <p className="mt-2 text-[11px] text-red-500">{banksError}</p>
+          )}
 
           {showBankList && (
             <div className="mt-2 border border-[#E0E0E0] rounded-xl overflow-hidden">
@@ -2394,13 +2452,29 @@ function TransferPage() {
               </div>
               <div className="max-h-[180px] overflow-y-auto">
                 {filteredBanks.map(b => (
-                  <button key={b} onClick={() => { setBank(b); setShowBankList(false); setBankSearch(''); }}
-                    className={`w-full text-left px-4 py-3 text-[13px] hover:bg-[#F8F9FB] transition-colors border-b border-[#F8F9FB] last:border-0 ${bank === b ? 'font-semibold text-[#162353]' : 'text-[#333]'}`}>
-                    {b}
+                  <button key={b.code} onClick={() => {
+                    setBank(b.name);
+                    setBankCode(b.code);
+                    setResolvedName('');
+                    setSubmitError('');
+                    setShowBankList(false);
+                    setBankSearch('');
+                  }}
+                    className={`w-full flex items-center gap-3 text-left px-4 py-2.5 text-[13px] hover:bg-[#F8F9FB] transition-colors border-b border-[#F8F9FB] last:border-0 ${bankCode === b.code ? 'font-semibold text-[#162353]' : 'text-[#333]'}`}>
+                    <span className="w-8 h-8 rounded-full bg-[#F2F3F5] flex items-center justify-center overflow-hidden shrink-0">
+                      {b.logoUrl ? (
+                        <img src={b.logoUrl} alt="" className="w-7 h-7 object-contain" />
+                      ) : (
+                        <span className="text-[10px] font-bold text-[#162353]">{b.name.slice(0, 1)}</span>
+                      )}
+                    </span>
+                    <span className="truncate">{b.name}</span>
                   </button>
                 ))}
                 {filteredBanks.length === 0 && (
-                  <p className="px-4 py-3 text-[12px] text-[#888]">No banks found</p>
+                  <p className="px-4 py-3 text-[12px] text-[#888]">
+                    {banksLoading ? 'Loading banks…' : 'No banks found'}
+                  </p>
                 )}
               </div>
             </div>
@@ -2431,29 +2505,9 @@ function TransferPage() {
                 <span className="text-[13px] font-semibold text-[#16A34A]">{resolvedName}</span>
               </div>
             )}
-          </div>
-        </div>
-
-        {/* Recent recipients */}
-        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
-          <p className="text-[12px] font-semibold text-[#444] mb-3">Recent Recipients</p>
-          <div className="space-y-3">
-            {[
-              { name: 'Ada Okonkwo',  acct: '0000000001', bank: 'Zenith Bank'  },
-              { name: 'Emeka Nwosu',  acct: '0000000002', bank: 'GTBank'       },
-              { name: 'Tunde Bakare', acct: '1234567890', bank: 'Access Bank'  },
-            ].map(r => (
-              <button key={r.acct} onClick={() => { setBank(r.bank); setAcctNo(r.acct); setResolvedName(r.name); }}
-                className="w-full flex items-center gap-3 hover:bg-[#F8F9FB] rounded-xl p-2 -mx-2 transition-colors">
-                <div className="w-9 h-9 rounded-full bg-[#EEF2FF] flex items-center justify-center text-[#2563EB] font-bold text-[13px] shrink-0">
-                  {r.name.charAt(0)}
-                </div>
-                <div className="text-left">
-                  <p className="text-[13px] font-semibold text-[#111]">{r.name}</p>
-                  <p className="text-[11px] text-[#888]">{r.acct} · {r.bank}</p>
-                </div>
-              </button>
-            ))}
+            {!lookingUp && !resolvedName && submitError && (
+              <span className="text-[12px] text-red-500">{submitError}</span>
+            )}
           </div>
         </div>
 
