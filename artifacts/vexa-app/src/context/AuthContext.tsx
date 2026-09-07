@@ -72,6 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading]         = useState(true);
   const [twoFactorPending, setTwoFactorPending] = useState(false);
   const verifiedTwoFactorUser = useRef<string | null>(null);
+  const twoFactorRequestId = useRef<string | null>(null);
   const profileRequestRef = useRef<{ userId: string; promise: Promise<{ success: boolean; error?: string }> } | null>(null);
 
   useEffect(() => {
@@ -105,6 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setProfilePhoto(null);
         setTwoFactorPending(false);
         verifiedTwoFactorUser.current = null;
+        twoFactorRequestId.current = null;
         setLoading(false);
       }
     });
@@ -345,33 +347,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
     setTwoFactorPending(false);
     verifiedTwoFactorUser.current = null;
+    twoFactorRequestId.current = null;
   };
 
-  function smsPhone(phone: string) {
-    const digits = phone.replace(/\D/g, '');
-    if (digits.startsWith('234')) return `+${digits}`;
-    if (digits.startsWith('0')) return `+234${digits.slice(1)}`;
-    return phone.startsWith('+') ? phone : `+${digits}`;
+  async function termiiRequest(
+    path: 'send' | 'verify',
+    body: Record<string, unknown>,
+  ): Promise<{ success: boolean; requestId?: string; error?: string }> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) return { success: false, error: 'Your session has expired. Please sign in again.' };
+
+    const response = await fetch(`/api/termii/otp/${path}`, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify(body),
+    });
+    const result = await response.json().catch(() => null) as { requestId?: string; verified?: boolean; message?: string } | null;
+    if (!response.ok) {
+      return { success: false, error: result?.message || 'Could not complete SMS verification' };
+    }
+    return {
+      success: path === 'send' ? Boolean(result?.requestId) : result?.verified === true,
+      requestId: result?.requestId,
+      error: path === 'send' && !result?.requestId ? 'Could not send the verification code' : undefined,
+    };
   }
 
   const sendTwoFactorCode = async (): Promise<{ success: boolean; error?: string }> => {
     if (!user?.phone) return { success: false, error: 'Add a phone number to your profile first' };
-    const { error } = await supabase.auth.signInWithOtp({
-      phone: smsPhone(user.phone),
-      options: { shouldCreateUser: false },
-    });
-    if (error) return { success: false, error: 'SMS could not be sent. Enable phone SMS in Supabase Auth first.' };
+    const result = await termiiRequest('send', { purpose: '2fa' });
+    if (!result.success || !result.requestId) {
+      return { success: false, error: result.error ?? 'SMS could not be sent' };
+    }
+    twoFactorRequestId.current = result.requestId;
     return { success: true };
   };
 
   const verifyTwoFactorCode = async (code: string): Promise<{ success: boolean; error?: string }> => {
     if (!user?.phone) return { success: false, error: 'No phone number is available for verification' };
-    const { error } = await supabase.auth.verifyOtp({
-      phone: smsPhone(user.phone),
-      token: code,
-      type: 'sms',
+    if (!twoFactorRequestId.current) return { success: false, error: 'Request a new verification code first' };
+    const result = await termiiRequest('verify', {
+      requestId: twoFactorRequestId.current,
+      code,
     });
-    if (error) return { success: false, error: 'That SMS code is invalid or expired' };
+    if (!result.success) return { success: false, error: result.error ?? 'That SMS code is invalid or expired' };
+    twoFactorRequestId.current = null;
     verifiedTwoFactorUser.current = user.id;
     setTwoFactorPending(false);
     return { success: true };

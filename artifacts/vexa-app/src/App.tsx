@@ -591,6 +591,22 @@ function MoniepointHome() {
               <span className="text-[9px] font-bold tracking-widest text-white/50 uppercase">Vexa</span>
             </div>
 
+            {!user?.twoFactorEnabled && (
+              <button
+                onClick={() => navigate('/two-factor')}
+                className="w-full flex items-center gap-2.5 text-left bg-amber-300/15 border border-amber-200/30 rounded-xl px-3 py-2.5 mb-3"
+              >
+                <div className="w-7 h-7 rounded-full bg-amber-300/20 flex items-center justify-center shrink-0">
+                  <Shield className="w-4 h-4 text-amber-200" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-bold text-amber-100">Secure your account</p>
+                  <p className="text-[10px] text-white/60 mt-0.5">Enable 2FA to protect your balance</p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-amber-200 shrink-0" />
+              </button>
+            )}
+
             {/* account number row */}
             <div className="flex items-center gap-1.5 text-[12px] font-normal text-white mb-2">
               <span>{accountNumber} | {displayName}</span>
