@@ -5,7 +5,7 @@ import {
   ArrowLeftRight, PhoneCall, Tablet, Target,
   PiggyBank, BookOpen, FileText, LayoutGrid,
   Trophy, CreditCard, Home, ArrowDown, Settings,
-  ArrowUp, ChevronRight, Shield, Fingerprint, BriefcaseBusiness,
+  ArrowUp, ChevronRight, Shield, TriangleAlert, Fingerprint, BriefcaseBusiness,
   BellRing, HelpCircle, Info, LogOut, User, Lock,
   MessageCircle, Phone, Mail, ExternalLink, Star, ChevronDown,
   Send, X, Bot, CheckCheck, Wifi, Paperclip, ImagePlus, FileUp, FileText as FileIcon,
@@ -533,16 +533,16 @@ function TwoFactorWarningCard({ onEnable }: { onEnable: () => void }) {
     <div className="mx-3 mt-3">
       <button
         onClick={onEnable}
-        className="w-full flex items-center gap-3 text-left bg-[#FFF8E8] border border-[#F3D58B] rounded-2xl px-4 py-3"
+        className="w-full flex items-center gap-2.5 text-left bg-[#FFF8E8] border border-[#F3D58B] rounded-xl px-3 py-2"
       >
-        <div className="w-9 h-9 rounded-full bg-[#FDE7A9] flex items-center justify-center shrink-0">
-          <Shield className="w-[18px] h-[18px] text-[#9A6800]" />
+        <div className="w-8 h-8 rounded-full bg-[#FDE7A9] flex items-center justify-center shrink-0">
+          <TriangleAlert className="w-4 h-4 text-[#9A6800]" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-[12px] font-bold text-[#6F4A00]">Secure your account</p>
-          <p className="text-[11px] text-[#8A6A2C] mt-0.5">Enable 2FA to protect your balance</p>
+          <p className="text-[11px] font-bold text-[#6F4A00]">Secure your account</p>
+          <p className="text-[10px] text-[#8A6A2C] mt-0.5">Enable 2FA to protect your balance</p>
         </div>
-        <ChevronRight className="w-4 h-4 text-[#9A6800] shrink-0" />
+        <ChevronRight className="w-3.5 h-3.5 text-[#9A6800] shrink-0" />
       </button>
     </div>
   );
