@@ -101,6 +101,22 @@ async function termiiRequest(
   return body;
 }
 
+function publicTermiiError(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("country inactive")) {
+    return "SMS delivery is not enabled for Nigeria on the Termii account. Activate Nigeria in Termii, then try again.";
+  }
+  if (normalized.includes("sender") && normalized.includes("id")) {
+    return "The Termii sender ID is not approved yet. Approve the sender ID in Termii, then try again.";
+  }
+  if (normalized.includes("api key") || normalized.includes("unauthorized")) {
+    return "The Termii API key was rejected. Update TERMII_API_KEY in Replit Secrets, then restart the API.";
+  }
+  return "Could not send the verification code. Please try again.";
+}
+
 router.post("/termii/otp/send", async (req, res) => {
   pruneChallenges();
   const purpose: ChallengePurpose = req.body?.purpose === "signup" ? "signup" : "2fa";
@@ -149,7 +165,7 @@ router.post("/termii/otp/send", async (req, res) => {
     res.json({ requestId: pinId, expiresInSeconds: CHALLENGE_TTL_MS / 1000 });
   } catch (error) {
     req.log.error({ err: error }, "Termii OTP send failed");
-    res.status(502).json({ message: "Could not send the verification code. Please try again." });
+    res.status(502).json({ message: publicTermiiError(error) });
   }
 });
 

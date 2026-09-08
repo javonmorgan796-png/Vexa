@@ -137,15 +137,20 @@ export default function SignUpPage() {
       });
       const result = await response.json().catch(() => null) as { requestId?: string; message?: string } | null;
       if (!response.ok || !result?.requestId) {
-        setOtpError(result?.message ?? 'Could not send the verification code');
+        const message = result?.message ?? 'Could not send the verification code';
+        setOtpError(message);
+        setError(message);
         return false;
       }
       setOtpRequestId(result.requestId);
       setOtp(['', '', '', '', '', '']);
       setResendTimer(30);
+      setError('');
       return true;
     } catch {
-      setOtpError('Could not send the verification code. Please try again.');
+      const message = 'Could not send the verification code. Please try again.';
+      setOtpError(message);
+      setError(message);
       return false;
     } finally {
       setOtpLoading(false);
@@ -162,8 +167,6 @@ export default function SignUpPage() {
     setLoading(false);
     if (sent) {
       setStep('otp');
-    } else {
-      setError('Could not send the verification code. Check the phone number and try again.');
     }
   }
 
