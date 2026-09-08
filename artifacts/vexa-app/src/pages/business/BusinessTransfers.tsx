@@ -13,6 +13,15 @@ interface PaystackBank {
   logoUrl: string | null;
 }
 
+function storedSelectedBank(): PaystackBank | null {
+  try {
+    const value = JSON.parse(sessionStorage.getItem('vexa.selectedBank') ?? 'null') as PaystackBank | null;
+    return value?.name && value.code ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 type Step = 'form' | 'confirm' | 'pin' | 'success';
 
 /* ── Transfer PIN Modal ──────────────────────────────────────── */
@@ -181,13 +190,12 @@ export default function BusinessTransfers() {
   const [recipientType, setRecipientType] = useState<'employee' | 'external'>('external');
   const [selectedEmpId, setSelectedEmpId] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
-  const [bankName, setBankName] = useState('');
-  const [bankCode, setBankCode] = useState('');
+  const initialBank = storedSelectedBank();
+  const [bankName, setBankName] = useState(initialBank?.name ?? '');
+  const [bankCode, setBankCode] = useState(initialBank?.code ?? '');
   const [banks, setBanks] = useState<PaystackBank[]>([]);
   const [banksLoading, setBanksLoading] = useState(true);
   const [banksError, setBanksError] = useState('');
-  const [showBankList, setShowBankList] = useState(false);
-  const [bankSearch, setBankSearch] = useState('');
   const [recipientName, setRecipientName] = useState('');
   const [amount, setAmount] = useState('');
   const [narration, setNarration] = useState('');
@@ -195,10 +203,6 @@ export default function BusinessTransfers() {
   const [copied, setCopied] = useState(false);
 
   const activeEmployees = employees.filter(e => e.active);
-  const filteredBanks = banks.filter(bank =>
-    bank.name.toLowerCase().includes(bankSearch.toLowerCase()),
-  );
-
   useEffect(() => {
     let mounted = true;
     setBanksLoading(true);
@@ -322,8 +326,7 @@ export default function BusinessTransfers() {
                   <p className="text-[12px] font-semibold text-[#444] mb-1.5">Bank</p>
                   <button
                     type="button"
-                    onClick={() => setShowBankList(value => !value)}
-                    disabled={banksLoading || banks.length === 0}
+                    onClick={() => navigate('/bank-selection?returnTo=/business/transfers')}
                     className="w-full flex items-center justify-between h-[48px] rounded-xl border border-[#E2E8F0] bg-white px-3 text-left disabled:opacity-60"
                   >
                     <span className="flex min-w-0 items-center gap-2">
@@ -340,49 +343,9 @@ export default function BusinessTransfers() {
                         {banksLoading ? 'Loading banks…' : bankName || 'Choose destination bank…'}
                       </span>
                     </span>
-                    <span className="text-[#888]">{showBankList ? '⌃' : '⌄'}</span>
+                    <span className="text-[#888] text-[22px] leading-none">›</span>
                   </button>
                   {banksError && <p className="mt-1.5 text-[11px] text-red-500">{banksError}</p>}
-                  {showBankList && (
-                    <div className="mt-2 overflow-hidden rounded-xl border border-[#E2E8F0] bg-white">
-                      <div className="border-b border-[#F0F0F0] px-3 py-2">
-                        <input
-                          type="text"
-                          autoFocus
-                          value={bankSearch}
-                          onChange={event => setBankSearch(event.target.value)}
-                          placeholder="Search bank…"
-                          className="w-full text-[13px] outline-none placeholder:text-[#C0C8D4]"
-                        />
-                      </div>
-                      <div className="max-h-[190px] overflow-y-auto">
-                        {filteredBanks.map(bank => (
-                          <button
-                            key={bank.code}
-                            type="button"
-                            onClick={() => {
-                              setBankName(bank.name);
-                              setBankCode(bank.code);
-                              setShowBankList(false);
-                              setBankSearch('');
-                              setError('');
-                            }}
-                            className={`w-full flex items-center gap-3 border-b border-[#F8F9FB] px-3 py-2.5 text-left last:border-0 hover:bg-[#F8F9FB] ${bankCode === bank.code ? 'font-semibold text-[#162353]' : 'text-[#333]'}`}
-                          >
-                            <span className="w-8 h-8 rounded-full bg-[#F2F3F5] flex items-center justify-center overflow-hidden shrink-0">
-                              {bank.logoUrl ? (
-                                <img src={bank.logoUrl} alt="" className="w-7 h-7 object-contain" />
-                              ) : (
-                                <span className="text-[10px] font-bold text-[#162353]">{bank.name.slice(0, 1)}</span>
-                              )}
-                            </span>
-                            <span className="truncate text-[12px]">{bank.name}</span>
-                          </button>
-                        ))}
-                        {!filteredBanks.length && <p className="px-3 py-3 text-[12px] text-[#888]">No banks found</p>}
-                      </div>
-                    </div>
-                  )}
                   </div>
                 <div>
                   <p className="text-[12px] font-semibold text-[#444] mb-1.5">Account Number</p>

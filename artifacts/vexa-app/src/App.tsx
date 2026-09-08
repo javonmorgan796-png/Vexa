@@ -28,6 +28,7 @@ import TwoFactorChallenge from '@/pages/settings/TwoFactorChallenge';
 import CryptoExchangePage from '@/pages/crypto/CryptoExchangePage';
 import { IncomingCryptoPage, OutgoingCryptoPage } from '@/pages/crypto/CryptoHistoryPage';
 import VexaTransferPage from '@/pages/transfer/VexaTransferPage';
+import BankSelectionPage from '@/pages/transfer/BankSelectionPage';
 import { BusinessProvider } from '@/context/BusinessContext';
 import BusinessDashboard from '@/pages/business/BusinessDashboard';
 import BusinessOnboarding from '@/pages/business/BusinessOnboarding';
@@ -525,6 +526,28 @@ function PasscodeLockScreen({ onUnlock, onSignOut }: { onUnlock: () => void; onS
   );
 }
 
+function TwoFactorWarningCard({ onEnable }: { onEnable: () => void }) {
+  const { user } = useAuth();
+  if (!user || user.twoFactorEnabled) return null;
+  return (
+    <div className="mx-3 mt-3">
+      <button
+        onClick={onEnable}
+        className="w-full flex items-center gap-3 text-left bg-[#FFF8E8] border border-[#F3D58B] rounded-2xl px-4 py-3"
+      >
+        <div className="w-9 h-9 rounded-full bg-[#FDE7A9] flex items-center justify-center shrink-0">
+          <Shield className="w-[18px] h-[18px] text-[#9A6800]" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[12px] font-bold text-[#6F4A00]">Secure your account</p>
+          <p className="text-[11px] text-[#8A6A2C] mt-0.5">Enable 2FA to protect your balance</p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-[#9A6800] shrink-0" />
+      </button>
+    </div>
+  );
+}
+
 function MoniepointHome() {
   const [balanceHidden, setBalanceHidden] = useState(false);
   const [, navigate] = useLocation();
@@ -576,6 +599,8 @@ function MoniepointHome() {
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
 
+          <TwoFactorWarningCard onEnable={() => navigate('/two-factor')} />
+
           {/* ── Account card ────────────────────────────────────────── */}
           {/* mx 12px, mt 12px, rounded-2xl (20px), p-5 */}
           <div className="mx-3 mt-3 bg-[#162353] rounded-[20px] px-4 py-3 text-white relative overflow-hidden">
@@ -590,22 +615,6 @@ function MoniepointHome() {
               />
               <span className="text-[9px] font-bold tracking-widest text-white/50 uppercase">Vexa</span>
             </div>
-
-            {!user?.twoFactorEnabled && (
-              <button
-                onClick={() => navigate('/two-factor')}
-                className="w-full flex items-center gap-2.5 text-left bg-amber-300/15 border border-amber-200/30 rounded-xl px-3 py-2.5 mb-3"
-              >
-                <div className="w-7 h-7 rounded-full bg-amber-300/20 flex items-center justify-center shrink-0">
-                  <Shield className="w-4 h-4 text-amber-200" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-bold text-amber-100">Secure your account</p>
-                  <p className="text-[10px] text-white/60 mt-0.5">Enable 2FA to protect your balance</p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-amber-200 shrink-0" />
-              </button>
-            )}
 
             {/* account number row */}
             <div className="flex items-center gap-1.5 text-[12px] font-normal text-white mb-2">
@@ -2009,18 +2018,23 @@ function formatAmt(raw: string) {
   return intP.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + dec;
 }
 
+function storedSelectedBank(): PaystackBank | null {
+  try {
+    const value = JSON.parse(sessionStorage.getItem('vexa.selectedBank') ?? 'null') as PaystackBank | null;
+    return value?.name && value.code ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 function TransferPage() {
   const [, navigate] = useLocation();
   const { user, setInitialTransferPin } = useAuth();
   const { debitBalance, creditBalance, addTransaction, addNotification } = useUserData();
   const [step, setStep]           = useState<TxStep>('details');
-  const [bank, setBank]           = useState('');
-  const [bankCode, setBankCode]   = useState('');
-  const [banks, setBanks]         = useState<PaystackBank[]>([]);
-  const [banksLoading, setBanksLoading] = useState(true);
-  const [banksError, setBanksError] = useState('');
-  const [showBankList, setShowBankList] = useState(false);
-  const [bankSearch, setBankSearch] = useState('');
+  const initialBank = storedSelectedBank();
+  const [bank, setBank]           = useState(initialBank?.name ?? '');
+  const [bankLogo, setBankLogo]   = useState<string | null>(initialBank?.logoUrl ?? null);
   const [acctNo, setAcctNo]       = useState('');
   const [resolvedName, setResolvedName] = useState('');
   const [lookingUp, setLookingUp] = useState(false);
@@ -2036,29 +2050,6 @@ function TransferPage() {
   const [savingPin, setSavingPin]             = useState(false);
   const [submitError, setSubmitError]         = useState('');
   const [receipt, setReceipt]                 = useState<TransferReceiptData | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-    setBanksLoading(true);
-    setBanksError('');
-    void fetch('/api/paystack/banks')
-      .then(async response => {
-        const body = await response.json().catch(() => null) as { banks?: PaystackBank[]; message?: string } | null;
-        if (!response.ok) throw new Error(body?.message || 'Could not load the bank list');
-        return body?.banks ?? [];
-      })
-      .then(nextBanks => {
-        if (!mounted) return;
-        setBanks(nextBanks);
-        setBanksLoading(false);
-      })
-      .catch(error => {
-        if (!mounted) return;
-        setBanksError(error instanceof Error ? error.message : 'Could not load the bank list');
-        setBanksLoading(false);
-      });
-    return () => { mounted = false; };
-  }, []);
 
   // Existing account-name lookup behavior for this transfer flow.
   useEffect(() => {
@@ -2135,10 +2126,6 @@ function TransferPage() {
     });
     setStep('success');
   }
-
-  const filteredBanks = banks.filter(b =>
-    b.name.toLowerCase().includes(bankSearch.toLowerCase())
-  );
 
   const amtNum = parseFloat(amount.replace(/,/g, '') || '0');
 
@@ -2417,16 +2404,15 @@ function TransferPage() {
         <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
           <p className="text-[12px] font-semibold text-[#444] mb-3">Select Bank</p>
           <button
-            onClick={() => setShowBankList(v => !v)}
-            disabled={banksLoading || banks.length === 0}
+            onClick={() => navigate('/bank-selection?returnTo=/transfer')}
             className="w-full flex items-center justify-between border border-[#E0E0E0] rounded-xl px-4 py-3 focus:border-[#2563EB] transition-colors disabled:opacity-60"
           >
             <span className="flex min-w-0 items-center gap-2">
               {bank ? (
                 <span className="w-7 h-7 rounded-full bg-[#F2F3F5] flex items-center justify-center overflow-hidden shrink-0">
-                  {banks.find(item => item.code === bankCode)?.logoUrl ? (
+                  {bankLogo ? (
                     <img
-                      src={banks.find(item => item.code === bankCode)?.logoUrl ?? ''}
+                      src={bankLogo}
                       alt=""
                       className="w-6 h-6 object-contain"
                     />
@@ -2436,57 +2422,13 @@ function TransferPage() {
                 </span>
               ) : null}
               <span className={`truncate text-[14px] ${bank ? 'text-[#111] font-semibold' : 'text-[#CCC]'}`}>
-                {banksLoading ? 'Loading banks…' : bank || 'Choose bank…'}
+                {bank || 'Choose bank…'}
               </span>
             </span>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points={showBankList ? '18 15 12 9 6 15' : '6 9 12 15 18 9'}/>
+              <polyline points="6 9 12 15 18 9"/>
             </svg>
           </button>
-
-          {banksError && (
-            <p className="mt-2 text-[11px] text-red-500">{banksError}</p>
-          )}
-
-          {showBankList && (
-            <div className="mt-2 border border-[#E0E0E0] rounded-xl overflow-hidden">
-              <div className="px-3 py-2 border-b border-[#F0F0F0]">
-                <input
-                  type="text" placeholder="Search bank…"
-                  value={bankSearch} onChange={e => setBankSearch(e.target.value)}
-                  className="w-full text-[13px] outline-none placeholder:text-[#CCC]"
-                  autoFocus
-                />
-              </div>
-              <div className="max-h-[180px] overflow-y-auto">
-                {filteredBanks.map(b => (
-                  <button key={b.code} onClick={() => {
-                    setBank(b.name);
-                    setBankCode(b.code);
-                    setResolvedName('');
-                    setSubmitError('');
-                    setShowBankList(false);
-                    setBankSearch('');
-                  }}
-                    className={`w-full flex items-center gap-3 text-left px-4 py-2.5 text-[13px] hover:bg-[#F8F9FB] transition-colors border-b border-[#F8F9FB] last:border-0 ${bankCode === b.code ? 'font-semibold text-[#162353]' : 'text-[#333]'}`}>
-                    <span className="w-8 h-8 rounded-full bg-[#F2F3F5] flex items-center justify-center overflow-hidden shrink-0">
-                      {b.logoUrl ? (
-                        <img src={b.logoUrl} alt="" className="w-7 h-7 object-contain" />
-                      ) : (
-                        <span className="text-[10px] font-bold text-[#162353]">{b.name.slice(0, 1)}</span>
-                      )}
-                    </span>
-                    <span className="truncate">{b.name}</span>
-                  </button>
-                ))}
-                {filteredBanks.length === 0 && (
-                  <p className="px-4 py-3 text-[12px] text-[#888]">
-                    {banksLoading ? 'Loading banks…' : 'No banks found'}
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Account number */}
@@ -4385,6 +4327,7 @@ function Router() {
       <Route path="/" component={MoniepointHome} />
       <Route path="/deposit" component={DepositPage} />
       <Route path="/transfer" component={TransferPage} />
+      <Route path="/bank-selection" component={BankSelectionPage} />
       <Route path="/vexa-transfer" component={VexaTransferPage} />
       <Route path="/crypto" component={CryptoExchangePage} />
       <Route path="/crypto/incoming" component={IncomingCryptoPage} />
@@ -4535,7 +4478,9 @@ function AppShell() {
   // Clear business verification when the user navigates away from the business section
   useEffect(() => {
     const wasOnBusiness = prevPathRef.current.startsWith('/business');
-    const isOnBusiness = path.startsWith('/business');
+    const bankSelectionForBusiness = path === '/bank-selection'
+      && new URLSearchParams(window.location.search).get('returnTo')?.startsWith('/business');
+    const isOnBusiness = path.startsWith('/business') || Boolean(bankSelectionForBusiness);
     if (wasOnBusiness && !isOnBusiness) {
       clearVerification();
     }

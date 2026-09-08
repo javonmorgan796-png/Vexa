@@ -80,6 +80,7 @@ async function fetchBanks() {
           code: bank.code,
           logoUrl: logoUrl(bank.name),
         }))
+        .filter((bank, index, all) => all.findIndex(item => item.code === bank.code) === index)
         .sort((a, b) => a.name.localeCompare(b.name))
     : [];
 
