@@ -9,28 +9,6 @@ args = ["pnpm", "store", "prune"]
 env = { "CI" = "true" }
 
 [workflows]
-runButton = "Project"
-
-[[workflows.workflow]]
-name = "Project"
-mode = "parallel"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Vexa Preview"
-
-[[workflows.workflow]]
-name = "Vexa Preview"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "webview"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "PORT=19093 BASE_PATH=/ pnpm --filter @workspace/vexa-app run dev"
-waitForPort = 19093
 
 [agent]
 stack = "PNPM_WORKSPACE"
