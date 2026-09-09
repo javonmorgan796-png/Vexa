@@ -25,6 +25,7 @@ import ChangePinPage from '@/pages/settings/ChangePinPage';
 import ChangePasswordPage from '@/pages/settings/ChangePasswordPage';
 import TwoFactorSettingsPage from '@/pages/settings/TwoFactorSettingsPage';
 import TwoFactorChallenge from '@/pages/settings/TwoFactorChallenge';
+import ActiveDevicesPage from '@/pages/settings/ActiveDevicesPage';
 import CryptoExchangePage from '@/pages/crypto/CryptoExchangePage';
 import { IncomingCryptoPage, OutgoingCryptoPage } from '@/pages/crypto/CryptoHistoryPage';
 import VexaTransferPage from '@/pages/transfer/VexaTransferPage';
@@ -932,6 +933,7 @@ function SettingsPage() {
         { icon: <Lock className="w-5 h-5" />,        label: 'Change Transaction PIN', action: () => navigate('/change-pin') },
         { icon: <Fingerprint className="w-5 h-5" />, label: 'Biometric Login',        sub: biometrics ? 'On' : 'Off' },
         { icon: <Lock className="w-5 h-5" />,        label: 'Change Password',        action: () => navigate('/change-password') },
+         { icon: <Tablet className="w-5 h-5" />,      label: 'Active Devices',         sub: 'Manage signed-in sessions', action: () => navigate('/active-devices') },
          { icon: <Shield className="w-5 h-5" />,      label: 'Passcode on App Return', sub: passcodeOnReturn ? 'On · locks when you leave' : 'Off' },
          { icon: <i className="fa-solid fa-key text-[17px]" aria-hidden="true" />, label: 'Two-Factor Authentication', sub: user?.twoFactorEnabled ? 'Enabled via SMS' : 'Off', action: () => navigate('/two-factor') },
       ],
@@ -4353,6 +4355,7 @@ function Router() {
       <Route path="/limits" component={LimitsPage} />
       <Route path="/change-pin" component={ChangePinPage} />
       <Route path="/change-password" component={ChangePasswordPage} />
+      <Route path="/active-devices" component={ActiveDevicesPage} />
       <Route path="/two-factor" component={TwoFactorSettingsPage} />
       <Route path="/help-support" component={HelpSupportPage} />
       <Route path="/notifications" component={NotificationsPage} />

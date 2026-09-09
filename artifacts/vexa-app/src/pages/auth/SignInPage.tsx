@@ -1,13 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/context/AuthContext';
+import {
+  LOGIN_FAILURE_LIMIT,
+  LOGIN_LOCKOUT_MS,
+  normalizeLoginPhone,
+} from '@/lib/authSecurity';
 
 const COUNTRY_CODES = [
   { flag: '🇳🇬', code: '+234', name: 'Nigeria' },
 ];
 
 /* ── Brute-force protection ───────────────────────────────────────────── */
-const ATTEMPT_KEY = (phone: string) => `vexa_login_fail_${phone.replace(/\D/g, '')}`;
+const ATTEMPT_KEY = (phone: string) => `vexa_login_fail_${normalizeLoginPhone(phone)}`;
+const LAST_PHONE_KEY = 'vexa_last_login_phone';
 
 interface AttemptRecord {
   count: number;
@@ -38,17 +44,10 @@ function fmtTime(ms: number): string {
   return m > 0 ? `${m}m ${sec.toString().padStart(2, '0')}s` : `${sec}s`;
 }
 
-/* ── Math challenge CAPTCHA (shows after 3 failed attempts) ──────────── */
-function genChallenge() {
-  const a = Math.floor(Math.random() * 9) + 1;
-  const b = Math.floor(Math.random() * 9) + 1;
-  return { a, b, answer: String(a + b) };
-}
-
 export default function SignInPage() {
   const [, navigate] = useLocation();
   const { signIn } = useAuth();
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState(() => localStorage.getItem(LAST_PHONE_KEY) ?? '');
   const [countryCode, setCountryCode] = useState(COUNTRY_CODES[0]);
   const [showPicker, setShowPicker] = useState(false);
   const [passcode, setPasscode] = useState(['', '', '', '', '', '']);
@@ -61,21 +60,32 @@ export default function SignInPage() {
 
   /* Lockout */
   const [lockRemaining, setLockRemaining] = useState(0);
-  const [challengeVisible, setChallengeVisible] = useState(false);
-  const [challenge, setChallenge] = useState(genChallenge());
-  const [challengeInput, setChallengeInput] = useState('');
-  const [challengeError, setChallengeError] = useState('');
-  const challengeRef = useRef<HTMLInputElement | null>(null);
 
-  /* Keep the sign-in form responsive. Failed attempts require a challenge,
-     but a browser-local lock must never block valid credentials. */
+  /* The phone and lock record are persisted so a refresh cannot reset the
+     countdown or reopen the form during the delay. */
   useEffect(() => {
-    setLockRemaining(0);
+    const normalizedPhone = normalizeLoginPhone(phone);
+    if (normalizedPhone.length < 10) {
+      setLockRemaining(0);
+      return;
+    }
+
+    localStorage.setItem(LAST_PHONE_KEY, normalizedPhone);
+    const updateLock = () => {
+      const record = loadAttempts(normalizedPhone);
+      const remaining = (record.lockedUntil ?? 0) - Date.now();
+      if (remaining > 0) {
+        setLockRemaining(remaining);
+      } else {
+        if (record.lockedUntil) clearAttempts(normalizedPhone);
+        setLockRemaining(0);
+      }
+    };
+
+    updateLock();
+    const timer = window.setInterval(updateLock, 1000);
+    return () => window.clearInterval(timer);
   }, [phone]);
-
-  useEffect(() => {
-    if (challengeVisible) challengeRef.current?.focus();
-  }, [challengeVisible]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -121,7 +131,7 @@ export default function SignInPage() {
     const newCount = rec.count + 1;
     const newRec: AttemptRecord = {
       count: newCount,
-      lockedUntil: null,
+      lockedUntil: newCount >= LOGIN_FAILURE_LIMIT ? Date.now() + LOGIN_LOCKOUT_MS : null,
     };
     saveAttempts(cleanPhone, newRec);
     return newRec;
@@ -135,25 +145,13 @@ export default function SignInPage() {
     if (cleanPhone.length < 10) { setError('Enter a valid phone number'); return; }
 
     const rec = loadAttempts(cleanPhone);
-
-    /* CAPTCHA check if ≥3 prior failures */
-    if (rec.count >= 3) {
-      if (!challengeVisible) {
-        setChallengeVisible(true);
-        setChallenge(genChallenge());
-        setChallengeInput('');
-        setChallengeError('');
-        setError('Complete the security check below, then tap Sign In again.');
-        return;
-      }
-      if (challengeInput.trim() !== challenge.answer) {
-        setChallengeError('Incorrect answer. Please try again.');
-        setChallenge(genChallenge());
-        setChallengeInput('');
-        return;
-      }
-      // Passed challenge — proceed
-      setChallengeVisible(false);
+    if (rec.lockedUntil && rec.lockedUntil > Date.now()) {
+      setLockRemaining(rec.lockedUntil - Date.now());
+      setError('Too many failed attempts. Please wait for the security delay to finish.');
+      return;
+    }
+    if (rec.lockedUntil) {
+      clearAttempts(cleanPhone);
     }
 
     const code = passcode.join('');
@@ -167,11 +165,18 @@ export default function SignInPage() {
         clearAttempts(cleanPhone);
         navigate('/');
       } else {
-        const updated = recordFailure(cleanPhone);
-        const left = 3 - updated.count;
-        setError(left > 0
-          ? `${res.error ?? 'Sign in failed'} (${left} attempt${left !== 1 ? 's' : ''} before security check)`
-          : (res.error ?? 'Sign in failed'));
+        const updated = res.lockedUntil
+          ? { count: LOGIN_FAILURE_LIMIT, lockedUntil: res.lockedUntil }
+          : recordFailure(cleanPhone);
+        saveAttempts(cleanPhone, updated);
+        const remaining = (updated.lockedUntil ?? 0) - Date.now();
+        if (remaining > 0) {
+          setLockRemaining(remaining);
+          setError('Too many failed attempts. Please wait for the security delay to finish.');
+        } else {
+          const left = LOGIN_FAILURE_LIMIT - updated.count;
+          setError(`${res.error ?? 'Sign in failed'} (${left} attempt${left !== 1 ? 's' : ''} before security delay)`);
+        }
         setPasscode(['', '', '', '', '', '']);
         inputRefs.current[0]?.focus();
       }
@@ -246,6 +251,7 @@ export default function SignInPage() {
               )}
               <input type="tel" inputMode="numeric" autoComplete="tel" placeholder="Phone Number" value={phone}
                 onChange={e => { setPhone(e.target.value); setError(''); }}
+                disabled={isLocked}
                 className="flex-1 h-[50px] rounded-xl border border-[#E2E8F0] bg-[#F8F9FB] px-4 text-[14px] text-[#111] placeholder-[#C0C8D4] focus:outline-none focus:border-[#162353] focus:bg-white transition-colors" />
             </div>
           </div>
@@ -269,27 +275,8 @@ export default function SignInPage() {
             </div>
           </div>
 
-          {/* CAPTCHA challenge (shows after 3 failures) */}
-          {challengeVisible && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-4">
-              <div className="flex items-center gap-2 mb-3">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#92400E" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 9v4M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                </svg>
-                <p className="text-[12px] font-semibold text-amber-800">Security check required</p>
-              </div>
-              <p className="text-[13px] text-amber-900 mb-3 font-medium">
-                What is <span className="font-bold">{challenge.a} + {challenge.b}</span> ?
-              </p>
-              <input ref={challengeRef} type="tel" inputMode="numeric" aria-label="Security check answer" placeholder="Enter the answer" value={challengeInput}
-                onChange={e => { setChallengeInput(e.target.value.replace(/\D/g, '')); setChallengeError(''); }}
-                className="w-full h-[44px] rounded-xl border border-amber-300 bg-white px-4 text-[14px] text-[#111] focus:outline-none focus:border-amber-500 transition-colors" />
-              {challengeError && <p className="text-[11px] text-red-600 mt-1.5 font-medium">{challengeError}</p>}
-            </div>
-          )}
-
           {/* CTA */}
-          <button type="submit" disabled={loading || !passcodeComplete || isLocked || (challengeVisible && !challengeInput.trim())}
+          <button type="submit" disabled={loading || !passcodeComplete || isLocked}
             className="w-full h-[52px] rounded-xl bg-[#162353] text-white text-[15px] font-bold mt-2 disabled:opacity-60 transition-opacity active:scale-[0.98]">
             {loading ? (
               <span className="flex items-center justify-center gap-2">
@@ -307,7 +294,7 @@ export default function SignInPage() {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>
           </svg>
-          <p className="text-[11px] text-[#999]">Secured with 256-bit encryption · 3 attempts before lockout</p>
+          <p className="text-[11px] text-[#999]">Secured with 256-bit encryption · 3 failed attempts starts a 5-minute delay</p>
         </div>
 
         {/* Fingerprint Sign In */}

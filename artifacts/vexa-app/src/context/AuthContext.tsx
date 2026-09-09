@@ -1,5 +1,11 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import {
+  checkRemoteLoginLockout,
+  clearRemoteLoginFailures,
+  recordRemoteLoginFailure,
+  normalizeLoginPhone,
+} from '@/lib/authSecurity';
 
 export interface User {
   id: string;
@@ -14,13 +20,23 @@ export interface User {
   twoFactorEnabled: boolean;
 }
 
+export interface ActiveSession {
+  id: string;
+  sessionId: string;
+  deviceName: string;
+  deviceType: string;
+  lastActiveAt: string;
+  createdAt: string;
+  isCurrent: boolean;
+}
+
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   profilePhoto: string | null;
   loading: boolean;
   twoFactorPending: boolean;
-  signIn: (phone: string, passcode: string) => Promise<{ success: boolean; error?: string }>;
+  signIn: (phone: string, passcode: string) => Promise<{ success: boolean; error?: string; lockedUntil?: number }>;
   signUp: (name: string, phone: string, passcode: string) => Promise<{ success: boolean; error?: string }>;
   verifyPasscode: (passcode: string) => Promise<boolean>;
   signOut: () => Promise<void>;
@@ -32,6 +48,12 @@ interface AuthContextType {
   sendTwoFactorCode: () => Promise<{ success: boolean; error?: string }>;
   verifyTwoFactorCode: (code: string) => Promise<{ success: boolean; error?: string }>;
   updateTwoFactorEnabled: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
+  activeSessions: ActiveSession[];
+  sessionsLoading: boolean;
+  sessionsError: string;
+  refreshSessions: () => Promise<void>;
+  revokeSession: (sessionId: string) => Promise<{ success: boolean; error?: string }>;
+  revokeOtherSessions: () => Promise<{ success: boolean; error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -66,14 +88,145 @@ function genAccountNumber(): string {
   return '9' + Array.from({ length: 9 }, () => Math.floor(Math.random() * 10)).join('');
 }
 
+const DEVICE_SESSION_KEY = 'vexa_device_session_id';
+
+function getDeviceSessionId(): string {
+  try {
+    const stored = localStorage.getItem(DEVICE_SESSION_KEY);
+    if (stored) return stored;
+    const generated = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `device-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem(DEVICE_SESSION_KEY, generated);
+    return generated;
+  } catch {
+    return 'device-session';
+  }
+}
+
+function getDeviceDetails() {
+  const userAgent = typeof navigator === 'undefined' ? '' : navigator.userAgent;
+  const deviceType = /Mobi|Android|iPhone|iPad/i.test(userAgent) ? 'mobile' : 'desktop';
+  const browser = /Edg\//.test(userAgent)
+    ? 'Edge'
+    : /Chrome\//.test(userAgent)
+      ? 'Chrome'
+      : /Firefox\//.test(userAgent)
+        ? 'Firefox'
+        : /Safari\//.test(userAgent) && !/Chrome\//.test(userAgent)
+          ? 'Safari'
+          : 'Browser';
+  return {
+    userAgent,
+    deviceType,
+    deviceName: `${browser} · ${deviceType === 'mobile' ? 'Mobile' : 'Desktop'}`,
+  };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser]               = useState<User | null>(null);
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
   const [loading, setLoading]         = useState(true);
   const [twoFactorPending, setTwoFactorPending] = useState(false);
+  const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsError, setSessionsError] = useState('');
   const verifiedTwoFactorUser = useRef<string | null>(null);
   const twoFactorRequestId = useRef<string | null>(null);
   const profileRequestRef = useRef<{ userId: string; promise: Promise<{ success: boolean; error?: string }> } | null>(null);
+
+  const refreshSessions = useCallback(async () => {
+    if (!user) {
+      setActiveSessions([]);
+      setSessionsError('');
+      return;
+    }
+
+    setSessionsLoading(true);
+    const { data, error } = await supabase
+      .from('user_sessions')
+      .select('id, session_id, device_name, device_type, last_active_at, created_at')
+      .eq('user_id', user.id)
+      .is('revoked_at', null)
+      .order('last_active_at', { ascending: false });
+
+    if (error) {
+      setActiveSessions([]);
+      setSessionsError(
+        error.message.toLowerCase().includes('does not exist')
+          ? 'Run the latest Supabase security migration to manage active devices.'
+          : 'Could not load active devices.',
+      );
+    } else {
+      const currentSessionId = getDeviceSessionId();
+      setSessionsError('');
+      setActiveSessions((data ?? []).map(row => ({
+        id: row.id,
+        sessionId: row.session_id,
+        deviceName: row.device_name,
+        deviceType: row.device_type,
+        lastActiveAt: row.last_active_at,
+        createdAt: row.created_at,
+        isCurrent: row.session_id === currentSessionId,
+      })));
+    }
+    setSessionsLoading(false);
+  }, [user]);
+
+  const registerCurrentSession = useCallback(async (userId: string) => {
+    const sessionId = getDeviceSessionId();
+    const details = getDeviceDetails();
+    const { error } = await supabase.from('user_sessions').upsert({
+      user_id: userId,
+      session_id: sessionId,
+      device_name: details.deviceName,
+      device_type: details.deviceType,
+      user_agent: details.userAgent,
+      last_active_at: new Date().toISOString(),
+      revoked_at: null,
+    }, { onConflict: 'user_id,session_id' });
+
+    if (error && !error.message.toLowerCase().includes('does not exist')) {
+      console.warn('[Auth] session registration error:', error.message);
+    }
+  }, []);
+
+  const revokeSession = useCallback(async (sessionId: string) => {
+    if (!user) return { success: false, error: 'Not authenticated' };
+
+    const { error } = await supabase
+      .from('user_sessions')
+      .update({ revoked_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+      .eq('session_id', sessionId);
+
+    if (error) return { success: false, error: 'Could not sign out that device.' };
+
+    if (sessionId === getDeviceSessionId()) {
+      await supabase.auth.signOut({ scope: 'local' });
+    }
+    await refreshSessions();
+    return { success: true };
+  }, [user, refreshSessions]);
+
+  const revokeOtherSessions = useCallback(async () => {
+    if (!user) return { success: false, error: 'Not authenticated' };
+    const currentSessionId = getDeviceSessionId();
+
+    const { error } = await supabase
+      .from('user_sessions')
+      .update({ revoked_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+      .neq('session_id', currentSessionId)
+      .is('revoked_at', null);
+
+    if (error) return { success: false, error: 'Could not sign out other devices.' };
+
+    const { error: authError } = await supabase.auth.signOut({ scope: 'others' });
+    if (authError) return { success: false, error: 'Could not sign out other devices.' };
+    await refreshSessions();
+    return { success: true };
+  }, [user, refreshSessions]);
 
   useEffect(() => {
     let mounted = true;
@@ -254,10 +407,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { success: true };
   }
 
-  const signIn = async (phone: string, passcode: string): Promise<{ success: boolean; error?: string }> => {
+  const signIn = async (phone: string, passcode: string): Promise<{ success: boolean; error?: string; lockedUntil?: number }> => {
     const candidates = phoneToEmailCandidates(phone);
     if (!candidates.length || passcode.length !== 6) {
       return { success: false, error: 'Enter a valid phone number and 6-digit passcode' };
+    }
+
+    const normalizedPhone = normalizeLoginPhone(phone);
+    const lockout = await checkRemoteLoginLockout(normalizedPhone);
+    if (lockout.lockedUntil && lockout.lockedUntil > Date.now()) {
+      return {
+        success: false,
+        lockedUntil: lockout.lockedUntil,
+        error: 'Too many failed attempts. Please wait before trying again.',
+      };
     }
 
     let lastError: string | undefined;
@@ -275,6 +438,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await supabase.auth.signOut();
         return { success: false, error: profileResult.error };
       }
+      await clearRemoteLoginFailures(normalizedPhone);
       return { success: true };
     }
 
@@ -289,7 +453,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
       }
     }
-    return { success: false, error: 'Invalid phone number or passcode' };
+    const recorded = await recordRemoteLoginFailure(normalizedPhone);
+    return {
+      success: false,
+      error: recorded.lockedUntil && recorded.lockedUntil > Date.now()
+        ? 'Too many failed attempts. Please wait before trying again.'
+        : 'Invalid phone number or passcode',
+      lockedUntil: recorded.lockedUntil,
+    };
   };
 
   const signUp = async (
@@ -344,11 +515,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    if (user) {
+      await supabase
+        .from('user_sessions')
+        .update({ revoked_at: new Date().toISOString() })
+        .eq('user_id', user.id)
+        .eq('session_id', getDeviceSessionId());
+    }
     await supabase.auth.signOut();
     setTwoFactorPending(false);
     verifiedTwoFactorUser.current = null;
     twoFactorRequestId.current = null;
+    setActiveSessions([]);
+    setSessionsError('');
   };
+
+  useEffect(() => {
+    if (!user?.id) {
+      setActiveSessions([]);
+      return;
+    }
+
+    void (async () => {
+      await registerCurrentSession(user.id);
+      await refreshSessions();
+    })();
+
+    const interval = window.setInterval(async () => {
+      const sessionId = getDeviceSessionId();
+      const { data, error } = await supabase
+        .from('user_sessions')
+        .select('revoked_at')
+        .eq('user_id', user.id)
+        .eq('session_id', sessionId)
+        .maybeSingle();
+
+      if (error || !data) return;
+      if (data.revoked_at) {
+        await supabase.auth.signOut({ scope: 'local' });
+        return;
+      }
+
+      await supabase
+        .from('user_sessions')
+        .update({ last_active_at: new Date().toISOString() })
+        .eq('user_id', user.id)
+        .eq('session_id', sessionId)
+        .is('revoked_at', null);
+    }, 30000);
+
+    return () => window.clearInterval(interval);
+  }, [user?.id, registerCurrentSession, refreshSessions]);
 
   async function termiiRequest(
     path: 'send' | 'verify',
@@ -491,8 +708,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider value={{
        user, isAuthenticated: !!user, profilePhoto, loading, twoFactorPending,
        signIn, signUp, verifyPasscode, signOut,
-      updatePin, setInitialTransferPin, updatePassword, updateProfile, updateProfilePhoto,
-       sendTwoFactorCode, verifyTwoFactorCode, updateTwoFactorEnabled,
+       updatePin, setInitialTransferPin, updatePassword, updateProfile, updateProfilePhoto,
+        sendTwoFactorCode, verifyTwoFactorCode, updateTwoFactorEnabled,
+        activeSessions, sessionsLoading, sessionsError, refreshSessions, revokeSession, revokeOtherSessions,
     }}>
       {children}
     </AuthContext.Provider>
