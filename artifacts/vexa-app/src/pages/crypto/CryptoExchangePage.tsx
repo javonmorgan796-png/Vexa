@@ -21,8 +21,17 @@ const ASSET_META: Record<CryptoAsset, { name: string; color: string; description
   USDT: { name: 'Tether', color: '#26A17B', description: 'Dollar-backed stablecoin', logo: SiTether },
 };
 
+type FiatCurrency = 'NGN' | 'USD';
+
+function formatFiat(valueInNaira: number, currency: FiatCurrency, nairaPerUsd = FALLBACK_RATES.USDT) {
+  const value = currency === 'USD' ? valueInNaira / nairaPerUsd : valueInNaira;
+  const symbol = currency === 'USD' ? '$' : '₦';
+  const locale = currency === 'USD' ? 'en-US' : 'en-NG';
+  return `${symbol}${value.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 function money(value: number) {
-  return `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return formatFiat(value, 'NGN');
 }
 
 function crypto(value: number) {
@@ -62,7 +71,17 @@ function PageHeader({ title, onBack }: { title: string; onBack: () => void }) {
   );
 }
 
-function CryptoActivityDetails({ transaction, onClose }: { transaction: NonNullable<CryptoTransaction>; onClose: () => void }) {
+function CryptoActivityDetails({
+  transaction,
+  currency,
+  nairaPerUsd,
+  onClose,
+}: {
+  transaction: NonNullable<CryptoTransaction>;
+  currency: FiatCurrency;
+  nairaPerUsd: number;
+  onClose: () => void;
+}) {
   const [copied, setCopied] = useState(false);
   const meta = ASSET_META[transaction.asset as CryptoAsset] ?? ASSET_META.BTC;
   const isOutgoing = transaction.kind === 'transfer_out' || transaction.kind === 'sell';
@@ -109,11 +128,11 @@ function CryptoActivityDetails({ transaction, onClose }: { transaction: NonNulla
           </div>
           <div className="flex items-center justify-between gap-4 py-3">
             <span className="text-[12px] text-[#888]">Naira value</span>
-            <span className="text-right text-[12px] font-semibold text-[#222]">{money(transaction.nairaAmount)}</span>
+            <span className="text-right text-[12px] font-semibold text-[#222]">{formatFiat(transaction.nairaAmount, currency, nairaPerUsd)}</span>
           </div>
           <div className="flex items-center justify-between gap-4 py-3">
             <span className="text-[12px] text-[#888]">Exchange rate</span>
-            <span className="text-right text-[12px] font-semibold text-[#222]">{money(transaction.rate)} / {transaction.asset}</span>
+            <span className="text-right text-[12px] font-semibold text-[#222]">{formatFiat(transaction.rate, currency, nairaPerUsd)} / {transaction.asset}</span>
           </div>
           {transaction.counterpartyAccount && (
             <div className="flex items-center justify-between gap-4 py-3">
@@ -157,6 +176,7 @@ export default function CryptoExchangePage() {
   const [depositAmount, setDepositAmount] = useState('');
   const [asset, setAsset] = useState<CryptoAsset>('BTC');
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
+  const [fiatCurrency, setFiatCurrency] = useState<FiatCurrency>('NGN');
   const [exchangeAmount, setExchangeAmount] = useState('');
   const [recipient, setRecipient] = useState('');
   const [transferAmount, setTransferAmount] = useState('');
@@ -212,6 +232,10 @@ export default function CryptoExchangePage() {
     () => cryptoBalances.reduce((total, item) => total + item.amount * rates[item.asset], 0),
     [cryptoBalances, rates],
   );
+  const nairaPerUsd = rates.USDT > 0 ? rates.USDT : FALLBACK_RATES.USDT;
+  const fiatLabel = fiatCurrency === 'USD' ? 'Dollars' : 'Naira';
+  const displayFiat = (valueInNaira: number) => formatFiat(valueInNaira, fiatCurrency, nairaPerUsd);
+  const toNaira = (value: number) => fiatCurrency === 'USD' ? value * nairaPerUsd : value;
   const livePricesReady = Boolean(priceUpdatedAt && !priceStale);
 
   const selectedBalance = useMemo(
@@ -244,26 +268,28 @@ export default function CryptoExchangePage() {
   }, [tab, loadDepositAddress]);
 
   const submitDeposit = async () => {
-    const amount = Number(depositAmount.replace(/,/g, ''));
-    if (!amount || amount <= 0) return setFormError('Enter a valid Naira amount');
+    const enteredAmount = Number(depositAmount.replace(/,/g, ''));
+    const amountInNaira = toNaira(enteredAmount);
+    if (!enteredAmount || enteredAmount <= 0) return setFormError(`Enter a valid ${fiatLabel} amount`);
     setBusy(true); setFormError(''); setMessage('');
-    const result = await depositToExchange(amount);
+    const result = await depositToExchange(amountInNaira);
     setBusy(false);
     if (!result.success) return setFormError(result.error ?? 'Deposit failed');
-    setDepositAmount(''); setMessage(`${money(amount)} moved into your exchange balance.`);
+    setDepositAmount(''); setMessage(`${displayFiat(amountInNaira)} moved into your exchange balance.`);
   };
 
   const submitExchange = async () => {
-    const amount = Number(exchangeAmount.replace(/,/g, ''));
-    if (!amount || amount <= 0) return setFormError('Enter a valid Naira amount');
+    const enteredAmount = Number(exchangeAmount.replace(/,/g, ''));
+    const amountInNaira = toNaira(enteredAmount);
+    if (!enteredAmount || enteredAmount <= 0) return setFormError(`Enter a valid ${fiatLabel} amount`);
     if (!livePricesReady) return setFormError('Live crypto rates are not available yet. Please try again shortly.');
-    if (side === 'sell' && amount > selectedBalance * rates[asset]) return setFormError(`Your ${asset} balance is too low`);
+    if (side === 'sell' && amountInNaira > selectedBalance * rates[asset]) return setFormError(`Your ${asset} balance is too low`);
     setBusy(true); setFormError(''); setMessage('');
-    const result = await exchangeCrypto(asset, side, amount, rates[asset]);
+    const result = await exchangeCrypto(asset, side, amountInNaira, rates[asset]);
     setBusy(false);
     if (!result.success) return setFormError(result.error ?? 'Exchange failed');
     setExchangeAmount('');
-    setMessage(`${side === 'buy' ? 'Bought' : 'Sold'} ${asset} successfully.`);
+    setMessage(`${side === 'buy' ? 'Bought' : 'Sold'} ${asset} successfully using ${displayFiat(amountInNaira)}.`);
   };
 
   const submitTransfer = async () => {
@@ -288,11 +314,17 @@ export default function CryptoExchangePage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-white/60 text-[11px] uppercase tracking-[0.18em]">Exchange balance</p>
-            <p className="text-[28px] font-extrabold mt-1">{money(exchangeNaira)}</p>
+                <p className="text-[28px] font-extrabold mt-1">{displayFiat(exchangeNaira)}</p>
               </div>
-              <div className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center">
+              <button
+                type="button"
+                onClick={() => setFiatCurrency(current => current === 'NGN' ? 'USD' : 'NGN')}
+                className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center transition-colors hover:bg-white/20 active:scale-95"
+                aria-label={`Switch currency display to ${fiatCurrency === 'NGN' ? 'US dollars' : 'Naira'}`}
+                title={`Switch to ${fiatCurrency === 'NGN' ? 'USD' : 'NGN'}`}
+              >
                 <ArrowLeftRight className="w-5 h-5 text-[#68D9FF]" />
-              </div>
+              </button>
             </div>
             <p className="text-white/60 text-[11px] mt-2">Use your Vexa balance to buy, sell, and send supported assets.</p>
             <p className="text-white/50 text-[10px] mt-1">
@@ -301,7 +333,7 @@ export default function CryptoExchangePage() {
             <div className="mt-4 border-t border-white/10 pt-3">
               <div className="flex items-center justify-between">
                 <span className="text-white/60 text-[10px]">Crypto holdings value</span>
-                <b className="text-[13px]">{money(portfolioValue)}</b>
+                <b className="text-[13px]">{displayFiat(portfolioValue)}</b>
               </div>
               <div className="grid grid-cols-3 gap-2 mt-3">
                 {(Object.keys(ASSET_META) as CryptoAsset[]).map(item => (
@@ -312,7 +344,7 @@ export default function CryptoExchangePage() {
                       </span>
                       <span className="text-[10px] font-bold">{item}</span>
                     </div>
-                    <p className="text-[10px] font-bold mt-1 truncate">{money(rates[item])}</p>
+                    <p className="text-[10px] font-bold mt-1 truncate">{displayFiat(rates[item])}</p>
                     <p className={`text-[9px] mt-0.5 ${priceChanges[item] >= 0 ? 'text-[#83F0B7]' : 'text-[#FF9A9A]'}`}>
                       {signedPercent(priceChanges[item])}
                     </p>
@@ -345,7 +377,7 @@ export default function CryptoExchangePage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-[16px] font-bold text-[#111]">Your assets</p>
-                <p className="text-[11px] text-[#888] mt-0.5">Reference rates in Naira</p>
+                 <p className="text-[11px] text-[#888] mt-0.5">Reference rates in {fiatCurrency === 'NGN' ? 'Naira' : 'US Dollars'}</p>
               </div>
               <button onClick={() => void refreshFinance()} className="text-[#2563EB] p-2" aria-label="Refresh exchange balance"><RefreshCw className="w-4 h-4" /></button>
             </div>
@@ -361,20 +393,20 @@ export default function CryptoExchangePage() {
                       <p className="text-[11px] text-[#888]">{amount ? crypto(amount) : '0'} {item} · {meta.description}</p>
                     </div>
                     <div className="text-right">
-                       <p className="text-[13px] font-bold text-[#111]">{money(amount * rates[item])}</p>
-                       <p className="text-[10px] text-[#999]">₦{rates[item].toLocaleString('en-NG')} / {item}</p>
+                        <p className="text-[13px] font-bold text-[#111]">{displayFiat(amount * rates[item])}</p>
+                        <p className="text-[10px] text-[#999]">{displayFiat(rates[item])} / {item}</p>
                     </div>
                   </div>
                 );
               })}
             </div>
             <div className="bg-white rounded-2xl border border-[#F0F0F0] p-4">
-              <div className="flex items-center gap-3 mb-3">
+                 <div className="flex items-center gap-3 mb-3">
                 <div className="w-9 h-9 rounded-xl bg-[#EAFBF4] flex items-center justify-center"><ArrowDownToLine className="w-4 h-4 text-[#159669]" /></div>
-                <div><p className="text-[13px] font-bold text-[#111]">Fund exchange wallet</p><p className="text-[11px] text-[#888]">Move Naira from your Vexa balance</p></div>
+                 <div><p className="text-[13px] font-bold text-[#111]">Fund exchange wallet</p><p className="text-[11px] text-[#888]">Move funds from your Vexa balance</p></div>
               </div>
               <div className="flex items-center gap-2">
-                <input value={depositAmount} onChange={e => setDepositAmount(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" placeholder="Amount in Naira" className="flex-1 border border-[#E0E0E0] rounded-xl px-3 py-3 text-[13px] outline-none focus:border-[#162353]" />
+                 <input value={depositAmount} onChange={e => setDepositAmount(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" placeholder={`Amount in ${fiatLabel}`} className="flex-1 border border-[#E0E0E0] rounded-xl px-3 py-3 text-[13px] outline-none focus:border-[#162353]" />
                 <button disabled={busy || loading} onClick={() => void submitDeposit()} className="rounded-xl bg-[#162353] text-white text-[12px] font-bold px-4 py-3 disabled:opacity-50">{busy ? 'Working…' : 'Deposit'}</button>
               </div>
             </div>
@@ -415,8 +447,8 @@ export default function CryptoExchangePage() {
             <div className="grid grid-cols-3 gap-2">
               {(Object.keys(ASSET_META) as CryptoAsset[]).map(item => <button key={item} onClick={() => setAsset(item)} className={`py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 ${asset === item ? 'bg-[#EAF2FF] text-[#1D4ED8] border border-[#BFD7FF]' : 'bg-[#F8F9FB] text-[#555]'}`}><span className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: ASSET_META[item].color }}><CryptoLogo asset={item} size={12} /></span>{item}</button>)}
             </div>
-             <div className="rounded-xl bg-[#F8F9FB] px-4 py-3 flex justify-between text-[12px]"><span className="text-[#777]">Live rate {priceUpdatedAt ? `· ${timeSince(priceUpdatedAt)}` : ''}</span><b>{money(rates[asset])} / {asset}</b></div>
-            <input value={exchangeAmount} onChange={e => setExchangeAmount(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" placeholder={side === 'buy' ? 'Naira amount' : `Naira value to sell (${crypto(selectedBalance)} ${asset} available)`} className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#162353]" />
+              <div className="rounded-xl bg-[#F8F9FB] px-4 py-3 flex justify-between text-[12px]"><span className="text-[#777]">Live rate {priceUpdatedAt ? `· ${timeSince(priceUpdatedAt)}` : ''}</span><b>{displayFiat(rates[asset])} / {asset}</b></div>
+             <input value={exchangeAmount} onChange={e => setExchangeAmount(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" placeholder={side === 'buy' ? `${fiatLabel} amount` : `${fiatLabel} value to sell (${crypto(selectedBalance)} ${asset} available)`} className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#162353]" />
              <button disabled={busy || !livePricesReady} onClick={() => void submitExchange()} className="w-full rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold disabled:opacity-50">{busy ? 'Processing…' : !livePricesReady ? 'Waiting for live rate…' : `${side === 'buy' ? 'Buy' : 'Sell'} ${asset}`}</button>
           </div>
         )}
@@ -460,7 +492,14 @@ export default function CryptoExchangePage() {
           </div>
         )}
       </div>
-      {selectedActivity && <CryptoActivityDetails transaction={selectedActivity} onClose={() => setSelectedActivity(null)} />}
+       {selectedActivity && (
+         <CryptoActivityDetails
+           transaction={selectedActivity}
+           currency={fiatCurrency}
+           nairaPerUsd={nairaPerUsd}
+           onClose={() => setSelectedActivity(null)}
+         />
+       )}
     </div>
   );
 }
