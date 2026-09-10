@@ -154,6 +154,8 @@ function androidModelFromUserAgent(userAgent: string): string {
 function formatAndroidDeviceName(model: string): string {
   const normalized = model.trim();
   if (!normalized) return 'Android phone — model unavailable to browser';
+  const normalizedInfinixModel = normalized.replace(/^infinix\s+/i, '').toUpperCase();
+  if (normalizedInfinixModel === 'X6886') return 'Infinix Hot 60 Pro+';
   if (/^(pixel|nexus)/i.test(normalized)) return `Google ${normalized}`;
   if (/^(sm-|gt-|sch-|sgh-|samsung)/i.test(normalized)) return `Samsung ${normalized}`;
   if (/^(redmi|mi |mix |m[0-9]|220|230|240)/i.test(normalized)) return `Xiaomi ${normalized}`;
@@ -167,6 +169,7 @@ function formatAndroidDeviceName(model: string): string {
   if (/^(ta-|nokia)/i.test(normalized)) return `Nokia ${normalized}`;
   if (/^(lenovo|tb-|za[0-9])/i.test(normalized)) return `Lenovo ${normalized}`;
   if (/^(asus|zs[0-9])/i.test(normalized)) return `ASUS ${normalized}`;
+  if (/^infinix/i.test(normalized)) return normalized;
   return `Android ${normalized}`;
 }
 
