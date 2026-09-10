@@ -138,7 +138,12 @@ export default function ActiveDevicesPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <p className="text-[13px] font-bold text-[#111] truncate">{session.deviceName}</p>
+                      <p
+                        className="text-[13px] font-bold text-[#111] whitespace-normal break-words leading-snug"
+                        title={session.deviceName}
+                      >
+                        {session.deviceName}
+                      </p>
                       {session.isCurrent && (
                         <span className="inline-flex items-center gap-0.5 bg-[#EAFBF4] text-[#159669] rounded-full px-1.5 py-0.5 text-[9px] font-bold shrink-0">
                           <Check className="w-2.5 h-2.5" /> This device
