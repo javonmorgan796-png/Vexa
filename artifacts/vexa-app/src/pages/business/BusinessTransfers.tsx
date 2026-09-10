@@ -107,7 +107,7 @@ function TransferPinModal({ onSuccess, onClose }: { onSuccess: () => void; onClo
         exit={{ y: 100, opacity: 0 }}
         transition={{ type: 'spring', damping: 22, stiffness: 300 }}
         className="relative rounded-t-3xl overflow-hidden z-10"
-        style={{ background: 'linear-gradient(180deg, #0a1a3d 0%, #021029 100%)' }}
+        style={{ background: 'linear-gradient(180deg, #0e7490 0%, #0f4f5c 100%)' }}
       >
         {/* Handle */}
         <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mt-3 mb-5" />
@@ -116,11 +116,11 @@ function TransferPinModal({ onSuccess, onClose }: { onSuccess: () => void; onClo
           {/* Icon */}
           <div className="flex flex-col items-center mb-5">
             <div className="w-14 h-14 rounded-full flex items-center justify-center mb-3"
-              style={{ background: 'rgba(0,198,255,0.12)', border: '1px solid rgba(0,198,255,0.3)' }}>
+              style={{ background: 'rgba(14,116,144,0.18)', border: '1px solid rgba(14,116,144,0.45)' }}>
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-                <rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="#00c6ff" strokeWidth="1.8"/>
-                <path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="#00c6ff" strokeWidth="1.8" strokeLinecap="round"/>
-                <circle cx="12" cy="16" r="1.5" fill="#00c6ff"/>
+                <rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="#0e7490" strokeWidth="1.8"/>
+                <path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="#0e7490" strokeWidth="1.8" strokeLinecap="round"/>
+                <circle cx="12" cy="16" r="1.5" fill="#0e7490"/>
               </svg>
             </div>
             <p className="text-white text-[16px] font-bold">Enter Transfer PIN</p>

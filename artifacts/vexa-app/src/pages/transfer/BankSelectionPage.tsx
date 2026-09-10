@@ -27,7 +27,7 @@ function BankLogo({ bank, size = 'normal' }: { bank: PaystackBank; size?: 'small
       {bank.logoUrl ? (
         <img src={bank.logoUrl} alt="" className={`${size === 'small' ? 'w-9 h-9' : 'w-10 h-10'} object-contain`} />
       ) : (
-        <span className="text-[#1267D6] text-[18px] font-bold">{bank.name.slice(0, 1)}</span>
+        <span className="text-[#0f4f5c] text-[18px] font-bold">{bank.name.slice(0, 1)}</span>
       )}
     </span>
   );
@@ -86,7 +86,7 @@ export default function BankSelectionPage() {
       <div className="flex-none bg-[#F8F8FA] px-4 pb-3" style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
         <div className="flex items-center justify-between h-12">
           <button onClick={() => navigate(returnTo)} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-[#EEF1F5]">
-            <ChevronLeft className="w-6 h-6 text-[#1267D6]" strokeWidth={2.2} />
+            <ChevronLeft className="w-6 h-6 text-[#0f4f5c]" strokeWidth={2.2} />
           </button>
           <span className="text-[17px] font-bold text-[#111]">Banks</span>
           <div className="w-9" />

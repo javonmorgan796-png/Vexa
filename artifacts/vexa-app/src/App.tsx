@@ -75,7 +75,7 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
     <div
       className="fixed inset-0 flex items-center justify-center z-50"
       style={{
-        backgroundColor: '#021029',
+        backgroundColor: '#0f4f5c',
         transition: 'opacity 0.6s ease',
         opacity: fadeOut ? 0 : 1,
         pointerEvents: fadeOut ? 'none' : 'auto',
@@ -90,8 +90,8 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
           100% { transform: scale(1);   opacity: 1; }
         }
         @keyframes vexaGlow {
-          0%, 100% { filter: drop-shadow(0 0 0px #00c6ff); }
-          50%       { filter: drop-shadow(0 0 22px #00c6ff) drop-shadow(0 0 40px #0072ff88); }
+          0%, 100% { filter: drop-shadow(0 0 0px #0e7490); }
+          50%       { filter: drop-shadow(0 0 22px #0e7490) drop-shadow(0 0 40px #0f4f5c88); }
         }
         @keyframes vexaShimmer {
           0%   { background-position: -200% center; }
@@ -103,7 +103,7 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
         }
         .vexa-tagline {
           animation: vexaPulse 1s cubic-bezier(.22,.61,.36,1) 0.3s both;
-          background: linear-gradient(90deg, #ffffff 0%, #00c6ff 40%, #ffffff 60%, #ffffff 100%);
+          background: linear-gradient(90deg, #ffffff 0%, #0e7490 40%, #ffffff 60%, #ffffff 100%);
           background-size: 200% auto;
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
@@ -423,7 +423,7 @@ function PasscodeLockScreen({ onUnlock, onSignOut }: { onUnlock: () => void; onS
   return (
     <div
       className="fixed inset-0 z-[9999] flex flex-col"
-      style={{ background: 'linear-gradient(170deg,#0b1730 0%,#05101f 60%,#020a18 100%)', fontFamily:"'Inter',sans-serif" }}
+      style={{ background: 'linear-gradient(170deg,#0f4f5c 0%,#083943 60%,#05242c 100%)', fontFamily:"'Inter',sans-serif" }}
     >
       {/* Header area */}
       <div className="flex flex-col items-center pt-16 pb-4 px-6">
@@ -1241,7 +1241,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
           <div className="flex items-center gap-3 bg-white/10 rounded-2xl px-4 py-3">
             <div
               className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-[14px] flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg,#1E3A6E,#2563EB)' }}
+              style={{ background: 'linear-gradient(135deg,#0f4f5c,#0e7490)' }}
             >
               {AGENT.avatar}
             </div>
@@ -1290,7 +1290,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
                   ) : (
                     <div
                       className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[11px]"
-                      style={{ background: 'linear-gradient(135deg,#1E3A6E,#2563EB)' }}
+                      style={{ background: 'linear-gradient(135deg,#0f4f5c,#0e7490)' }}
                     >
                       {AGENT.avatar}
                     </div>
@@ -1364,7 +1364,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
               ) : (
                 <div
                   className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[11px]"
-                  style={{ background: 'linear-gradient(135deg,#1E3A6E,#2563EB)' }}
+                  style={{ background: 'linear-gradient(135deg,#0f4f5c,#0e7490)' }}
                 >
                   {AGENT.avatar}
                 </div>
@@ -3021,7 +3021,7 @@ function SavingsPage() {
 
         {/* Summary Hero */}
         <div className="mx-4 mt-4 rounded-2xl overflow-hidden relative"
-          style={{ background: 'linear-gradient(135deg, #162353 0%, #1E3A6E 50%, #0a4fa3 100%)' }}>
+          style={{ background: 'linear-gradient(135deg, #0f4f5c 0%, #0e7490 50%, #083d49 100%)' }}>
           {/* Decorative arc */}
           <svg className="absolute right-0 top-0 opacity-10" width="160" height="120" viewBox="0 0 160 120">
             <circle cx="140" cy="20" r="90" fill="white"/>
@@ -3551,7 +3551,7 @@ function BudgetPage() {
     <PageShell title="Personal Budget" back="/">
       <div className="flex-1 overflow-y-auto px-4 py-4 pb-8" style={{ scrollbarWidth: 'none' }}>
         <div className="rounded-3xl p-5 text-white mb-4 overflow-hidden relative"
-          style={{ background: 'linear-gradient(135deg, #162353 0%, #1E3A8A 58%, #0369A1 100%)' }}>
+          style={{ background: 'linear-gradient(135deg, #0f4f5c 0%, #0e7490 58%, #086477 100%)' }}>
           <div className="absolute -right-10 -top-12 w-36 h-36 rounded-full border-[20px] border-white/10" />
           <div className="relative">
             <div className="flex items-center justify-between mb-5">
@@ -3762,7 +3762,7 @@ function CardPage() {
             style={{
               background: frozen
                 ? 'linear-gradient(135deg, #374151 0%, #1F2937 60%, #111827 100%)'
-                : 'linear-gradient(135deg, #162353 0%, #1E3A8A 45%, #1e40af 75%, #0369a1 100%)',
+                : 'linear-gradient(135deg, #0f4f5c 0%, #0e7490 45%, #086477 75%, #064b5a 100%)',
               minHeight: 200,
               transition: 'background 0.5s ease',
             }}>
@@ -4322,6 +4322,10 @@ function BusinessSecurityGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function BusinessBrandScope({ children }: { children: React.ReactNode }) {
+  return <div className="business-brand-scope contents">{children}</div>;
+}
+
 
 function Router() {
   return (
@@ -4363,36 +4367,38 @@ function Router() {
       <Route path="/cashback" component={CashbackPage} />
       <Route path="/referrals" component={ReferralsPage} />
       {/* Vexa Business — onboarding is unguarded; all other routes require security verification */}
-      <Route path="/business/onboarding" component={BusinessOnboarding} />
+      <Route path="/business/onboarding">
+        <BusinessBrandScope><BusinessOnboarding /></BusinessBrandScope>
+      </Route>
       <Route path="/business">
-        <BusinessSecurityGate><BusinessDashboard /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><BusinessDashboard /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/transfers">
-        <BusinessSecurityGate><BusinessTransfers /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><BusinessTransfers /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/receive">
-        <BusinessSecurityGate><BusinessTransfers /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><BusinessTransfers /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/bills">
-        <BusinessSecurityGate><BusinessBills /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><BusinessBills /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/employees">
-        <BusinessSecurityGate><EmployeeManagement /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><EmployeeManagement /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/payroll">
-        <BusinessSecurityGate><PayrollManagement /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><PayrollManagement /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/analytics">
-        <BusinessSecurityGate><BusinessAnalytics /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><BusinessAnalytics /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/settings">
-        <BusinessSecurityGate><BusinessSettings /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><BusinessSettings /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/transactions">
-        <BusinessSecurityGate><BusinessTransactionHistory /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><BusinessTransactionHistory /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/notifications">
-        <BusinessSecurityGate><NotificationsPage /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><NotificationsPage /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route component={NotFound} />
     </Switch>
