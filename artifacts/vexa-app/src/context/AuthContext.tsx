@@ -153,7 +153,7 @@ function androidModelFromUserAgent(userAgent: string): string {
 
 function formatAndroidDeviceName(model: string): string {
   const normalized = model.trim();
-  if (!normalized) return 'Android phone';
+  if (!normalized) return 'Android phone — model unavailable to browser';
   if (/^(pixel|nexus)/i.test(normalized)) return `Google ${normalized}`;
   if (/^(sm-|gt-|sch-|sgh-|samsung)/i.test(normalized)) return `Samsung ${normalized}`;
   if (/^(redmi|mi |mix |m[0-9]|220|230|240)/i.test(normalized)) return `Xiaomi ${normalized}`;
@@ -162,7 +162,12 @@ function formatAndroidDeviceName(model: string): string {
   if (/^(rmx|realme)/i.test(normalized)) return `realme ${normalized}`;
   if (/^(v[0-9]{3,4}|vivo)/i.test(normalized)) return `vivo ${normalized}`;
   if (/^(huawei|honor|jny|ele-|lya-|stk-)/i.test(normalized)) return `Huawei ${normalized}`;
-  return normalized;
+  if (/^(moto|xt[0-9]|motorola)/i.test(normalized)) return `Motorola ${normalized}`;
+  if (/^(xq-|so-|sony)/i.test(normalized)) return `Sony ${normalized}`;
+  if (/^(ta-|nokia)/i.test(normalized)) return `Nokia ${normalized}`;
+  if (/^(lenovo|tb-|za[0-9])/i.test(normalized)) return `Lenovo ${normalized}`;
+  if (/^(asus|zs[0-9])/i.test(normalized)) return `ASUS ${normalized}`;
+  return `Android ${normalized}`;
 }
 
 function isTabletUserAgent(userAgent: string): boolean {
@@ -200,22 +205,27 @@ async function getDeviceDetails(): Promise<DeviceDetails> {
   let deviceName: string;
   if (isIPhone) {
     // iOS intentionally does not expose the exact iPhone generation to web
-    // pages. This is the most specific name Safari permits.
-    deviceName = 'Apple iPhone';
+    // pages, so make the missing model explicit rather than showing a partial
+    // hardware name.
+    deviceName = 'Apple iPhone — model unavailable to browser';
   } else if (isIPad) {
-    deviceName = 'Apple iPad';
+    deviceName = 'Apple iPad — model unavailable to browser';
   } else if (isAndroid) {
     const androidModel = model || androidModelFromUserAgent(userAgent);
     deviceName = formatAndroidDeviceName(androidModel);
     if (isTablet && !/tablet/i.test(deviceName)) deviceName += ' tablet';
   } else if (/Windows/i.test(platform) || /Windows NT/i.test(userAgent)) {
-    deviceName = 'Windows PC';
+    deviceName = 'Microsoft Windows PC — model unavailable to browser';
   } else if (/macOS|Macintosh|Mac OS X/i.test(platform || userAgent)) {
-    deviceName = 'Apple Mac';
+    deviceName = 'Apple Mac — model unavailable to browser';
   } else if (/Linux/i.test(platform || userAgent)) {
-    deviceName = 'Linux computer';
+    deviceName = 'Linux computer — model unavailable to browser';
   } else {
-    deviceName = isTablet ? 'Tablet' : isMobile ? 'Mobile phone' : 'Computer';
+    deviceName = isTablet
+      ? 'Tablet — brand and model unavailable to browser'
+      : isMobile
+        ? 'Mobile phone — brand and model unavailable to browser'
+        : 'Computer — brand and model unavailable to browser';
   }
 
   return {
