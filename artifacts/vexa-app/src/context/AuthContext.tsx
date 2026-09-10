@@ -106,7 +106,8 @@ function getDeviceSessionId(): string {
 
 function getDeviceDetails() {
   const userAgent = typeof navigator === 'undefined' ? '' : navigator.userAgent;
-  const deviceType = /Mobi|Android|iPhone|iPad/i.test(userAgent) ? 'mobile' : 'desktop';
+  const isMobile = /Mobi|Android|iPhone|iPad/i.test(userAgent);
+  const deviceType = isMobile ? 'mobile' : 'desktop';
   const browser = /Edg\//.test(userAgent)
     ? 'Edge'
     : /Chrome\//.test(userAgent)
@@ -116,10 +117,25 @@ function getDeviceDetails() {
         : /Safari\//.test(userAgent) && !/Chrome\//.test(userAgent)
           ? 'Safari'
           : 'Browser';
+  const deviceName = /iPhone/i.test(userAgent)
+    ? 'iPhone'
+    : /iPad/i.test(userAgent)
+      ? 'iPad'
+      : /Android/i.test(userAgent)
+        ? 'Android device'
+        : /Windows NT/i.test(userAgent)
+          ? 'Windows PC'
+          : /Macintosh|Mac OS X/i.test(userAgent)
+            ? 'Mac'
+            : /Linux/i.test(userAgent)
+              ? 'Linux computer'
+              : isMobile
+                ? 'Mobile device'
+                : 'Computer';
   return {
     userAgent,
     deviceType,
-    deviceName: `${browser} · ${deviceType === 'mobile' ? 'Mobile' : 'Desktop'}`,
+    deviceName: `${browser} on ${deviceName}`,
   };
 }
 
