@@ -8,6 +8,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Smartphone,
+  Tablet,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -121,7 +122,11 @@ export default function ActiveDevicesPage() {
             </div>
           ) : (
             activeSessions.map((session, index) => {
-              const DeviceIcon = session.deviceType === 'mobile' ? Smartphone : Monitor;
+              const DeviceIcon = session.deviceType === 'tablet'
+                ? Tablet
+                : session.deviceType === 'mobile'
+                  ? Smartphone
+                  : Monitor;
               const isWorking = workingSession === session.sessionId;
               return (
                 <div

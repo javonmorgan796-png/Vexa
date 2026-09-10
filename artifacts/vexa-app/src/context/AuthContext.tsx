@@ -104,34 +104,120 @@ function getDeviceSessionId(): string {
   }
 }
 
-function getDeviceDetails() {
-  const userAgent = typeof navigator === 'undefined' ? '' : navigator.userAgent;
-  const isMobile = /Mobi|Android|iPhone|iPad/i.test(userAgent);
-  const deviceType = isMobile ? 'mobile' : 'desktop';
-  const browser = /Edg\//.test(userAgent)
+interface DeviceDetails {
+  userAgent: string;
+  deviceType: 'mobile' | 'tablet' | 'desktop';
+  deviceName: string;
+}
+
+interface BrowserUserAgentData {
+  mobile?: boolean;
+  model?: string;
+  platform?: string;
+  getHighEntropyValues?: (hints: string[]) => Promise<{
+    mobile?: boolean;
+    model?: string;
+    platform?: string;
+  }>;
+}
+
+function getBrowserName(userAgent: string): string {
+  return /Edg\//.test(userAgent)
     ? 'Edge'
-    : /Chrome\//.test(userAgent)
-      ? 'Chrome'
-      : /Firefox\//.test(userAgent)
-        ? 'Firefox'
-        : /Safari\//.test(userAgent) && !/Chrome\//.test(userAgent)
-          ? 'Safari'
-          : 'Browser';
-  const deviceName = /iPhone/i.test(userAgent)
-    ? 'iPhone'
-    : /iPad/i.test(userAgent)
-      ? 'iPad'
-      : /Android/i.test(userAgent)
-        ? 'Android device'
-        : /Windows NT/i.test(userAgent)
-          ? 'Windows PC'
-          : /Macintosh|Mac OS X/i.test(userAgent)
-            ? 'Mac'
-            : /Linux/i.test(userAgent)
-              ? 'Linux computer'
-              : isMobile
-                ? 'Mobile device'
-                : 'Computer';
+    : /OPR\//.test(userAgent)
+      ? 'Opera'
+      : /Chrome\//.test(userAgent)
+        ? 'Chrome'
+        : /Firefox\//.test(userAgent)
+          ? 'Firefox'
+          : /Safari\//.test(userAgent) && !/Chrome\//.test(userAgent)
+            ? 'Safari'
+            : 'Browser';
+}
+
+function cleanDeviceModel(model: string): string {
+  return model
+    .replace(/\s+Build\/.+$/i, '')
+    .replace(/\s+wv$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function androidModelFromUserAgent(userAgent: string): string {
+  const match = userAgent.match(/Android[^;)]*;\s*(?:[a-z]{2}(?:-[A-Z]{2})?;\s*)?([^;)]+?)(?:\s+Build\/[^;)]+)?\s*[;)]/i);
+  if (!match?.[1]) return '';
+  const model = cleanDeviceModel(match[1]);
+  if (!model || /wv|linux|mobile|tablet|en-us/i.test(model)) return '';
+  return model;
+}
+
+function formatAndroidDeviceName(model: string): string {
+  const normalized = model.trim();
+  if (!normalized) return 'Android phone';
+  if (/^(pixel|nexus)/i.test(normalized)) return `Google ${normalized}`;
+  if (/^(sm-|gt-|sch-|sgh-|samsung)/i.test(normalized)) return `Samsung ${normalized}`;
+  if (/^(redmi|mi |mix |m[0-9]|220|230|240)/i.test(normalized)) return `Xiaomi ${normalized}`;
+  if (/^(oneplus|a[0-9]{3,4}|in[0-9])/i.test(normalized)) return `OnePlus ${normalized}`;
+  if (/^(cph|p[a-z][0-9]|oppo)/i.test(normalized)) return `OPPO ${normalized}`;
+  if (/^(rmx|realme)/i.test(normalized)) return `realme ${normalized}`;
+  if (/^(v[0-9]{3,4}|vivo)/i.test(normalized)) return `vivo ${normalized}`;
+  if (/^(huawei|honor|jny|ele-|lya-|stk-)/i.test(normalized)) return `Huawei ${normalized}`;
+  return normalized;
+}
+
+function isTabletUserAgent(userAgent: string): boolean {
+  return /iPad|Tablet|Android(?!.*Mobile)/i.test(userAgent);
+}
+
+async function getDeviceDetails(): Promise<DeviceDetails> {
+  const browserNavigator = typeof navigator === 'undefined' ? null : navigator;
+  const userAgent = browserNavigator?.userAgent ?? '';
+  const userAgentData = (browserNavigator as (Navigator & { userAgentData?: BrowserUserAgentData }) | null)?.userAgentData;
+  let model = cleanDeviceModel(userAgentData?.model ?? '');
+  let platform = userAgentData?.platform ?? '';
+
+  // Chromium hides model/platform behind User-Agent Client Hints. Ask for the
+  // high-entropy values when supported so Android models are not reduced to
+  // the generic "Android device" label.
+  if (userAgentData?.getHighEntropyValues) {
+    try {
+      const details = await userAgentData.getHighEntropyValues(['model', 'platform']);
+      model = cleanDeviceModel(details.model ?? model);
+      platform = details.platform ?? platform;
+    } catch {
+      // The normal user agent fallback below still identifies most devices.
+    }
+  }
+
+  const isAndroid = /Android/i.test(userAgent) || /Android/i.test(platform);
+  const isIPhone = /iPhone/i.test(userAgent);
+  const isIPad = /iPad/i.test(userAgent) || (platform === 'macOS' && /Macintosh/i.test(userAgent) && (browserNavigator?.maxTouchPoints ?? 0) > 1);
+  const isMobile = Boolean(userAgentData?.mobile) || /Mobi|Android|iPhone/i.test(userAgent);
+  const isTablet = isIPad || isTabletUserAgent(userAgent);
+  const deviceType: DeviceDetails['deviceType'] = isTablet ? 'tablet' : isMobile ? 'mobile' : 'desktop';
+  const browser = getBrowserName(userAgent);
+
+  let deviceName: string;
+  if (isIPhone) {
+    // iOS intentionally does not expose the exact iPhone generation to web
+    // pages. This is the most specific name Safari permits.
+    deviceName = 'Apple iPhone';
+  } else if (isIPad) {
+    deviceName = 'Apple iPad';
+  } else if (isAndroid) {
+    const androidModel = model || androidModelFromUserAgent(userAgent);
+    deviceName = formatAndroidDeviceName(androidModel);
+    if (isTablet && !/tablet/i.test(deviceName)) deviceName += ' tablet';
+  } else if (/Windows/i.test(platform) || /Windows NT/i.test(userAgent)) {
+    deviceName = 'Windows PC';
+  } else if (/macOS|Macintosh|Mac OS X/i.test(platform || userAgent)) {
+    deviceName = 'Apple Mac';
+  } else if (/Linux/i.test(platform || userAgent)) {
+    deviceName = 'Linux computer';
+  } else {
+    deviceName = isTablet ? 'Tablet' : isMobile ? 'Mobile phone' : 'Computer';
+  }
+
   return {
     userAgent,
     deviceType,
@@ -191,7 +277,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const registerCurrentSession = useCallback(async (userId: string) => {
     const sessionId = getDeviceSessionId();
-    const details = getDeviceDetails();
+    const details = await getDeviceDetails();
     const { error } = await supabase.from('user_sessions').upsert({
       user_id: userId,
       session_id: sessionId,
@@ -572,9 +658,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      const details = await getDeviceDetails();
       await supabase
         .from('user_sessions')
-        .update({ last_active_at: new Date().toISOString() })
+        .update({
+          device_name: details.deviceName,
+          device_type: details.deviceType,
+          user_agent: details.userAgent,
+          last_active_at: new Date().toISOString(),
+        })
         .eq('user_id', user.id)
         .eq('session_id', sessionId)
         .is('revoked_at', null);
