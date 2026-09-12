@@ -38,6 +38,9 @@ async function paystackRequest(path: string) {
   if (!PAYSTACK_SECRET_KEY) {
     throw new Error("Paystack is not configured");
   }
+  if (!PAYSTACK_SECRET_KEY.startsWith("sk_")) {
+    throw new Error("Paystack secret key must start with sk_");
+  }
 
   const response = await fetch(`https://api.paystack.co${path}`, {
     headers: {
@@ -58,6 +61,43 @@ async function paystackRequest(path: string) {
 
   return body;
 }
+
+router.get("/paystack/resolve-account", async (req, res) => {
+  const accountNumber = String(req.query.accountNumber ?? "").replace(/\D/g, "");
+  const bankCode = String(req.query.bankCode ?? "").trim();
+
+  if (!/^\d{10}$/.test(accountNumber)) {
+    res.status(400).json({ message: "Enter a valid 10-digit account number" });
+    return;
+  }
+  if (!/^[A-Za-z0-9_-]{2,20}$/.test(bankCode)) {
+    res.status(400).json({ message: "Select a valid bank before verifying the account" });
+    return;
+  }
+
+  try {
+    const body = await paystackRequest(
+      `/bank/resolve?account_number=${encodeURIComponent(accountNumber)}&bank_code=${encodeURIComponent(bankCode)}`,
+    );
+    const data = body.data as { account_name?: unknown; account_number?: unknown } | null;
+    const accountName = typeof data?.account_name === "string" ? data.account_name.trim() : "";
+
+    if (!accountName) {
+      res.status(502).json({ message: "Paystack did not return an account name for those details" });
+      return;
+    }
+
+    res.json({
+      accountName,
+      accountNumber: typeof data?.account_number === "string" ? data.account_number : accountNumber,
+    });
+  } catch (error) {
+    req.log.error({ err: error }, "Paystack account resolve request failed");
+    res.status(502).json({
+      message: error instanceof Error ? error.message : "Could not verify the bank account",
+    });
+  }
+});
 
 async function fetchBanks() {
   if (cachedBanks && Date.now() - cachedBanks.fetchedAt < PAYSTACK_CACHE_TTL_MS) {

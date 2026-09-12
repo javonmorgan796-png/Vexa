@@ -1993,15 +1993,6 @@ interface PaystackBank {
   logoUrl: string | null;
 }
 
-// Existing demo account-name behavior remains unchanged; Paystack is used
-// here for the live destination-bank catalog requested by the transfer flow.
-const KNOWN_ACCOUNTS: Record<string, string> = {
-  '0000000001': 'Ada Okonkwo',
-  '0000000002': 'Emeka Nwosu',
-  '1234567890': 'Tunde Bakare',
-  '9067212032': 'Chibuzor Emmanuel Dike',
-};
-
 type TxStep = 'details' | 'amount' | 'create_pin' | 'pin' | 'success';
 
 interface TransferReceiptData {
@@ -2036,10 +2027,12 @@ function TransferPage() {
   const [step, setStep]           = useState<TxStep>('details');
   const initialBank = storedSelectedBank();
   const [bank, setBank]           = useState(initialBank?.name ?? '');
+  const [bankCode, setBankCode]   = useState(initialBank?.code ?? '');
   const [bankLogo, setBankLogo]   = useState<string | null>(initialBank?.logoUrl ?? null);
   const [acctNo, setAcctNo]       = useState('');
   const [resolvedName, setResolvedName] = useState('');
   const [lookingUp, setLookingUp] = useState(false);
+  const [lookupError, setLookupError] = useState('');
   const [amount, setAmount]       = useState('');
   const [narration, setNarration] = useState('');
   const [pin, setPin]             = useState('');
@@ -2053,22 +2046,43 @@ function TransferPage() {
   const [submitError, setSubmitError]         = useState('');
   const [receipt, setReceipt]                 = useState<TransferReceiptData | null>(null);
 
-  // Existing account-name lookup behavior for this transfer flow.
+  // Resolve the destination account through the API server so Paystack's
+  // secret key never reaches the browser.
   useEffect(() => {
-    if (acctNo.length === 10 && bank) {
-      setLookingUp(true);
+    const controller = new AbortController();
+    if (acctNo.length !== 10 || !bankCode) {
       setResolvedName('');
-      const t = setTimeout(() => {
-        const name = KNOWN_ACCOUNTS[acctNo] ?? 'Account Holder';
-        setResolvedName(name);
-        setLookingUp(false);
-      }, 1200);
-      return () => clearTimeout(t);
+      setLookupError('');
+      setLookingUp(false);
+      return () => controller.abort();
     }
+
+    setLookingUp(true);
     setResolvedName('');
-    setLookingUp(false);
-    return undefined;
-  }, [acctNo, bank]);
+    setLookupError('');
+    const timer = window.setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ accountNumber: acctNo, bankCode });
+        const response = await fetch(`/api/paystack/resolve-account?${params.toString()}`, {
+          signal: controller.signal,
+        });
+        const body = await response.json().catch(() => null) as { accountName?: string; message?: string } | null;
+        if (!response.ok) throw new Error(body?.message || 'Could not verify the bank account');
+        if (!body?.accountName) throw new Error('Paystack did not return an account name');
+        setResolvedName(body.accountName);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setLookupError(error instanceof Error ? error.message : 'Could not verify the bank account');
+      } finally {
+        if (!controller.signal.aborted) setLookingUp(false);
+      }
+    }, 400);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [acctNo, bankCode]);
 
   function handlePinKey(k: string) {
     if (pin.length < 4) setPin(p => p + k);
@@ -2460,6 +2474,9 @@ function TransferPage() {
             {!lookingUp && !resolvedName && submitError && (
               <span className="text-[12px] text-red-500">{submitError}</span>
             )}
+            {!lookingUp && !resolvedName && lookupError && (
+              <span className="text-[12px] text-red-500">{lookupError}</span>
+            )}
           </div>
         </div>
 
@@ -2467,9 +2484,9 @@ function TransferPage() {
 
       <div className="flex-none px-4 pb-6 pt-2 bg-[#F2F3F5]">
         <button
-          onClick={() => { if (bank && resolvedName) setStep('amount'); }}
-          disabled={!bank || !resolvedName}
-          className={`w-full h-[50px] rounded-xl text-[14px] font-semibold text-white transition-all ${bank && resolvedName ? 'bg-[#162353] active:opacity-80' : 'bg-[#162353]/40'}`}
+           onClick={() => { if (bank && bankCode && resolvedName) setStep('amount'); }}
+           disabled={!bank || !bankCode || !resolvedName}
+           className={`w-full h-[50px] rounded-xl text-[14px] font-semibold text-white transition-all ${bank && bankCode && resolvedName ? 'bg-[#162353] active:opacity-80' : 'bg-[#162353]/40'}`}
         >
           Continue
         </button>
