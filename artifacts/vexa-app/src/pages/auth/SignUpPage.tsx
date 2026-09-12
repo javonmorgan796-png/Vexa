@@ -90,7 +90,7 @@ export default function SignUpPage() {
   const [loading, setLoading] = useState(false);
 
   // OTP step
-  const [otpCode] = useState(() => String(Math.floor(100000 + Math.random() * 900000)));
+  const [otpRequestId, setOtpRequestId] = useState('');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [otpError, setOtpError] = useState('');
   const [otpLoading, setOtpLoading] = useState(false);
@@ -123,32 +123,79 @@ export default function SignUpPage() {
     return null;
   }
 
-  function handleFormSubmit(e: React.FormEvent) {
+  async function sendSignupOtp() {
+    const digits = phone.replace(/\D/g, '');
+    const nationalNumber = digits.startsWith('234') ? digits.slice(3) : digits.replace(/^0/, '');
+    const recipient = `${countryCode.code}${nationalNumber}`;
+    setOtpLoading(true);
+    setOtpError('');
+    try {
+      const response = await fetch('/api/termii/otp/send', {
+        method: 'POST',
+        headers: { accept: 'application/json', 'content-type': 'application/json' },
+        body: JSON.stringify({ purpose: 'signup', phone: recipient }),
+      });
+      const result = await response.json().catch(() => null) as { requestId?: string; message?: string } | null;
+      if (!response.ok || !result?.requestId) {
+        const message = result?.message ?? 'Could not send the verification code';
+        setOtpError(message);
+        setError(message);
+        return false;
+      }
+      setOtpRequestId(result.requestId);
+      setOtp(['', '', '', '', '', '']);
+      setResendTimer(30);
+      setError('');
+      return true;
+    } catch {
+      const message = 'Could not send the verification code. Please try again.';
+      setOtpError(message);
+      setError(message);
+      return false;
+    } finally {
+      setOtpLoading(false);
+    }
+  }
+
+  async function handleFormSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     const err = validate();
     if (err) { setError(err); return; }
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      setResendTimer(30);
+    const sent = await sendSignupOtp();
+    setLoading(false);
+    if (sent) {
       setStep('otp');
-    }, 800);
+    }
   }
 
-  function handleOtpSubmit(e: React.FormEvent) {
+  async function handleOtpSubmit(e: React.FormEvent) {
     e.preventDefault();
     setOtpError('');
     const entered = otp.join('');
     if (entered.length < 6) { setOtpError('Enter the 6-digit OTP'); return; }
-    if (entered !== otpCode) { setOtpError('Incorrect OTP. Please try again.'); return; }
+    if (!otpRequestId) { setOtpError('Request a new verification code first'); return; }
     setOtpLoading(true);
-    setTimeout(async () => {
+    try {
+      const response = await fetch('/api/termii/otp/verify', {
+        method: 'POST',
+        headers: { accept: 'application/json', 'content-type': 'application/json' },
+        body: JSON.stringify({ requestId: otpRequestId, code: entered }),
+      });
+      const verification = await response.json().catch(() => null) as { verified?: boolean; message?: string } | null;
+      if (!response.ok || verification?.verified !== true) {
+        setOtpError(verification?.message ?? 'Incorrect or expired verification code');
+        return;
+      }
       const res = await signUp(name.trim(), phone.trim(), passcode.join(''));
-      setOtpLoading(false);
       if (res.success) setStep('success');
       else setOtpError(res.error ?? 'Registration failed');
-    }, 1000);
+    } catch {
+      setOtpError('Could not verify the code. Please try again.');
+    } finally {
+      setOtpLoading(false);
+    }
   }
 
   /* ── Success screen ── */
@@ -191,25 +238,10 @@ export default function SignUpPage() {
           </p>
           <p className="text-[14px] font-semibold text-[#111] mb-6">{phone}</p>
 
-          {/* Demo OTP banner — tap to auto-fill */}
-          <button
-            type="button"
-            onClick={() => setOtp(otpCode.split(''))}
-            className="w-full mb-6 bg-[#F0F4FF] border-2 border-[#C7D7FF] rounded-xl px-4 py-3 text-left active:scale-[0.98] transition-transform"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[11px] text-[#162353] font-semibold mb-0.5">Demo OTP — tap to auto-fill</p>
-                <p className="text-[26px] font-extrabold text-[#162353] tracking-[0.25em] leading-tight">{otpCode}</p>
-                <p className="text-[10px] text-[#888] mt-1">This will be replaced with a real SMS API</p>
-              </div>
-              <div className="ml-4 flex-shrink-0 w-9 h-9 rounded-full bg-[#162353] flex items-center justify-center">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-              </div>
-            </div>
-          </button>
+          <div className="w-full mb-6 bg-[#F0F4FF] border border-[#C7D7FF] rounded-xl px-4 py-3">
+            <p className="text-[11px] text-[#162353] font-semibold">Verification code sent by SMS</p>
+            <p className="text-[10px] text-[#888] mt-1">The code expires shortly. Do not share it with anyone.</p>
+          </div>
 
           {otpError && (
             <div className="mb-5 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-600 font-medium">
@@ -241,7 +273,8 @@ export default function SignUpPage() {
               <p className="text-[12px] text-[#888]">Resend OTP in <span className="font-semibold text-[#162353]">{resendTimer}s</span></p>
             ) : (
               <button
-                onClick={() => { setResendTimer(30); setOtp(['', '', '', '', '', '']); setOtpError(''); }}
+                onClick={() => { void sendSignupOtp(); }}
+                disabled={otpLoading}
                 className="text-[12px] text-[#162353] font-semibold"
               >
                 Resend OTP

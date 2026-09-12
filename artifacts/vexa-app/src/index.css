@@ -2,6 +2,10 @@
 @import 'tw-animate-css';
 @plugin "@tailwindcss/typography";
 
+.passcode-digit {
+  -webkit-text-security: disc;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -68,6 +72,9 @@
 
 /* LIGHT MODE */
 :root {
+  --wallet-brand: #0f4f5c;
+  --business-brand: #0e7490;
+  --brand-cyan: #0e7490;
   --button-outline: rgba(0, 0, 0, 0.1);
   --badge-outline: rgba(0, 0, 0, 0.05);
 
@@ -85,15 +92,15 @@
   --sidebar: 0 0% 96%;
   --sidebar-foreground: 0 0% 7%;
   --sidebar-border: 0 0% 89%;
-  --sidebar-primary: 221 83% 53%;
+  --sidebar-primary: 190 72% 21%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 0 0% 90%;
   --sidebar-accent-foreground: 0 0% 7%;
-  --sidebar-ring: 221 83% 53%;
+  --sidebar-ring: 190 72% 21%;
   --popover: 0 0% 100%;
   --popover-foreground: 0 0% 7%;
   --popover-border: 0 0% 89%;
-  --primary: 221 83% 53%;
+  --primary: 190 72% 21%;
   --primary-foreground: 0 0% 100%;
   --secondary: 0 0% 94%;
   --secondary-foreground: 0 0% 7%;
@@ -104,7 +111,7 @@
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
   --input: 0 0% 89%;
-  --ring: 221 83% 53%;
+  --ring: 190 72% 21%;
   --chart-1: 12 76% 61%;
   --chart-2: 173 58% 39%;
   --chart-3: 197 37% 24%;
@@ -153,15 +160,15 @@
   --sidebar: 0 0% 96%;
   --sidebar-foreground: 0 0% 7%;
   --sidebar-border: 0 0% 89%;
-  --sidebar-primary: 221 83% 53%;
+  --sidebar-primary: 190 72% 21%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 0 0% 90%;
   --sidebar-accent-foreground: 0 0% 7%;
-  --sidebar-ring: 221 83% 53%;
+  --sidebar-ring: 190 72% 21%;
   --popover: 0 0% 100%;
   --popover-foreground: 0 0% 7%;
   --popover-border: 0 0% 89%;
-  --primary: 221 83% 53%;
+  --primary: 190 72% 21%;
   --primary-foreground: 0 0% 100%;
   --secondary: 0 0% 94%;
   --secondary-foreground: 0 0% 7%;
@@ -172,7 +179,7 @@
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
   --input: 0 0% 89%;
-  --ring: 221 83% 53%;
+  --ring: 190 72% 21%;
   --chart-1: 12 76% 61%;
   --chart-2: 173 58% 39%;
   --chart-3: 197 37% 24%;
@@ -261,4 +268,67 @@
   .active-elevate-2:active:not(.no-default-active-elevate)::after {
     background-color: var(--elevate-2);
   }
+}
+
+/* Brand migration for legacy inline Tailwind color classes. These selectors
+   keep the wallet and business palettes distinct while screens are gradually
+   moved to the shared theme tokens above. */
+[class*="bg-[#162353]"] {
+  background-color: var(--wallet-brand) !important;
+}
+
+[class*="text-[#162353]"] {
+  color: var(--wallet-brand) !important;
+}
+
+[class*="border-[#162353]"] {
+  border-color: var(--wallet-brand) !important;
+}
+
+[class*="bg-[#2563EB]"] {
+  background-color: var(--brand-cyan) !important;
+}
+
+[class*="text-[#2563EB]"] {
+  color: var(--brand-cyan) !important;
+}
+
+[class*="border-[#2563EB]"] {
+  border-color: var(--brand-cyan) !important;
+}
+
+[class*="bg-[#00c6ff]"] {
+  background-color: var(--business-brand) !important;
+}
+
+[class*="text-[#00c6ff]"] {
+  color: var(--business-brand) !important;
+}
+
+[class*="border-[#00c6ff]"] {
+  border-color: var(--business-brand) !important;
+}
+
+.business-brand-scope [class*="bg-[#162353]"] {
+  background-color: var(--business-brand) !important;
+}
+
+.business-brand-scope [class*="text-[#162353]"] {
+  color: var(--business-brand) !important;
+}
+
+.business-brand-scope [class*="border-[#162353]"] {
+  border-color: var(--business-brand) !important;
+}
+
+.business-brand-scope [class*="bg-[#2563EB]"] {
+  background-color: var(--business-brand) !important;
+}
+
+.business-brand-scope [class*="text-[#2563EB]"] {
+  color: var(--business-brand) !important;
+}
+
+.business-brand-scope [class*="border-[#2563EB]"] {
+  border-color: var(--business-brand) !important;
 }

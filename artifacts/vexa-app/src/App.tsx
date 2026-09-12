@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
+import { Route, Switch, Router as WouterRouter, useLocation, useRoute } from 'wouter';
 import {
   Headphones, Bell, Copy, EyeOff, Eye, Clock,
   ArrowLeftRight, PhoneCall, Tablet, Target,
   PiggyBank, BookOpen, FileText, LayoutGrid,
   Trophy, CreditCard, Home, ArrowDown, Settings,
-  ArrowUp, ChevronRight, Shield, Fingerprint, BriefcaseBusiness,
+  ArrowUp, ChevronRight, Shield, TriangleAlert, Fingerprint, BriefcaseBusiness,
   BellRing, HelpCircle, Info, LogOut, User, Lock,
   MessageCircle, Phone, Mail, ExternalLink, Star, ChevronDown,
   Send, X, Bot, CheckCheck, Wifi, Paperclip, ImagePlus, FileUp, FileText as FileIcon,
   Gift, Users, Share2, Percent, TrendingUp, BadgeCheck, ChevronUp,
+  WalletCards, Plus, Trash2, Check, Coins,
 } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
@@ -22,7 +23,14 @@ import ProfilePage from '@/pages/settings/ProfilePage';
 import LimitsPage from '@/pages/settings/LimitsPage';
 import ChangePinPage from '@/pages/settings/ChangePinPage';
 import ChangePasswordPage from '@/pages/settings/ChangePasswordPage';
-import { BusinessProvider, useBusiness } from '@/context/BusinessContext';
+import TwoFactorSettingsPage from '@/pages/settings/TwoFactorSettingsPage';
+import TwoFactorChallenge from '@/pages/settings/TwoFactorChallenge';
+import ActiveDevicesPage from '@/pages/settings/ActiveDevicesPage';
+import CryptoExchangePage from '@/pages/crypto/CryptoExchangePage';
+import { IncomingCryptoPage, OutgoingCryptoPage } from '@/pages/crypto/CryptoHistoryPage';
+import VexaTransferPage from '@/pages/transfer/VexaTransferPage';
+import BankSelectionPage from '@/pages/transfer/BankSelectionPage';
+import { BusinessProvider } from '@/context/BusinessContext';
 import BusinessDashboard from '@/pages/business/BusinessDashboard';
 import BusinessOnboarding from '@/pages/business/BusinessOnboarding';
 import BusinessAnalytics from '@/pages/business/BusinessAnalytics';
@@ -34,18 +42,32 @@ import EmployeeManagement from '@/pages/business/EmployeeManagement';
 import PayrollManagement from '@/pages/business/PayrollManagement';
 import { BusinessSecurityProvider, useBusinessSecurity } from '@/context/BusinessSecurityContext';
 import { UserDataProvider, useUserData } from '@/context/UserDataContext';
+import { VexaFinanceProvider } from '@/context/VexaFinanceContext';
+import type { AppTransaction } from '@/context/UserDataContext';
 import BusinessSecurityScreen from '@/pages/business/BusinessSecurityScreen';
 
 const queryClient = new QueryClient();
+
+function timeSince(iso: string): string {
+  const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes === 1) return '1 minute ago';
+  if (minutes < 60) return `${minutes} minutes ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours === 1) return '1 hour ago';
+  if (hours < 24) return `${hours} hours ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+}
 
 /* ─── Splash / Loading screen ───────────────────────────────────────── */
 function SplashScreen({ onDone }: { onDone: () => void }) {
   const [fadeOut, setFadeOut] = useState(false);
 
   useEffect(() => {
-    // Start fade-out after 2.2s, call onDone after fade completes
-    const fadeTimer = setTimeout(() => setFadeOut(true), 6800);
-    const doneTimer = setTimeout(() => onDone(), 7400);
+    // Keep the branded intro brief so returning users reach the app quickly.
+    const fadeTimer = setTimeout(() => setFadeOut(true), 650);
+    const doneTimer = setTimeout(() => onDone(), 1050);
     return () => { clearTimeout(fadeTimer); clearTimeout(doneTimer); };
   }, [onDone]);
 
@@ -53,7 +75,7 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
     <div
       className="fixed inset-0 flex items-center justify-center z-50"
       style={{
-        backgroundColor: '#021029',
+        backgroundColor: '#0f4f5c',
         transition: 'opacity 0.6s ease',
         opacity: fadeOut ? 0 : 1,
         pointerEvents: fadeOut ? 'none' : 'auto',
@@ -68,8 +90,8 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
           100% { transform: scale(1);   opacity: 1; }
         }
         @keyframes vexaGlow {
-          0%, 100% { filter: drop-shadow(0 0 0px #00c6ff); }
-          50%       { filter: drop-shadow(0 0 22px #00c6ff) drop-shadow(0 0 40px #0072ff88); }
+          0%, 100% { filter: drop-shadow(0 0 0px #0e7490); }
+          50%       { filter: drop-shadow(0 0 22px #0e7490) drop-shadow(0 0 40px #0f4f5c88); }
         }
         @keyframes vexaShimmer {
           0%   { background-position: -200% center; }
@@ -81,7 +103,7 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
         }
         .vexa-tagline {
           animation: vexaPulse 1s cubic-bezier(.22,.61,.36,1) 0.3s both;
-          background: linear-gradient(90deg, #ffffff 0%, #00c6ff 40%, #ffffff 60%, #ffffff 100%);
+          background: linear-gradient(90deg, #ffffff 0%, #0e7490 40%, #ffffff 60%, #ffffff 100%);
           background-size: 200% auto;
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
@@ -144,8 +166,10 @@ const services = [
   { label: 'Data',      Icon: Tablet          },
   { label: 'Betting',   Icon: Target          },
   { label: 'Savings',   Icon: PiggyBank       },
+  { label: 'Budget',    Icon: WalletCards     },
   { label: 'Education', Icon: BookOpen        },
   { label: 'Statement', Icon: FileText        },
+  { label: 'Crypto',    Icon: Coins           },
   { label: 'More',      Icon: LayoutGrid      },
 ];
 
@@ -399,7 +423,7 @@ function PasscodeLockScreen({ onUnlock, onSignOut }: { onUnlock: () => void; onS
   return (
     <div
       className="fixed inset-0 z-[9999] flex flex-col"
-      style={{ background: 'linear-gradient(170deg,#0b1730 0%,#05101f 60%,#020a18 100%)', fontFamily:"'Inter',sans-serif" }}
+      style={{ background: 'linear-gradient(170deg,#0f4f5c 0%,#083943 60%,#05242c 100%)', fontFamily:"'Inter',sans-serif" }}
     >
       {/* Header area */}
       <div className="flex flex-col items-center pt-16 pb-4 px-6">
@@ -503,14 +527,36 @@ function PasscodeLockScreen({ onUnlock, onSignOut }: { onUnlock: () => void; onS
   );
 }
 
+function TwoFactorWarningCard({ onEnable }: { onEnable: () => void }) {
+  const { user } = useAuth();
+  if (!user || user.twoFactorEnabled) return null;
+  return (
+    <div className="mx-3 mt-3">
+      <button
+        onClick={onEnable}
+        className="w-full flex items-center gap-2.5 text-left bg-[#FFF8E8] border border-[#F3D58B] rounded-xl px-3 py-2"
+      >
+        <div className="w-8 h-8 rounded-full bg-[#FDE7A9] flex items-center justify-center shrink-0">
+          <TriangleAlert className="w-4 h-4 text-[#9A6800]" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-bold text-[#6F4A00]">Secure your account</p>
+          <p className="text-[10px] text-[#8A6A2C] mt-0.5">Enable 2FA to protect your balance</p>
+        </div>
+        <ChevronRight className="w-3.5 h-3.5 text-[#9A6800] shrink-0" />
+      </button>
+    </div>
+  );
+}
+
 function MoniepointHome() {
   const [balanceHidden, setBalanceHidden] = useState(false);
   const [, navigate] = useLocation();
   const { user, profilePhoto } = useAuth();
-  const { balance, cashbackTotal, referralTotalEarned, unreadNotificationsCount, transactions } = useUserData();
+  const { balance, lastBalanceUpdatedAt, cashbackTotal, referralTotalEarned, unreadNotificationsCount, transactions } = useUserData();
   const initials = (user?.name ?? 'C').split(' ').map((p: string) => p[0]).slice(0, 2).join('').toUpperCase();
-  const displayName = user?.name ?? 'Chibuzor Emmanuel Dike';
-  const accountNumber = user?.accountNumber ?? '9067212032';
+  const displayName = user?.name ?? 'Your account';
+  const accountNumber = user?.accountNumber ?? '—';
   return (
     <div className="fixed inset-0 bg-[#F2F3F5]">
       <div
@@ -554,6 +600,8 @@ function MoniepointHome() {
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
 
+          <TwoFactorWarningCard onEnable={() => navigate('/two-factor')} />
+
           {/* ── Account card ────────────────────────────────────────── */}
           {/* mx 12px, mt 12px, rounded-2xl (20px), p-5 */}
           <div className="mx-3 mt-3 bg-[#162353] rounded-[20px] px-4 py-3 text-white relative overflow-hidden">
@@ -590,7 +638,7 @@ function MoniepointHome() {
 
             {/* last updated */}
             <p className="text-[11px] text-white font-normal mb-3">
-              Last updated 4 minutes ago
+              Last updated {lastBalanceUpdatedAt ? timeSince(lastBalanceUpdatedAt) : 'updating…'}
             </p>
 
             {/* action buttons — content-width pills, left-aligned */}
@@ -619,8 +667,8 @@ function MoniepointHome() {
               {services.map(({ label, Icon }) => {
                 const routes: Record<string,string> = {
                   Transfer:'/transfer', Airtime:'/airtime', Data:'/data',
-                  Betting:'/betting', Savings:'/savings', Education:'/education',
-                  Statement:'/statement', More:'/more',
+                  Betting:'/betting', Savings:'/savings', Education:'/education', Crypto:'/crypto',
+                  Budget:'/budget', Statement:'/statement', More:'/more',
                 };
                 return (
                   <button
@@ -822,7 +870,12 @@ function HistoryPage() {
           </div>
         )}
         {filtered.map(tx => (
-          <div key={tx.id} className="bg-white rounded-2xl px-4 py-3.5 border border-[#F0F0F0] flex items-center gap-3">
+          <button
+            key={tx.id}
+            onClick={() => navigate(`/receipt/${tx.id}`)}
+            className="w-full text-left bg-white rounded-2xl px-4 py-3.5 border border-[#F0F0F0] flex items-center gap-3 hover:border-[#C7D7FF] active:bg-[#F8F9FB] transition-colors"
+            aria-label={`View receipt for ${tx.name}`}
+          >
             <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${tx.type === 'in' ? 'bg-[#DCFCE7]' : 'bg-[#FEE2E2]'}`}>
               {tx.type === 'in'
                 ? <ArrowDown className="w-4 h-4 text-[#16A34A]" strokeWidth={2.5} />
@@ -835,7 +888,8 @@ function HistoryPage() {
             <span className={`text-[13px] font-bold shrink-0 ${tx.type === 'in' ? 'text-[#16A34A]' : 'text-[#DC2626]'}`}>
               {tx.type === 'in' ? '+' : '-'}₦{tx.amount}
             </span>
-          </div>
+            <ChevronRight className="w-4 h-4 text-[#B5BBC8] shrink-0" />
+          </button>
         ))}
       </div>
     </div>
@@ -847,7 +901,7 @@ type SettingsSection = { heading: string; items: { icon: React.ReactNode; label:
 
 function SettingsPage() {
   const [, navigate] = useLocation();
-  const { user, signOut, profilePhoto } = useAuth();
+  const { user, loading, signOut, profilePhoto } = useAuth();
   const [biometrics, setBiometrics] = useState(true);
   const [notifs, setNotifs] = useState(true);
   const [passcodeOnReturn, setPasscodeOnReturn] = useState(() =>
@@ -860,9 +914,9 @@ function SettingsPage() {
     localStorage.setItem(PASSCODE_RETURN_KEY, String(next));
   }
 
-  const userName = user?.name ?? 'Chibuzor Emmanuel Dike';
-  const accountNumber = user?.accountNumber ?? '9067212032';
-  const levelLabel = user ? `Level ${user.level} · ${user.verified ? 'Verified' : 'Unverified'}` : 'Level 3 · Verified';
+  const userName = user?.name ?? 'Your account';
+  const accountNumber = user?.accountNumber ?? '—';
+  const levelLabel = user ? `Level ${user.level} · ${user.verified ? 'Verified' : 'Unverified'}` : 'Loading…';
   const initials = userName.split(' ').map((p: string) => p[0]).slice(0, 2).join('').toUpperCase();
 
   const sections: SettingsSection[] = [
@@ -879,7 +933,9 @@ function SettingsPage() {
         { icon: <Lock className="w-5 h-5" />,        label: 'Change Transaction PIN', action: () => navigate('/change-pin') },
         { icon: <Fingerprint className="w-5 h-5" />, label: 'Biometric Login',        sub: biometrics ? 'On' : 'Off' },
         { icon: <Lock className="w-5 h-5" />,        label: 'Change Password',        action: () => navigate('/change-password') },
-        { icon: <Shield className="w-5 h-5" />,      label: 'Passcode on App Return', sub: passcodeOnReturn ? 'On · locks when you leave' : 'Off' },
+         { icon: <Tablet className="w-5 h-5" />,      label: 'Active Devices',         sub: 'Manage signed-in sessions', action: () => navigate('/active-devices') },
+         { icon: <Shield className="w-5 h-5" />,      label: 'Passcode on App Return', sub: passcodeOnReturn ? 'On · locks when you leave' : 'Off' },
+         { icon: <i className="fa-solid fa-key text-[17px]" aria-hidden="true" />, label: 'Two-Factor Authentication', sub: user?.twoFactorEnabled ? 'Enabled via SMS' : 'Off', action: () => navigate('/two-factor') },
       ],
     },
     {
@@ -1185,7 +1241,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
           <div className="flex items-center gap-3 bg-white/10 rounded-2xl px-4 py-3">
             <div
               className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-[14px] flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg,#1E3A6E,#2563EB)' }}
+              style={{ background: 'linear-gradient(135deg,#0f4f5c,#0e7490)' }}
             >
               {AGENT.avatar}
             </div>
@@ -1234,7 +1290,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
                   ) : (
                     <div
                       className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[11px]"
-                      style={{ background: 'linear-gradient(135deg,#1E3A6E,#2563EB)' }}
+                      style={{ background: 'linear-gradient(135deg,#0f4f5c,#0e7490)' }}
                     >
                       {AGENT.avatar}
                     </div>
@@ -1308,7 +1364,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
               ) : (
                 <div
                   className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[11px]"
-                  style={{ background: 'linear-gradient(135deg,#1E3A6E,#2563EB)' }}
+                  style={{ background: 'linear-gradient(135deg,#0f4f5c,#0e7490)' }}
                 >
                   {AGENT.avatar}
                 </div>
@@ -1790,6 +1846,7 @@ function AboutVexaPage() {
 /* ─── Deposit Page ───────────────────────────────────────────────────── */
 function DepositPage() {
   const [, navigate] = useLocation();
+  const { user } = useAuth();
   const [amount, setAmount] = useState('');
 
   function handleAmountChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -1804,8 +1861,8 @@ function DepositPage() {
   }
   const [copied, setCopied] = useState(false);
 
-  const accountNumber = '9067212032';
-  const accountName   = 'Chibuzor Emmanuel Dike';
+  const accountNumber = user?.accountNumber ?? '—';
+  const accountName   = user?.name ?? 'Your account';
   const bankName      = 'Vexa Bank';
 
   function copyAccount() {
@@ -1929,13 +1986,15 @@ function DepositPage() {
 }
 
 /* ─── Transfer Page ──────────────────────────────────────────────────── */
-const BANKS = [
-  'Access Bank', 'First Bank', 'GTBank', 'Zenith Bank', 'UBA',
-  'Fidelity Bank', 'Sterling Bank', 'Polaris Bank', 'Kuda Bank',
-  'Opay', 'PalmPay', 'Moniepoint MFB', 'Vexa Bank',
-];
+interface PaystackBank {
+  name: string;
+  slug: string;
+  code: string;
+  logoUrl: string | null;
+}
 
-// Simulated account lookup: known acc numbers → names
+// Existing demo account-name behavior remains unchanged; Paystack is used
+// here for the live destination-bank catalog requested by the transfer flow.
 const KNOWN_ACCOUNTS: Record<string, string> = {
   '0000000001': 'Ada Okonkwo',
   '0000000002': 'Emeka Nwosu',
@@ -1945,6 +2004,15 @@ const KNOWN_ACCOUNTS: Record<string, string> = {
 
 type TxStep = 'details' | 'amount' | 'create_pin' | 'pin' | 'success';
 
+interface TransferReceiptData {
+  transaction: AppTransaction;
+  recipientName: string;
+  bank: string;
+  accountNumber: string;
+  senderName: string;
+  senderAccountNumber: string;
+}
+
 function formatAmt(raw: string) {
   const clean = raw.replace(/,/g, '').replace(/[^0-9.]/g, '');
   const [intP, ...rest] = clean.split('.');
@@ -1952,14 +2020,23 @@ function formatAmt(raw: string) {
   return intP.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + dec;
 }
 
+function storedSelectedBank(): PaystackBank | null {
+  try {
+    const value = JSON.parse(sessionStorage.getItem('vexa.selectedBank') ?? 'null') as PaystackBank | null;
+    return value?.name && value.code ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 function TransferPage() {
   const [, navigate] = useLocation();
   const { user, setInitialTransferPin } = useAuth();
-  const { debitBalance, addTransaction, addNotification } = useUserData();
+  const { debitBalance, creditBalance, addTransaction, addNotification } = useUserData();
   const [step, setStep]           = useState<TxStep>('details');
-  const [bank, setBank]           = useState('');
-  const [showBankList, setShowBankList] = useState(false);
-  const [bankSearch, setBankSearch] = useState('');
+  const initialBank = storedSelectedBank();
+  const [bank, setBank]           = useState(initialBank?.name ?? '');
+  const [bankLogo, setBankLogo]   = useState<string | null>(initialBank?.logoUrl ?? null);
   const [acctNo, setAcctNo]       = useState('');
   const [resolvedName, setResolvedName] = useState('');
   const [lookingUp, setLookingUp] = useState(false);
@@ -1973,8 +2050,10 @@ function TransferPage() {
   const [confirmPinEntry, setConfirmPinEntry] = useState('');
   const [createPinError, setCreatePinError]   = useState('');
   const [savingPin, setSavingPin]             = useState(false);
+  const [submitError, setSubmitError]         = useState('');
+  const [receipt, setReceipt]                 = useState<TransferReceiptData | null>(null);
 
-  // Simulate account name lookup when 10-digit acc entered + bank chosen
+  // Existing account-name lookup behavior for this transfer flow.
   useEffect(() => {
     if (acctNo.length === 10 && bank) {
       setLookingUp(true);
@@ -1987,6 +2066,7 @@ function TransferPage() {
       return () => clearTimeout(t);
     }
     setResolvedName('');
+    setLookingUp(false);
     return undefined;
   }, [acctNo, bank]);
 
@@ -2004,24 +2084,50 @@ function TransferPage() {
       return;
     }
     setProcessing(true);
+    setSubmitError('');
     const amtValue = parseFloat(amount.replace(/,/g, '') || '0');
-    await debitBalance(amtValue);
-    await addTransaction({
+    const debited = await debitBalance(amtValue);
+    if (!debited) {
+      setProcessing(false);
+      setSubmitError('Transfer could not be completed. Please check your balance and try again.');
+      setPin('');
+      return;
+    }
+
+    const savedTransaction = await addTransaction({
       type: 'out', name: resolvedName, date: '',
       amount, note: narration || 'Transfer', raw_amount: amtValue,
+      recipient_bank: bank,
+      recipient_account: acctNo,
+      sender_name: user?.name,
+      sender_account: user?.accountNumber,
     });
+    if (!savedTransaction) {
+      // Restore the balance if the transaction could not be persisted. This
+      // keeps the receipt and transaction history aligned with the balance.
+      await creditBalance(amtValue);
+      setProcessing(false);
+      setSubmitError('We could not save this transfer. Your balance was not changed. Please try again.');
+      setPin('');
+      return;
+    }
+
     await addNotification({
       type: 'debit',
       title: 'Transfer Successful',
       body: `Transfer of ₦${amount} to ${resolvedName} (${bank}) was successful.`,
     });
     setProcessing(false);
+    setReceipt({
+      transaction: savedTransaction,
+      recipientName: resolvedName,
+      bank,
+      accountNumber: acctNo,
+      senderName: user?.name ?? 'Vexa account',
+      senderAccountNumber: user?.accountNumber ?? '—',
+    });
     setStep('success');
   }
-
-  const filteredBanks = BANKS.filter(b =>
-    b.toLowerCase().includes(bankSearch.toLowerCase())
-  );
 
   const amtNum = parseFloat(amount.replace(/,/g, '') || '0');
 
@@ -2034,45 +2140,17 @@ function TransferPage() {
   }
 
   /* ── STEP: SUCCESS ─────────────────────────────────── */
-  if (step === 'success') {
+  if (step === 'success' && receipt) {
     return (
-      <div className="fixed inset-0 bg-white flex flex-col items-center justify-center px-6" style={{ fontFamily: "'Inter', sans-serif" }}>
-        <div className="flex flex-col items-center gap-5 w-full max-w-xs">
-          {/* Green check circle */}
-          <div className="w-20 h-20 rounded-full bg-green-50 flex items-center justify-center">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
-          </div>
-          <div className="text-center">
-            <p className="text-[20px] font-bold text-[#111] mb-1">Transfer Successful</p>
-            <p className="text-[13px] text-[#888]">You sent</p>
-            <p className="text-[28px] font-extrabold text-[#111] my-1">₦{amount}</p>
-            <p className="text-[13px] text-[#555]">to <span className="font-semibold">{resolvedName}</span></p>
-            <p className="text-[12px] text-[#888] mt-0.5">{bank} · {acctNo}</p>
-          </div>
-          {/* Receipt card */}
-          <div className="w-full bg-[#F8F9FB] rounded-2xl p-4 text-[12px] text-[#555] space-y-2 border border-[#F0F0F0]">
-            {[
-              ['Date', new Date().toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' })],
-              ['Reference', 'VX' + Date.now().toString().slice(-8)],
-              ['Narration', narration || 'Transfer'],
-              ['Status', '✅ Completed'],
-            ].map(([k, v]) => (
-              <div key={k} className="flex justify-between">
-                <span className="text-[#888]">{k}</span>
-                <span className="font-semibold text-[#111] text-right max-w-[55%]">{v}</span>
-              </div>
-            ))}
-          </div>
-          <button
-            onClick={() => navigate('/')}
-            className="w-full bg-[#162353] rounded-xl h-[50px] text-[14px] font-semibold text-white"
-          >
-            Back to Home
-          </button>
-        </div>
-      </div>
+      <TransferReceipt
+        receipt={receipt}
+        onHome={() => navigate('/')}
+        onTransferAgain={() => {
+          setReceipt(null);
+          setPin('');
+          setStep('details');
+        }}
+      />
     );
   }
 
@@ -2189,7 +2267,11 @@ function TransferPage() {
                 <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${i < pin.length ? 'bg-[#162353] border-[#162353]' : 'border-[#CBD5E1] bg-transparent'}`} />
               ))}
             </div>
-            {pinError && <p className="text-[12px] text-red-500 -mt-2">Incorrect PIN. Please try again.</p>}
+            {(pinError || submitError) && (
+              <p className="text-[12px] text-red-500 -mt-2 text-center">
+                {submitError || 'Incorrect PIN. Please try again.'}
+              </p>
+            )}
           </div>
 
           {/* Keypad */}
@@ -2315,6 +2397,7 @@ function TransferPage() {
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         </button>
         <span className="text-[16px] font-bold text-[#111]">Transfer</span>
+        <button onClick={() => navigate('/vexa-transfer')} className="ml-auto rounded-full bg-[#EAF2FF] text-[#2563EB] px-3 py-1.5 text-[10px] font-bold">Vexa user</button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4" style={{ scrollbarWidth: 'none' }}>
@@ -2323,40 +2406,31 @@ function TransferPage() {
         <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
           <p className="text-[12px] font-semibold text-[#444] mb-3">Select Bank</p>
           <button
-            onClick={() => setShowBankList(v => !v)}
-            className="w-full flex items-center justify-between border border-[#E0E0E0] rounded-xl px-4 py-3 focus:border-[#2563EB] transition-colors"
+            onClick={() => navigate('/bank-selection?returnTo=/transfer')}
+            className="w-full flex items-center justify-between border border-[#E0E0E0] rounded-xl px-4 py-3 focus:border-[#2563EB] transition-colors disabled:opacity-60"
           >
-            <span className={`text-[14px] ${bank ? 'text-[#111] font-semibold' : 'text-[#CCC]'}`}>
-              {bank || 'Choose bank…'}
+            <span className="flex min-w-0 items-center gap-2">
+              {bank ? (
+                <span className="w-7 h-7 rounded-full bg-[#F2F3F5] flex items-center justify-center overflow-hidden shrink-0">
+                  {bankLogo ? (
+                    <img
+                      src={bankLogo}
+                      alt=""
+                      className="w-6 h-6 object-contain"
+                    />
+                  ) : (
+                    <span className="text-[10px] font-bold text-[#162353]">{bank.slice(0, 1)}</span>
+                  )}
+                </span>
+              ) : null}
+              <span className={`truncate text-[14px] ${bank ? 'text-[#111] font-semibold' : 'text-[#CCC]'}`}>
+                {bank || 'Choose bank…'}
+              </span>
             </span>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points={showBankList ? '18 15 12 9 6 15' : '6 9 12 15 18 9'}/>
+              <polyline points="6 9 12 15 18 9"/>
             </svg>
           </button>
-
-          {showBankList && (
-            <div className="mt-2 border border-[#E0E0E0] rounded-xl overflow-hidden">
-              <div className="px-3 py-2 border-b border-[#F0F0F0]">
-                <input
-                  type="text" placeholder="Search bank…"
-                  value={bankSearch} onChange={e => setBankSearch(e.target.value)}
-                  className="w-full text-[13px] outline-none placeholder:text-[#CCC]"
-                  autoFocus
-                />
-              </div>
-              <div className="max-h-[180px] overflow-y-auto">
-                {filteredBanks.map(b => (
-                  <button key={b} onClick={() => { setBank(b); setShowBankList(false); setBankSearch(''); }}
-                    className={`w-full text-left px-4 py-3 text-[13px] hover:bg-[#F8F9FB] transition-colors border-b border-[#F8F9FB] last:border-0 ${bank === b ? 'font-semibold text-[#162353]' : 'text-[#333]'}`}>
-                    {b}
-                  </button>
-                ))}
-                {filteredBanks.length === 0 && (
-                  <p className="px-4 py-3 text-[12px] text-[#888]">No banks found</p>
-                )}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Account number */}
@@ -2383,29 +2457,9 @@ function TransferPage() {
                 <span className="text-[13px] font-semibold text-[#16A34A]">{resolvedName}</span>
               </div>
             )}
-          </div>
-        </div>
-
-        {/* Recent recipients */}
-        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
-          <p className="text-[12px] font-semibold text-[#444] mb-3">Recent Recipients</p>
-          <div className="space-y-3">
-            {[
-              { name: 'Ada Okonkwo',  acct: '0000000001', bank: 'Zenith Bank'  },
-              { name: 'Emeka Nwosu',  acct: '0000000002', bank: 'GTBank'       },
-              { name: 'Tunde Bakare', acct: '1234567890', bank: 'Access Bank'  },
-            ].map(r => (
-              <button key={r.acct} onClick={() => { setBank(r.bank); setAcctNo(r.acct); setResolvedName(r.name); }}
-                className="w-full flex items-center gap-3 hover:bg-[#F8F9FB] rounded-xl p-2 -mx-2 transition-colors">
-                <div className="w-9 h-9 rounded-full bg-[#EEF2FF] flex items-center justify-center text-[#2563EB] font-bold text-[13px] shrink-0">
-                  {r.name.charAt(0)}
-                </div>
-                <div className="text-left">
-                  <p className="text-[13px] font-semibold text-[#111]">{r.name}</p>
-                  <p className="text-[11px] text-[#888]">{r.acct} · {r.bank}</p>
-                </div>
-              </button>
-            ))}
+            {!lookingUp && !resolvedName && submitError && (
+              <span className="text-[12px] text-red-500">{submitError}</span>
+            )}
           </div>
         </div>
 
@@ -2421,6 +2475,204 @@ function TransferPage() {
         </button>
       </div>
     </div>
+  );
+}
+
+function TransferReceipt({
+  receipt,
+  onHome,
+  onTransferAgain,
+}: {
+  receipt: TransferReceiptData;
+  onHome: () => void;
+  onTransferAgain: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const { transaction, recipientName, bank, accountNumber, senderName, senderAccountNumber } = receipt;
+  const reference = `VX${transaction.id.replace(/-/g, '').slice(0, 10).toUpperCase()}`;
+  const shareText = [
+    'Vexa Transfer Receipt',
+    `Status: Completed`,
+    `Amount: ₦${transaction.amount}`,
+    `Recipient: ${recipientName}`,
+    `Bank: ${bank}`,
+    `Account: ${accountNumber}`,
+    `Reference: ${reference}`,
+    `Date: ${transaction.date}`,
+  ].join('\n');
+
+  async function shareReceipt() {
+    if (navigator.share) {
+      await navigator.share({
+        title: 'Vexa Transfer Receipt',
+        text: shareText,
+      }).catch(() => {});
+      return;
+    }
+    await navigator.clipboard?.writeText(shareText).catch(() => {});
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function copyReference() {
+    await navigator.clipboard?.writeText(reference).catch(() => {});
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          .vexa-receipt, .vexa-receipt * { visibility: visible !important; }
+          .vexa-receipt { position: absolute; inset: 0; background: white !important; }
+          .receipt-actions, .receipt-header-action { display: none !important; }
+        }
+      `}</style>
+
+      <div className="receipt-header-action flex-none flex items-center justify-between px-4 pb-3 bg-white border-b border-[#E8EBF0]"
+        style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
+        <button onClick={onHome} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100" aria-label="Back to home">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 5l-7 7 7 7"/>
+          </svg>
+        </button>
+        <span className="text-[16px] font-bold text-[#111]">Transfer Receipt</span>
+        <button onClick={() => window.print()} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100" aria-label="Print receipt">
+          <FileText className="w-[18px] h-[18px] text-[#162353]" />
+        </button>
+      </div>
+
+      <div className="vexa-receipt flex-1 overflow-y-auto px-4 py-6" style={{ scrollbarWidth: 'none' }}>
+        <div className="max-w-md mx-auto">
+          <div className="flex flex-col items-center text-center mb-5">
+            <div className="w-[72px] h-[72px] rounded-full bg-green-100 flex items-center justify-center mb-4">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            </div>
+            <p className="text-[21px] font-extrabold text-[#111]">Transfer Successful</p>
+            <p className="text-[13px] text-[#888] mt-1">Your money has been sent securely</p>
+          </div>
+
+          <div className="bg-[#162353] rounded-2xl px-5 py-6 text-center text-white shadow-sm">
+            <p className="text-[11px] text-white/60 uppercase tracking-wider">Amount sent</p>
+            <p className="text-[32px] font-extrabold mt-1">₦{transaction.amount}</p>
+            <div className="inline-flex items-center gap-1.5 bg-green-400/15 rounded-full px-3 py-1 mt-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-300" />
+              <span className="text-[11px] font-semibold text-green-200">Completed</span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-[#E8EBF0] mt-4 overflow-hidden">
+            <div className="px-5 py-4 border-b border-[#F0F0F0]">
+              <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide">Recipient</p>
+              <div className="flex items-center gap-3 mt-3">
+                <div className="w-11 h-11 rounded-full bg-[#EEF2FF] flex items-center justify-center text-[#2563EB] text-[16px] font-bold">
+                  {recipientName.charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[14px] font-bold text-[#111] truncate">{recipientName}</p>
+                  <p className="text-[12px] text-[#888] mt-0.5">{bank} · {accountNumber}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 py-4 space-y-3 text-[12px]">
+              {[
+                ['From', `${senderName} · ${senderAccountNumber}`],
+                ['Date', transaction.date],
+                ['Narration', transaction.note || 'Transfer'],
+              ].map(([label, value]) => (
+                <div key={label} className="flex items-start justify-between gap-4">
+                  <span className="text-[#888]">{label}</span>
+                  <span className="font-semibold text-[#222] text-right max-w-[68%] break-words">{value}</span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between gap-4 pt-3 border-t border-[#F0F0F0]">
+                <span className="text-[#888]">Reference</span>
+                <button onClick={copyReference} className="flex items-center gap-1.5 font-semibold text-[#2563EB]" title="Copy reference">
+                  <span>{reference}</span>
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {copied && (
+            <p className="text-center text-[11px] text-green-600 font-semibold mt-3">Copied to clipboard</p>
+          )}
+
+          <div className="receipt-actions grid grid-cols-2 gap-3 mt-5">
+            <button onClick={shareReceipt} className="h-[48px] rounded-xl border border-[#D9E0EF] bg-white text-[#162353] text-[13px] font-semibold flex items-center justify-center gap-2 active:bg-[#F8F9FB]">
+              <Share2 className="w-4 h-4" />
+              Share Receipt
+            </button>
+            <button onClick={() => window.print()} className="h-[48px] rounded-xl border border-[#D9E0EF] bg-white text-[#162353] text-[13px] font-semibold flex items-center justify-center gap-2 active:bg-[#F8F9FB]">
+              <FileText className="w-4 h-4" />
+              Save / Print
+            </button>
+          </div>
+          <button onClick={onTransferAgain} className="receipt-actions w-full h-[50px] rounded-xl bg-[#162353] text-white text-[14px] font-semibold mt-3 active:opacity-80">
+            Make Another Transfer
+          </button>
+          <button onClick={onHome} className="receipt-actions w-full h-[46px] text-[#2563EB] text-[13px] font-semibold mt-1">
+            Back to Home
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TransactionReceiptPage() {
+  const [, navigate] = useLocation();
+  const [, params] = useRoute('/receipt/:transactionId');
+  const { user } = useAuth();
+  const { transactions, transactionsLoading } = useUserData();
+  const transaction = transactions.find(tx => tx.id === params?.transactionId);
+
+  if (transactionsLoading) {
+    return (
+      <div className="fixed inset-0 bg-white flex items-center justify-center">
+        <svg className="animate-spin w-7 h-7 text-[#162353]" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40 20" />
+        </svg>
+      </div>
+    );
+  }
+
+  if (!transaction) {
+    return (
+      <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col items-center justify-center px-6 text-center">
+        <div className="w-16 h-16 rounded-full bg-[#EEF2FF] flex items-center justify-center mb-4">
+          <FileText className="w-7 h-7 text-[#162353]" />
+        </div>
+        <p className="text-[18px] font-bold text-[#111]">Receipt not found</p>
+        <p className="text-[13px] text-[#888] mt-2 mb-6">This transaction is not available in your account history.</p>
+        <button onClick={() => navigate('/history')} className="w-full max-w-xs h-[48px] rounded-xl bg-[#162353] text-white text-[14px] font-semibold">
+          Back to History
+        </button>
+      </div>
+    );
+  }
+
+  const receipt: TransferReceiptData = {
+    transaction,
+    recipientName: transaction.name,
+    bank: transaction.recipient_bank ?? 'Bank transfer',
+    accountNumber: transaction.recipient_account ?? 'Not recorded',
+    senderName: transaction.sender_name ?? user?.name ?? 'Vexa account',
+    senderAccountNumber: transaction.sender_account ?? user?.accountNumber ?? '—',
+  };
+
+  return (
+    <TransferReceipt
+      receipt={receipt}
+      onHome={() => navigate('/')}
+      onTransferAgain={() => navigate('/transfer')}
+    />
   );
 }
 
@@ -2769,7 +3021,7 @@ function SavingsPage() {
 
         {/* Summary Hero */}
         <div className="mx-4 mt-4 rounded-2xl overflow-hidden relative"
-          style={{ background: 'linear-gradient(135deg, #162353 0%, #1E3A6E 50%, #0a4fa3 100%)' }}>
+          style={{ background: 'linear-gradient(135deg, #0f4f5c 0%, #0e7490 50%, #083d49 100%)' }}>
           {/* Decorative arc */}
           <svg className="absolute right-0 top-0 opacity-10" width="160" height="120" viewBox="0 0 160 120">
             <circle cx="140" cy="20" r="90" fill="white"/>
@@ -3093,11 +3345,16 @@ function EducationPage() {
 const STMT_PERIODS = ['Last 7 days','Last 30 days','Last 3 months','Last 6 months','Custom'];
 function StatementPage() {
   const [, navigate] = useLocation();
+  const { user } = useAuth();
   const [period, setPeriod]   = useState('Last 30 days');
   const [format, setFormat]   = useState('PDF');
-  const [email, setEmail]     = useState('chibuzor@vexa.com');
+  const [email, setEmail]     = useState('');
   const [generating, setGen]  = useState(false);
   const [done, setDone]       = useState(false);
+
+  useEffect(() => {
+    if (user?.email) setEmail(user.email);
+  }, [user?.email]);
 
   function generate() {
     setGen(true);
@@ -3168,6 +3425,267 @@ function StatementPage() {
   );
 }
 
+/* ─── Personal Budget Page ───────────────────────────────────────────── */
+type BudgetCategory = {
+  id: string;
+  label: string;
+  limit: number;
+  color: string;
+  icon: React.ReactNode;
+};
+
+const DEFAULT_BUDGET_CATEGORIES: BudgetCategory[] = [
+  { id: 'transfer', label: 'Transfers', limit: 100000, color: '#2563EB', icon: <ArrowLeftRight className="w-4 h-4" /> },
+  { id: 'bills', label: 'Bills & utilities', limit: 60000, color: '#7C3AED', icon: <FileText className="w-4 h-4" /> },
+  { id: 'food', label: 'Food & groceries', limit: 80000, color: '#EA580C', icon: <WalletCards className="w-4 h-4" /> },
+  { id: 'airtime', label: 'Airtime & data', limit: 30000, color: '#0891B2', icon: <Phone className="w-4 h-4" /> },
+  { id: 'other', label: 'Other spending', limit: 50000, color: '#64748B', icon: <MoreHorizontalIcon /> },
+];
+
+function MoreHorizontalIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+      <circle cx="5" cy="12" r="1" fill="currentColor" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" />
+      <circle cx="19" cy="12" r="1" fill="currentColor" />
+    </svg>
+  );
+}
+
+function budgetCategoryFor(transaction: AppTransaction): string {
+  const text = `${transaction.name} ${transaction.note}`.toLowerCase();
+  if (/airtime|data|mobile|internet|phone/.test(text)) return 'airtime';
+  if (/food|grocery|groceries|restaurant|market|supermarket|eat|kfc|shoprite/.test(text)) return 'food';
+  if (/bill|electric|power|water|rent|utility|subscription|netflix/.test(text)) return 'bills';
+  if (transaction.recipient_bank || /transfer|sent|send/.test(text)) return 'transfer';
+  return 'other';
+}
+
+function formatBudgetAmount(amount: number): string {
+  return amount.toLocaleString('en-NG', { maximumFractionDigits: 0 });
+}
+
+function BudgetPage() {
+  const [, navigate] = useLocation();
+  const { user } = useAuth();
+  const { transactions, transactionsLoading } = useUserData();
+  const storageKey = `vexa_budget_categories_${user?.id ?? 'guest'}`;
+  const [categories, setCategories] = useState<BudgetCategory[]>(DEFAULT_BUDGET_CATEGORIES);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [showAdd, setShowAdd] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newLimit, setNewLimit] = useState('');
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const limits = JSON.parse(saved) as Record<string, number>;
+        setCategories(prev => prev.map(category => ({
+          ...category,
+          limit: typeof limits[category.id] === 'number' ? limits[category.id] : category.limit,
+        })));
+      }
+    } catch {
+      // Keep the defaults if local storage is unavailable or malformed.
+    }
+  }, [storageKey]);
+
+  function persist(next: BudgetCategory[]) {
+    setCategories(next);
+    localStorage.setItem(storageKey, JSON.stringify(
+      Object.fromEntries(next.map(category => [category.id, category.limit])),
+    ));
+  }
+
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const monthTransactions = transactions.filter(transaction => {
+    if (transaction.type !== 'out') return false;
+    if (!transaction.createdAt) return true;
+    return new Date(transaction.createdAt) >= monthStart;
+  });
+  const spendingByCategory = categories.reduce<Record<string, number>>((totals, category) => {
+    totals[category.id] = monthTransactions
+      .filter(transaction => budgetCategoryFor(transaction) === category.id)
+      .reduce((sum, transaction) => sum + transaction.raw_amount, 0);
+    return totals;
+  }, {});
+  const totalSpent = Object.values(spendingByCategory).reduce((sum, amount) => sum + amount, 0);
+  const totalLimit = categories.reduce((sum, category) => sum + category.limit, 0);
+  const remaining = Math.max(0, totalLimit - totalSpent);
+  const overallPercent = totalLimit ? Math.min(100, (totalSpent / totalLimit) * 100) : 0;
+  const monthLabel = new Intl.DateTimeFormat('en-NG', { month: 'long', year: 'numeric' }).format(new Date());
+
+  function startEdit(category: BudgetCategory) {
+    setEditingId(category.id);
+    setEditValue(String(category.limit));
+  }
+
+  function saveEdit(categoryId: string) {
+    const limit = Number(editValue.replace(/\D/g, ''));
+    if (!Number.isFinite(limit) || limit <= 0) return;
+    persist(categories.map(category => category.id === categoryId ? { ...category, limit } : category));
+    setEditingId(null);
+  }
+
+  function addCategory() {
+    const label = newName.trim();
+    const limit = Number(newLimit.replace(/\D/g, ''));
+    if (!label || !Number.isFinite(limit) || limit <= 0) return;
+    const id = `${label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Date.now()}`;
+    persist([...categories, { id, label, limit, color: '#16A34A', icon: <WalletCards className="w-4 h-4" /> }]);
+    setNewName('');
+    setNewLimit('');
+    setShowAdd(false);
+  }
+
+  function removeCategory(categoryId: string) {
+    persist(categories.filter(category => category.id !== categoryId));
+    if (editingId === categoryId) setEditingId(null);
+  }
+
+  return (
+    <PageShell title="Personal Budget" back="/">
+      <div className="flex-1 overflow-y-auto px-4 py-4 pb-8" style={{ scrollbarWidth: 'none' }}>
+        <div className="rounded-3xl p-5 text-white mb-4 overflow-hidden relative"
+          style={{ background: 'linear-gradient(135deg, #0f4f5c 0%, #0e7490 58%, #086477 100%)' }}>
+          <div className="absolute -right-10 -top-12 w-36 h-36 rounded-full border-[20px] border-white/10" />
+          <div className="relative">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <p className="text-white/60 text-[11px] font-medium">{monthLabel}</p>
+                <p className="text-white text-[18px] font-extrabold mt-0.5">Your spending plan</p>
+              </div>
+              <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center">
+                <WalletCards className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="flex items-end justify-between">
+              <div>
+                <p className="text-white/60 text-[11px]">Spent this month</p>
+                <p className="text-[28px] font-extrabold tracking-tight mt-0.5">₦{formatBudgetAmount(totalSpent)}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-white/60 text-[11px]">Remaining</p>
+                <p className="text-[16px] font-bold mt-1">₦{formatBudgetAmount(remaining)}</p>
+              </div>
+            </div>
+            <div className="mt-5 h-2 bg-white/20 rounded-full overflow-hidden">
+              <div className={`h-full rounded-full ${overallPercent >= 90 ? 'bg-red-300' : 'bg-cyan-300'}`}
+                style={{ width: `${overallPercent}%` }} />
+            </div>
+            <p className="text-white/60 text-[10px] mt-2">
+              ₦{formatBudgetAmount(totalSpent)} of ₦{formatBudgetAmount(totalLimit)} planned
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2.5 mb-5">
+          {[
+            { label: 'Categories', value: String(categories.length) },
+            { label: 'Daily average', value: `₦${formatBudgetAmount(totalSpent / Math.max(1, new Date().getDate()))}` },
+            { label: 'On track', value: `${categories.filter(category => (spendingByCategory[category.id] ?? 0) <= category.limit).length}/${categories.length}` },
+          ].map(stat => (
+            <div key={stat.label} className="bg-white rounded-2xl border border-[#F0F0F0] px-2 py-3 text-center">
+              <p className="text-[15px] font-extrabold text-[#162353]">{stat.value}</p>
+              <p className="text-[10px] text-[#888] mt-1">{stat.label}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-between mb-2.5">
+          <div>
+            <p className="text-[14px] font-bold text-[#111]">Category limits</p>
+            <p className="text-[11px] text-[#888] mt-0.5">Tap a limit to adjust your plan</p>
+          </div>
+          <button onClick={() => setShowAdd(value => !value)}
+            className="flex items-center gap-1 text-[11px] font-bold text-[#2563EB]">
+            <Plus className="w-3.5 h-3.5" /> Add
+          </button>
+        </div>
+
+        {showAdd && (
+          <div className="bg-white rounded-2xl border border-[#C7D7FF] p-4 mb-3">
+            <div className="flex gap-2">
+              <input value={newName} onChange={event => setNewName(event.target.value)}
+                placeholder="Category name" className="flex-1 min-w-0 h-11 rounded-xl bg-[#F8F9FB] border border-[#E2E8F0] px-3 text-[13px] outline-none focus:border-[#2563EB]" />
+              <input value={newLimit} onChange={event => setNewLimit(event.target.value.replace(/\D/g, ''))}
+                inputMode="numeric" placeholder="Limit" className="w-24 h-11 rounded-xl bg-[#F8F9FB] border border-[#E2E8F0] px-3 text-[13px] outline-none focus:border-[#2563EB]" />
+            </div>
+            <div className="flex justify-end gap-2 mt-3">
+              <button onClick={() => setShowAdd(false)} className="px-3 py-2 text-[12px] font-semibold text-[#888]">Cancel</button>
+              <button onClick={addCategory} className="px-4 py-2 rounded-xl bg-[#162353] text-white text-[12px] font-bold">Add category</button>
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-2.5">
+          {categories.map(category => {
+            const spent = spendingByCategory[category.id] ?? 0;
+            const percent = category.limit ? Math.min(100, (spent / category.limit) * 100) : 0;
+            const over = spent > category.limit;
+            return (
+              <div key={category.id} className="bg-white rounded-2xl border border-[#F0F0F0] p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                    style={{ color: category.color, background: `${category.color}14` }}>
+                    {category.icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-bold text-[#111] truncate">{category.label}</p>
+                    <p className={`text-[11px] mt-0.5 ${over ? 'text-red-600 font-semibold' : 'text-[#888]'}`}>
+                      ₦{formatBudgetAmount(spent)} spent of ₦{formatBudgetAmount(category.limit)}
+                    </p>
+                  </div>
+                  {editingId === category.id ? (
+                    <div className="flex items-center gap-1">
+                      <input value={editValue} onChange={event => setEditValue(event.target.value.replace(/\D/g, ''))}
+                        autoFocus inputMode="numeric" className="w-20 h-8 rounded-lg border border-[#C7D7FF] px-2 text-[12px] outline-none" />
+                      <button onClick={() => saveEdit(category.id)} className="w-8 h-8 rounded-lg bg-[#DCFCE7] text-[#15803D] flex items-center justify-center">
+                        <Check className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={() => startEdit(category)} className="text-[11px] font-bold text-[#2563EB]">Edit</button>
+                  )}
+                </div>
+                <div className="mt-3 h-2 bg-[#EEF1F5] rounded-full overflow-hidden">
+                  <div className="h-full rounded-full transition-all"
+                    style={{ width: `${percent}%`, background: over ? '#EF4444' : category.color }} />
+                </div>
+                <div className="flex items-center justify-between mt-2">
+                  <p className={`text-[10px] font-semibold ${over ? 'text-red-600' : 'text-[#888]'}`}>
+                    {over ? `₦${formatBudgetAmount(spent - category.limit)} over limit` : `${Math.max(0, Math.round(percent))}% used`}
+                  </p>
+                  {categories.length > 1 && (
+                    <button onClick={() => removeCategory(category.id)} aria-label={`Remove ${category.label} budget`}
+                      className="text-[#B5BBC8] hover:text-red-500">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {transactionsLoading && (
+          <p className="text-center text-[11px] text-[#888] mt-4">Updating your spending…</p>
+        )}
+        {!transactionsLoading && transactions.length === 0 && (
+          <div className="mt-4 rounded-2xl bg-[#EEF2FF] border border-[#DCE5FF] px-4 py-3">
+            <p className="text-[12px] font-bold text-[#162353]">Your plan is ready</p>
+            <p className="text-[11px] text-[#555] mt-1">Your category progress will update automatically as you make transactions.</p>
+          </div>
+        )}
+      </div>
+    </PageShell>
+  );
+}
+
 /* ─── More Services Page ─────────────────────────────────────────────── */
 const MORE_SERVICES = [
   { label:'Transfer',  emoji:'↔️',  path:'/transfer'  },
@@ -3175,12 +3693,14 @@ const MORE_SERVICES = [
   { label:'Data',      emoji:'📶',  path:'/data'      },
   { label:'Betting',   emoji:'🎯',  path:'/betting'   },
   { label:'Savings',   emoji:'🐷',  path:'/savings'   },
+  { label:'Budget',    emoji:'📊',  path:'/budget'    },
   { label:'Education', emoji:'📚',  path:'/education' },
   { label:'Statement', emoji:'📄',  path:'/statement' },
   { label:'Deposit',   emoji:'💰',  path:'/deposit'   },
   { label:'History',   emoji:'🕐',  path:'/history'   },
   { label:'Settings',  emoji:'⚙️',  path:'/settings'  },
   { label:'Card',      emoji:'💳',  path:'/card'      },
+  { label:'Crypto',    emoji:'₿',   path:'/crypto'    },
 ];
 
 function MorePage() {
@@ -3213,7 +3733,7 @@ function CardPage() {
   const [contactless, setContactless] = useState(true);
   const [intlPayments, setIntl] = useState(false);
 
-  const cardName = user ? user.name.split(' ').slice(0, 2).map(p => p.toUpperCase()).join(' ') : 'CHIBUZOR E DIKE';
+  const cardName = user ? user.name.split(' ').slice(0, 2).map(p => p.toUpperCase()).join(' ') : 'VEXA USER';
 
   const CARD_TXS = [
     { icon:'🛒', name:'Shoprite', date:'Today, 2:14 PM',    amount:'-₦4,500', color:'#EF4444' },
@@ -3242,7 +3762,7 @@ function CardPage() {
             style={{
               background: frozen
                 ? 'linear-gradient(135deg, #374151 0%, #1F2937 60%, #111827 100%)'
-                : 'linear-gradient(135deg, #162353 0%, #1E3A8A 45%, #1e40af 75%, #0369a1 100%)',
+                : 'linear-gradient(135deg, #0f4f5c 0%, #0e7490 45%, #086477 75%, #064b5a 100%)',
               minHeight: 200,
               transition: 'background 0.5s ease',
             }}>
@@ -3468,6 +3988,7 @@ const SERVICE_GROUPS = [
   { heading:'Lifestyle', items:[
     { label:'Education', emoji:'📚',  path:'/education' },
     { label:'Savings',   emoji:'🐷',  path:'/savings'   },
+    { label:'Budget',    emoji:'📊',  path:'/budget'    },
   ]},
   { heading:'Account', items:[
     { label:'Statement', emoji:'📄',  path:'/statement' },
@@ -3796,16 +4317,13 @@ function ReferralsPage() {
 
 /* ── Business security gate ─────────────────────────────────────────── */
 function BusinessSecurityGate({ children }: { children: React.ReactNode }) {
-  const [path, navigate] = useLocation();
-  const { business, businessLoading } = useBusiness();
   const { isVerified } = useBusinessSecurity();
-  useEffect(() => {
-    if (!businessLoading && !business) navigate('/business/onboarding');
-  }, [businessLoading, business, navigate]);
-  if (businessLoading) return <div className="fixed inset-0 bg-[#F2F3F5] flex items-center justify-center text-sm text-[#555]">Loading your business account…</div>;
-  if (!business || path === '/business/onboarding') return null;
   if (!isVerified) return <BusinessSecurityScreen />;
   return <>{children}</>;
+}
+
+function BusinessBrandScope({ children }: { children: React.ReactNode }) {
+  return <div className="business-brand-scope contents">{children}</div>;
 }
 
 
@@ -3815,7 +4333,13 @@ function Router() {
       <Route path="/" component={MoniepointHome} />
       <Route path="/deposit" component={DepositPage} />
       <Route path="/transfer" component={TransferPage} />
+      <Route path="/bank-selection" component={BankSelectionPage} />
+      <Route path="/vexa-transfer" component={VexaTransferPage} />
+      <Route path="/crypto" component={CryptoExchangePage} />
+      <Route path="/crypto/incoming" component={IncomingCryptoPage} />
+      <Route path="/crypto/outgoing" component={OutgoingCryptoPage} />
       <Route path="/history" component={HistoryPage} />
+      <Route path="/receipt/:transactionId" component={TransactionReceiptPage} />
       <Route path="/settings" component={SettingsPage} />
       <Route path="/airtime" component={AirtimePage} />
       <Route path="/data" component={DataPage} />
@@ -3823,6 +4347,7 @@ function Router() {
       <Route path="/savings" component={SavingsPage} />
       <Route path="/education" component={EducationPage} />
       <Route path="/statement" component={StatementPage} />
+      <Route path="/budget" component={BudgetPage} />
       <Route path="/more" component={MorePage} />
       <Route path="/card" component={CardPage} />
       <Route path="/services" component={ServicesTabPage} />
@@ -3834,42 +4359,46 @@ function Router() {
       <Route path="/limits" component={LimitsPage} />
       <Route path="/change-pin" component={ChangePinPage} />
       <Route path="/change-password" component={ChangePasswordPage} />
+      <Route path="/active-devices" component={ActiveDevicesPage} />
+      <Route path="/two-factor" component={TwoFactorSettingsPage} />
       <Route path="/help-support" component={HelpSupportPage} />
       <Route path="/notifications" component={NotificationsPage} />
       <Route path="/about-vexa" component={AboutVexaPage} />
       <Route path="/cashback" component={CashbackPage} />
       <Route path="/referrals" component={ReferralsPage} />
       {/* Vexa Business — onboarding is unguarded; all other routes require security verification */}
-      <Route path="/business/onboarding" component={BusinessOnboarding} />
+      <Route path="/business/onboarding">
+        <BusinessBrandScope><BusinessOnboarding /></BusinessBrandScope>
+      </Route>
       <Route path="/business">
-        <BusinessSecurityGate><BusinessDashboard /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><BusinessDashboard /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/transfers">
-        <BusinessSecurityGate><BusinessTransfers /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><BusinessTransfers /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/receive">
-        <BusinessSecurityGate><BusinessTransfers /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><BusinessTransfers /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/bills">
-        <BusinessSecurityGate><BusinessBills /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><BusinessBills /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/employees">
-        <BusinessSecurityGate><EmployeeManagement /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><EmployeeManagement /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/payroll">
-        <BusinessSecurityGate><PayrollManagement /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><PayrollManagement /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/analytics">
-        <BusinessSecurityGate><BusinessAnalytics /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><BusinessAnalytics /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/settings">
-        <BusinessSecurityGate><BusinessSettings /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><BusinessSettings /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/transactions">
-        <BusinessSecurityGate><BusinessTransactionHistory /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><BusinessTransactionHistory /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/notifications">
-        <BusinessSecurityGate><NotificationsPage /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><NotificationsPage /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route component={NotFound} />
     </Switch>
@@ -3882,7 +4411,7 @@ function AppShell() {
   // Supabase restores the session and profile in the background.
   const [showSplash] = useState(false);
   const [splashDone] = useState(true);
-  const { user, session, isAuthenticated, loading, profileError, refreshProfile, signOut } = useAuth();
+  const { session, isAuthenticated, loading, profileError, refreshProfile, signOut, twoFactorPending } = useAuth();
   const [path, navigate] = useLocation();
   const { clearVerification } = useBusinessSecurity();
   const prevPathRef = React.useRef('');
@@ -3952,15 +4481,17 @@ function AppShell() {
   }, [isAuthenticated, splashDone]);
 
   useEffect(() => {
-    if (splashDone && !loading && !session && !user) {
+    if (splashDone && !loading && !session && !isAuthenticated) {
       navigate('/signin');
     }
-  }, [splashDone, loading, session, user, navigate]);
+  }, [splashDone, loading, session, isAuthenticated, navigate]);
 
   // Clear business verification when the user navigates away from the business section
   useEffect(() => {
     const wasOnBusiness = prevPathRef.current.startsWith('/business');
-    const isOnBusiness = path.startsWith('/business');
+    const bankSelectionForBusiness = path === '/bank-selection'
+      && new URLSearchParams(window.location.search).get('returnTo')?.startsWith('/business');
+    const isOnBusiness = path.startsWith('/business') || Boolean(bankSelectionForBusiness);
     if (wasOnBusiness && !isOnBusiness) {
       clearVerification();
     }
@@ -3970,13 +4501,14 @@ function AppShell() {
   return (
     <>
       {showSplash && <SplashScreen onDone={() => undefined} />}
-      {!loading && profileError && session && !user && (
-        <div className="fixed top-3 left-1/2 z-[60] -translate-x-1/2 w-[min(92vw,420px)] rounded-xl bg-red-50 border border-red-200 px-4 py-3 shadow-lg">
+      {!loading && profileError && session && !isAuthenticated && (
+        <div className="fixed top-3 left-1/2 z-[60] w-[min(92vw,420px)] -translate-x-1/2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 shadow-lg">
           <p className="text-[13px] font-semibold text-red-700">Your session is active, but your profile could not be loaded.</p>
           <button onClick={() => void refreshProfile()} className="mt-2 text-[12px] font-bold text-[#162353]">Try again</button>
         </div>
       )}
       <Router />
+      {twoFactorPending && <TwoFactorChallenge />}
       {locked && (
         <PasscodeLockScreen
           onUnlock={() => { clearLockTimestamp(); setLocked(false); }}
@@ -3992,6 +4524,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <UserDataProvider>
+        <VexaFinanceProvider>
         <BusinessProvider>
           <BusinessSecurityProvider>
             <TooltipProvider>
@@ -4002,6 +4535,7 @@ function App() {
             </TooltipProvider>
           </BusinessSecurityProvider>
         </BusinessProvider>
+        </VexaFinanceProvider>
         </UserDataProvider>
       </AuthProvider>
     </QueryClientProvider>

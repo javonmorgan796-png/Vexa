@@ -39,6 +39,11 @@ export interface AppTransaction {
   amount: string;    // formatted: '1,000.00'
   note: string;
   raw_amount: number;
+  createdAt?: string;
+  recipient_bank?: string;
+  recipient_account?: string;
+  sender_name?: string;
+  sender_account?: string;
 }
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
@@ -66,53 +71,13 @@ function fmtAmount(raw: number): string {
   return raw.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-type DashboardCache = {
-  userId: string;
-  balance: number;
-  cashbackHistory: CashbackItem[];
-  referrals: Referral[];
-  notifications: AppNotification[];
-  transactions: AppTransaction[];
-};
-
-function dashboardCacheKey(userId: string) {
-  return `vexa_dashboard_cache_${userId}`;
-}
-
-function readDashboardCache(userId?: string): DashboardCache | null {
-  if (!userId) return null;
-  try {
-    const raw = localStorage.getItem(dashboardCacheKey(userId));
-    if (!raw) return null;
-    const cached = JSON.parse(raw);
-    return cached?.userId === userId ? cached : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveDashboardCache(userId: string, patch: Partial<DashboardCache>) {
-  try {
-    const current = readDashboardCache(userId) ?? {
-      userId,
-      balance: 0,
-      cashbackHistory: [],
-      referrals: [],
-      notifications: [],
-      transactions: [],
-    };
-    localStorage.setItem(dashboardCacheKey(userId), JSON.stringify({ ...current, ...patch }));
-  } catch {
-    // Cached data is only an instant-render optimization.
-  }
-}
-
 /* ── Context type ───────────────────────────────────────────────────── */
 
 interface UserDataContextType {
   /* Balance */
   balance: number;
   balanceLoading: boolean;
+  lastBalanceUpdatedAt: string | null;
   /* Cashback */
   cashbackTotal: number;
   cashbackPending: number;
@@ -135,7 +100,7 @@ interface UserDataContextType {
   /* Transactions */
   transactions: AppTransaction[];
   transactionsLoading: boolean;
-  addTransaction: (t: Omit<AppTransaction, 'id'>) => Promise<void>;
+  addTransaction: (t: Omit<AppTransaction, 'id'>) => Promise<AppTransaction | null>;
   /* Actions */
   redeemCashback: () => Promise<void>;
   refreshAll: () => void;
@@ -149,33 +114,37 @@ const UserDataContext = createContext<UserDataContextType | null>(null);
 
 export function UserDataProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  const initialCache = readDashboardCache(user?.id);
 
-  const [balance, setBalance]                       = useState(initialCache?.balance ?? user?.balance ?? 0);
-  const [balanceLoading, setBalanceLoading]         = useState(!initialCache && !user?.balance);
+  const [balance, setBalance]                       = useState(() => Number(user?.balance ?? 0));
+  const [balanceLoading, setBalanceLoading]         = useState(() => !user);
+  const [lastBalanceUpdatedAt, setLastBalanceUpdatedAt] = useState<string | null>(null);
 
-  const [cashbackHistory, setCashbackHistory]       = useState<CashbackItem[]>(initialCache?.cashbackHistory ?? []);
-  const [cashbackLoading, setCashbackLoading]       = useState(!initialCache);
+  const [cashbackHistory, setCashbackHistory]       = useState<CashbackItem[]>([]);
+  const [cashbackLoading, setCashbackLoading]       = useState(true);
 
-  const [referrals, setReferrals]                   = useState<Referral[]>(initialCache?.referrals ?? []);
-  const [referralsLoading, setReferralsLoading]     = useState(!initialCache);
+  const [referrals, setReferrals]                   = useState<Referral[]>([]);
+  const [referralsLoading, setReferralsLoading]     = useState(true);
 
-  const [notifications, setNotifications]           = useState<AppNotification[]>(initialCache?.notifications ?? []);
-  const [notificationsLoading, setNotificationsLoading] = useState(!initialCache);
+  const [notifications, setNotifications]           = useState<AppNotification[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(true);
 
-  const [transactions, setTransactions]             = useState<AppTransaction[]>(initialCache?.transactions ?? []);
-  const [transactionsLoading, setTransactionsLoading] = useState(!initialCache);
+  const [transactions, setTransactions]             = useState<AppTransaction[]>([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(true);
 
   /* ── Fetch helpers ─────────────────────────────────────────────── */
 
-  const fetchBalance = useCallback(async () => {
-    if (!user) { setBalance(0); setBalanceLoading(false); return; }
-    setBalanceLoading(true);
+  const fetchBalance = useCallback(async (showLoading = true) => {
+    if (!user) {
+      setBalance(0);
+      setLastBalanceUpdatedAt(null);
+      setBalanceLoading(false);
+      return;
+    }
+    if (showLoading) setBalanceLoading(true);
     const { data } = await supabase.from('profiles').select('balance').eq('id', user.id).single();
     if (data) {
-      const nextBalance = Number(data.balance);
-      setBalance(nextBalance);
-      saveDashboardCache(user.id, { balance: nextBalance });
+      setBalance(Number(data.balance));
+      setLastBalanceUpdatedAt(new Date().toISOString());
     }
     setBalanceLoading(false);
   }, [user]);
@@ -187,13 +156,11 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
       .from('cashback_history').select('*').eq('user_id', user.id)
       .order('created_at', { ascending: false });
     if (data) {
-      const nextCashback = data.map(d => ({
+      setCashbackHistory(data.map(d => ({
         id: d.id, desc: d.description, date: d.date,
         rate: d.rate, earned: Number(d.earned),
         status: d.status as CashbackItem['status'],
-      }));
-      setCashbackHistory(nextCashback);
-      saveDashboardCache(user.id, { cashbackHistory: nextCashback });
+      })));
     }
     setCashbackLoading(false);
   }, [user]);
@@ -205,13 +172,11 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
       .from('referrals').select('*').eq('referrer_id', user.id)
       .order('created_at', { ascending: false });
     if (data) {
-      const nextReferrals = data.map(d => ({
+      setReferrals(data.map(d => ({
         id: d.id, name: d.referred_name, phone: d.referred_phone,
         date: d.date, earned: Number(d.earned),
         status: d.status as Referral['status'],
-      }));
-      setReferrals(nextReferrals);
-      saveDashboardCache(user.id, { referrals: nextReferrals });
+      })));
     }
     setReferralsLoading(false);
   }, [user]);
@@ -223,16 +188,14 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
       .from('notifications').select('*').eq('user_id', user.id)
       .order('created_at', { ascending: false });
     if (data) {
-      const nextNotifications = data.map(d => ({
+      setNotifications(data.map(d => ({
         id: d.id,
         type: d.type as AppNotification['type'],
         title: d.title,
         body: d.body,
         read: d.read,
         time: timeAgo(d.created_at),
-      }));
-      setNotifications(nextNotifications);
-      saveDashboardCache(user.id, { notifications: nextNotifications });
+      })));
     }
     setNotificationsLoading(false);
   }, [user]);
@@ -244,7 +207,7 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
       .from('transactions').select('*').eq('user_id', user.id)
       .order('created_at', { ascending: false });
     if (data) {
-      const nextTransactions = data.map(d => ({
+      setTransactions(data.map(d => ({
         id: d.id,
         type: d.type as 'in' | 'out',
         name: d.name,
@@ -252,9 +215,12 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
         amount: fmtAmount(Number(d.amount)),
         note: d.note,
         raw_amount: Number(d.amount),
-      }));
-      setTransactions(nextTransactions);
-      saveDashboardCache(user.id, { transactions: nextTransactions });
+        createdAt: d.created_at,
+        recipient_bank: d.recipient_bank ?? undefined,
+        recipient_account: d.recipient_account ?? undefined,
+        sender_name: d.sender_name ?? undefined,
+        sender_account: d.sender_account ?? undefined,
+      })));
     }
     setTransactionsLoading(false);
   }, [user]);
@@ -269,26 +235,15 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (user) {
-      // The profile query already returns the wallet balance. Show it
-      // immediately. Load only secondary dashboard collections here; making
-      // another profiles request during login delayed the balance render.
-      setBalance(user.balance);
+      // Auth already loaded the profile balance. Render it immediately and
+      // refresh the authoritative value in the background.
+      setBalance(Number(user.balance ?? 0));
       setBalanceLoading(false);
-      const cached = readDashboardCache(user.id);
-      if (cached) {
-        setCashbackHistory(cached.cashbackHistory);
-        setReferrals(cached.referrals);
-        setNotifications(cached.notifications);
-        setTransactions(cached.transactions);
-        setCashbackLoading(false);
-        setReferralsLoading(false);
-        setNotificationsLoading(false);
-        setTransactionsLoading(false);
-      }
-      fetchCashback();
-      fetchReferrals();
-      fetchNotifications();
-      fetchTransactions();
+      void fetchBalance(false);
+      void fetchCashback();
+      void fetchReferrals();
+      void fetchNotifications();
+      void fetchTransactions();
     } else {
       setBalance(0); setCashbackHistory([]); setReferrals([]);
       setNotifications([]); setTransactions([]);
@@ -298,6 +253,31 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
+
+  // Balance updates can come from another Vexa session, a peer transfer, or
+  // an exchange deposit. Realtime is preferred, with polling as a fallback
+  // when the table is not enabled in Supabase's realtime publication.
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel(`vexa-profile-balance:${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` },
+        () => { void fetchBalance(); },
+      )
+      .subscribe();
+
+    const interval = window.setInterval(() => {
+      void fetchBalance();
+    }, 15000);
+
+    return () => {
+      window.clearInterval(interval);
+      void supabase.removeChannel(channel);
+    };
+  }, [user?.id, fetchBalance]);
 
   /* ── Derived cashback totals ─────────────────────────────────── */
 
@@ -310,7 +290,7 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
 
   /* ── Derived referral totals ─────────────────────────────────── */
 
-  const referralCode         = user?.referralCode || (user ? 'VEXA-' + (user.accountNumber?.slice(-4) ?? '0000') : '');
+  const referralCode         = user?.referralCode ?? '';
   const referralTotalEarned  = referrals.filter(r => r.status === 'paid').reduce((s, r) => s + r.earned, 0);
   const referralTotalPending = referrals.filter(r => r.status === 'pending').reduce((s, r) => s + r.earned, 0);
 
@@ -375,24 +355,39 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const addTransaction = async (t: Omit<AppTransaction, 'id'>) => {
-    if (!user) return;
-    const { data } = await supabase.from('transactions').insert({
+    if (!user) return null;
+    const { data, error } = await supabase.from('transactions').insert({
       user_id: user.id, type: t.type, name: t.name,
       amount: t.raw_amount, note: t.note,
+      recipient_bank: t.recipient_bank ?? null,
+      recipient_account: t.recipient_account ?? null,
+      sender_name: t.sender_name ?? null,
+      sender_account: t.sender_account ?? null,
     }).select().single();
-    if (data) {
-      setTransactions(prev => [{
+    if (error || !data) {
+      console.error('[UserData] transaction insert error:', error?.message);
+      return null;
+    }
+
+    const savedTransaction = {
         id: data.id, type: t.type, name: t.name,
         date: fmtTxDate(data.created_at),
         amount: fmtAmount(Number(data.amount)),
         note: t.note, raw_amount: Number(data.amount),
-      }, ...prev]);
-    }
+        createdAt: data.created_at,
+        recipient_bank: data.recipient_bank ?? undefined,
+        recipient_account: data.recipient_account ?? undefined,
+        sender_name: data.sender_name ?? undefined,
+        sender_account: data.sender_account ?? undefined,
+    } satisfies AppTransaction;
+    setTransactions(prev => [savedTransaction, ...prev]);
+    return savedTransaction;
   };
 
   return (
     <UserDataContext.Provider value={{
       balance, balanceLoading,
+      lastBalanceUpdatedAt,
       cashbackTotal, cashbackPending, cashbackRedeemable,
       cashbackHistory, cashbackLoading,
       referrals, referralCode, referralTotalEarned, referralTotalPending, referralsLoading,

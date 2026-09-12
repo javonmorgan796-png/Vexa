@@ -1,24 +1,24 @@
 ---
 name: Supabase env injection via Vite define
-description: How SUPABASE_URL and SUPABASE_ANON_KEY are made available in the browser bundle
+description: How the Vite client receives Supabase URL and anon-key secrets across workspace versions
 ---
 
-Replit Secrets `SUPABASE_URL` and `SUPABASE_ANON_KEY` are NOT prefixed with `VITE_`, so Vite won't expose them automatically.
+This workspace has used both `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` and `SUPABASE_URL` / `SUPABASE_ANON_KEY` secret names over time. The browser client must accept both naming conventions.
 
 **Solution:** Use `define` in `vite.config.ts` to inject them at build/dev time:
 
 ```ts
+const rawUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.SUPABASE_URL || '';
+const key = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.SUPABASE_ANON_KEY || '';
+
 define: {
-  __SUPABASE_URL__:      JSON.stringify(process.env.SUPABASE_URL      ?? ''),
-  __SUPABASE_ANON_KEY__: JSON.stringify(process.env.SUPABASE_ANON_KEY ?? ''),
+  'import.meta.env.SUPABASE_URL': JSON.stringify(
+    process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? '',
+  ),
+  'import.meta.env.SUPABASE_ANON_KEY': JSON.stringify(
+    process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? '',
+  ),
 },
 ```
 
-In `src/lib/supabase.ts`, declare them as globals and use them:
-```ts
-declare const __SUPABASE_URL__: string;
-declare const __SUPABASE_ANON_KEY__: string;
-export const supabase = createClient(__SUPABASE_URL__, __SUPABASE_ANON_KEY__);
-```
-
-**Why:** This bakes the values into the bundle at dev/build time. Works in both dev server (HMR) and production build.
+**Why:** The GitHub app version and the existing Replit secrets can otherwise disagree on naming, causing the app to crash at startup even though the secrets exist. This keeps dev HMR and production builds compatible.

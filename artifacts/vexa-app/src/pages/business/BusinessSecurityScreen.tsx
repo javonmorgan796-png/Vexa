@@ -97,12 +97,12 @@ function BiometricIcon({ loading }: { loading: boolean }) {
       {!loading && (
         <>
           <motion.div
-            className="absolute w-32 h-32 rounded-full border border-[#00c6ff]/20"
+            className="absolute w-32 h-32 rounded-full border border-[#0e7490]/20"
             animate={{ scale: [1, 1.5, 1.5], opacity: [0.5, 0, 0] }}
             transition={{ duration: 2, repeat: Infinity, ease: 'easeOut' }}
           />
           <motion.div
-            className="absolute w-32 h-32 rounded-full border border-[#00c6ff]/30"
+            className="absolute w-32 h-32 rounded-full border border-[#0e7490]/30"
             animate={{ scale: [1, 1.35, 1.35], opacity: [0.6, 0, 0] }}
             transition={{ duration: 2, repeat: Infinity, ease: 'easeOut', delay: 0.4 }}
           />
@@ -111,17 +111,17 @@ function BiometricIcon({ loading }: { loading: boolean }) {
       {/* Icon container */}
       <motion.div
         className="w-24 h-24 rounded-full flex items-center justify-center relative z-10"
-        style={{ background: 'linear-gradient(135deg, rgba(0,198,255,0.15) 0%, rgba(0,114,255,0.25) 100%)', border: '1px solid rgba(0,198,255,0.3)' }}
+        style={{ background: 'linear-gradient(135deg, rgba(14,116,144,0.2) 0%, rgba(15,79,92,0.3) 100%)', border: '1px solid rgba(14,116,144,0.45)' }}
         animate={loading ? { scale: [1, 1.05, 1] } : {}}
         transition={{ duration: 0.8, repeat: Infinity }}
       >
         {loading ? (
-          <svg className="animate-spin w-10 h-10 text-[#00c6ff]" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="10" stroke="rgba(0,198,255,0.2)" strokeWidth="2.5" />
-            <path d="M12 2a10 10 0 0 1 10 10" stroke="#00c6ff" strokeWidth="2.5" strokeLinecap="round" />
+          <svg className="animate-spin w-10 h-10 text-[#0e7490]" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="rgba(14,116,144,0.25)" strokeWidth="2.5" />
+            <path d="M12 2a10 10 0 0 1 10 10" stroke="#0e7490" strokeWidth="2.5" strokeLinecap="round" />
           </svg>
         ) : (
-          <i className="fa-solid fa-fingerprint text-[40px] text-[#00c6ff]" />
+          <i className="fa-solid fa-fingerprint text-[40px] text-[#0e7490]" />
         )}
       </motion.div>
     </div>
@@ -312,15 +312,15 @@ export default function BusinessSecurityScreen() {
     <div
       className="fixed inset-0 flex flex-col"
       style={{
-        background: 'linear-gradient(180deg, #021029 0%, #0a1a3d 60%, #0D2245 100%)',
+         background: 'linear-gradient(180deg, #0e7490 0%, #0f4f5c 60%, #083d49 100%)',
         fontFamily: "'Inter', sans-serif",
       }}
     >
       {/* Font Awesome (already loaded via index.html CDN or inline) */}
       <style>{`
         @keyframes bizShieldPulse {
-          0%, 100% { filter: drop-shadow(0 0 0px rgba(0,198,255,0)); }
-          50%       { filter: drop-shadow(0 0 16px rgba(0,198,255,0.5)); }
+          0%, 100% { filter: drop-shadow(0 0 0px rgba(14,116,144,0)); }
+          50%       { filter: drop-shadow(0 0 16px rgba(14,116,144,0.5)); }
         }
         .biz-shield { animation: bizShieldPulse 3s ease-in-out infinite; }
       `}</style>
@@ -351,16 +351,16 @@ export default function BusinessSecurityScreen() {
             <path
               d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.35C17.25 22.15 21 17.25 21 12V7L12 2z"
               fill="url(#shieldGrad)"
-              stroke="rgba(0,198,255,0.6)"
+              stroke="rgba(14,116,144,0.75)"
               strokeWidth="1"
             />
             <defs>
               <linearGradient id="shieldGrad" x1="12" y1="2" x2="12" y2="23" gradientUnits="userSpaceOnUse">
-                <stop stopColor="rgba(0,114,255,0.4)" />
-                <stop offset="1" stopColor="rgba(0,198,255,0.15)" />
+                <stop stopColor="rgba(14,116,144,0.45)" />
+                <stop offset="1" stopColor="rgba(15,79,92,0.25)" />
               </linearGradient>
             </defs>
-            <path d="M9 12l2 2 4-4" stroke="#00c6ff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M9 12l2 2 4-4" stroke="#0e7490" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </div>
         <p className="text-white text-[20px] font-bold tracking-tight">Business Security</p>

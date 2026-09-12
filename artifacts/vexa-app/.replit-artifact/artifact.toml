@@ -1,6 +1,7 @@
 kind = "web"
 previewPath = "/"
 title = "Vexa Banking App"
+description = "A mobile-first digital banking app for managing balances, transfers, deposits, referrals, and business finance with Supabase-backed accounts."
 version = "1.0.0"
 id = "artifacts/vexa-app"
 router = "path"

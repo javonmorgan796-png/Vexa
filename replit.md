@@ -14,6 +14,8 @@ A full-featured Nigerian digital banking app with personal wallet, business bank
 
 Also in Supabase → Authentication → Settings: **disable "Enable email confirmations"** so users can sign up and log in instantly.
 
+The latest schema also adds Vexa-to-Vexa transfers, the Vexa Exchange ledger, and SMS 2FA settings. For SMS 2FA, enable Supabase Authentication → Providers → Phone and configure an SMS provider before users enable it in Settings. Crypto exchange deposits currently move Naira from the Vexa wallet into the internal Vexa Exchange ledger; on-chain deposits require a separate custody/on-ramp provider.
+
 Required secrets (already set in Replit Secrets):
 - `SUPABASE_URL` — your Supabase project URL
 - `SUPABASE_ANON_KEY` — your Supabase anon/public key

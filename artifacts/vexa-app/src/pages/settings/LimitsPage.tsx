@@ -35,15 +35,16 @@ const TIERS = [
 
 export default function LimitsPage() {
   const [, navigate] = useLocation();
-  const { user, session, loading, profileError } = useAuth();
+  const { user, loading } = useAuth();
+
   useEffect(() => {
-    if (!loading && !session && !user) navigate('/signin');
-  }, [loading, session, user, navigate]);
-  if (loading) return <div className="fixed inset-0 bg-[#F2F3F5] flex items-center justify-center text-sm text-[#555]">Loading your verification status…</div>;
-  if (!user) {
-    if (profileError) return <div className="fixed inset-0 bg-[#F2F3F5] flex items-center justify-center px-6 text-center text-sm text-red-600">{profileError}</div>;
-    return null;
+    if (!loading && !user) navigate('/signin');
+  }, [loading, user, navigate]);
+
+  if (loading) {
+    return <div className="fixed inset-0 bg-[#F2F3F5] flex items-center justify-center text-[#162353] text-sm font-semibold">Loading your account…</div>;
   }
+  if (!user) return null;
 
   return (
     <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>

@@ -1,4 +1,10 @@
 - [Supabase phone-auth pattern](supabase-phone-auth.md) — phone+passcode is mapped to Supabase email auth using `{normalized_phone}@vexa.app`
-- [Supabase env injection](supabase-env-inject.md) — SUPABASE_URL/ANON_KEY injected into Vite bundle via `define` in vite.config.ts (not VITE_ prefix)
+- [Supabase env injection](supabase-env-inject.md) — support the workspace's VITE_ Supabase secrets and the newer unprefixed names in the Vite client
 - [Vexa app structure](vexa-app-structure.md) — all screens are in App.tsx; contexts in src/context/; schema in supabase-schema.sql at root
 - [Vexa preview setup](vexa-preview-setup.md) — imported Vexa previews need PORT=19093 and BASE_PATH=/ supplied to the Vite workflow
+- [Supabase profile loading](supabase-profile-loading.md) — wait for session restoration before protected redirects and use the profiles row for user-facing data
+- [Transfer receipts](transfer-receipts.md) — receipts derive from the saved transaction and only appear after debit plus persistence succeed
+- [Tatum deposit wallets](tatum-deposit-wallets.md) — wallet addresses are generated server-side, persisted per user and asset, and never expose provider credentials to the client
+- [Tatum webhooks](tatum-webhooks.md) — verify raw-body HMAC and request explicit finality for address-event subscriptions before crediting balances
+- [Monorepo import installation](monorepo-import-install.md) — reconcile imported workspace dependencies with pnpm before restarting the preview
+- [Auth security controls](auth-security-controls.md) — login lockouts use persistent Supabase RPCs plus a local refresh-safe countdown; device access uses a session registry
