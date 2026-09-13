@@ -25,3 +25,4 @@ channel = "stable-25_05"
 
 [userenv.shared]
 TATUM_WEBHOOK_URL = "https://vexa-superbase-connect-1--myp847842.replit.app/api/crypto/webhooks/tatum"
+SUPABASE_URL = "https://rggmongjmeeirrxsdnkg.supabase.co"
