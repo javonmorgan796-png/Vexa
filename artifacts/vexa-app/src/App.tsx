@@ -642,11 +642,11 @@ function MoniepointHome() {
 
             {/* action buttons — content-width pills, left-aligned */}
             <div className="flex gap-3">
-              <button onClick={() => navigate('/deposit')} className="bg-transparent border border-[#00A6C7] rounded-full h-[30px] px-4 flex items-center gap-1.5 text-[11px] font-semibold text-[#00A6C7] hover:bg-[#00A6C7]/10 transition-colors">
+              <button onClick={() => navigate('/deposit')} className="bg-[#162353] rounded-full h-[30px] px-4 flex items-center gap-1.5 text-[11px] font-semibold text-white hover:bg-[#20336F] transition-colors">
                 <span className="text-[14px] leading-none font-light">+</span>
                 Deposit
               </button>
-              <button onClick={() => navigate('/history')} className="bg-transparent border border-[#00A6C7] rounded-full h-[30px] px-4 flex items-center gap-1.5 text-[11px] font-semibold text-[#00A6C7] hover:bg-[#00A6C7]/10 transition-colors">
+              <button onClick={() => navigate('/history')} className="bg-[#162353] rounded-full h-[30px] px-4 flex items-center gap-1.5 text-[11px] font-semibold text-white hover:bg-[#20336F] transition-colors">
                 <Clock className="w-3 h-3" strokeWidth={2} />
                 History
               </button>
