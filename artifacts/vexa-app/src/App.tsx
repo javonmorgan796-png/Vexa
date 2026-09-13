@@ -609,10 +609,10 @@ function MoniepointHome() {
             {/* Vexa logo — visible top-right */}
             <div className="absolute top-3 right-4 pointer-events-none select-none flex flex-col items-center gap-1">
               <img
-                src="/vexa-mark.svg"
+                src="/vexa-icon.png"
                 alt="Vexa"
-                className="w-8 h-8 object-contain"
-                style={{ opacity: 0.85 }}
+                className="w-9 h-9 object-contain"
+                style={{ opacity: 0.95 }}
               />
             </div>
 
@@ -642,11 +642,11 @@ function MoniepointHome() {
 
             {/* action buttons — content-width pills, left-aligned */}
             <div className="flex gap-3">
-              <button onClick={() => navigate('/deposit')} className="bg-[#1E3A6E] rounded-full h-[30px] px-4 flex items-center gap-1.5 text-[11px] font-semibold text-white">
+              <button onClick={() => navigate('/deposit')} className="bg-[#00A6C7] rounded-full h-[30px] px-4 flex items-center gap-1.5 text-[11px] font-semibold text-white shadow-sm shadow-black/10">
                 <span className="text-[14px] leading-none font-light">+</span>
                 Deposit
               </button>
-              <button onClick={() => navigate('/history')} className="bg-[#1E3A6E] rounded-full h-[30px] px-4 flex items-center gap-1.5 text-[11px] font-semibold text-white">
+              <button onClick={() => navigate('/history')} className="bg-[#F2B94B] rounded-full h-[30px] px-4 flex items-center gap-1.5 text-[11px] font-semibold text-[#162353] shadow-sm shadow-black/10">
                 <Clock className="w-3 h-3" strokeWidth={2} />
                 History
               </button>
