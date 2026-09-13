@@ -611,7 +611,7 @@ function MoniepointHome() {
               <img
                 src="/vexa-icon.png"
                 alt="Vexa"
-                className="w-10 h-10 object-contain"
+                className="w-8 h-8 object-contain"
                 style={{ opacity: 0.85 }}
               />
             </div>
@@ -1947,7 +1947,7 @@ function DepositPage() {
               <p className="text-[11px] text-[#888] mb-0.5">Bank</p>
               <p className="text-[14px] font-semibold text-[#111]">{bankName}</p>
             </div>
-            <img src="/vexa-icon.png" alt="Vexa" className="w-10 h-10 rounded-full object-cover" />
+            <img src="/vexa-icon.png" alt="Vexa" className="w-8 h-8 rounded-full object-cover" />
           </div>
 
           <div className="h-px bg-[#F0F0F0] mb-4" />

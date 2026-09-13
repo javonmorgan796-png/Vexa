@@ -98,10 +98,6 @@ export default function VexaTransferPage() {
 
   const startCamera = async () => {
     const Detector = getBarcodeDetector();
-    if (!Detector) {
-      setScannerError('QR scanning is not available in this browser. Enter the 10-digit account number below instead.');
-      return;
-    }
     if (!navigator.mediaDevices?.getUserMedia) {
       setScannerError('Camera access is not available here. Enter the 10-digit account number below instead.');
       return;
@@ -122,6 +118,10 @@ export default function VexaTransferPage() {
       videoRef.current.srcObject = stream;
       await videoRef.current.play();
       setScannerActive(true);
+      if (!Detector) {
+        setScannerError('Camera started, but automatic QR reading is not supported in this browser. Enter the 10-digit account number below instead.');
+        return;
+      }
       const detector = new Detector({ formats: ['qr_code'] });
 
       const scanFrame = async () => {
@@ -240,9 +240,14 @@ export default function VexaTransferPage() {
               <p className="text-[13px] font-bold text-[#111]">Scan a Vexa QR code</p>
               <p className="text-[11px] text-[#888] mt-1 leading-relaxed">Ask the recipient to open Vexa to Vexa and choose My QR code. Scan the code they show you.</p>
               <div className="mt-4 rounded-2xl overflow-hidden bg-[#0B122B] aspect-[4/3] relative flex items-center justify-center">
+                <video
+                  ref={videoRef}
+                  muted
+                  playsInline
+                  className={`absolute inset-0 w-full h-full object-cover transition-opacity ${scannerActive ? 'opacity-100' : 'opacity-0'}`}
+                />
                 {scannerActive ? (
                   <>
-                    <video ref={videoRef} muted playsInline className="absolute inset-0 w-full h-full object-cover" />
                     <div className="absolute inset-[18%] border-2 border-[#8BE3FF] rounded-2xl shadow-[0_0_0_999px_rgba(11,18,43,0.42)]" />
                     <p className="absolute bottom-3 left-0 right-0 text-center text-[11px] font-semibold text-white">Point the camera at the QR code</p>
                   </>

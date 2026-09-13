@@ -199,7 +199,7 @@ export default function SignInPage() {
     <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
       {/* Top navy header */}
       <div className="bg-[#162353] px-6 pt-14 pb-10 flex flex-col items-center">
-        <img src="/vexa-logo.png" alt="Vexa" className="h-28 mb-3 object-contain drop-shadow-lg" />
+        <img src="/vexa-logo.png" alt="Vexa" className="h-20 mb-3 object-contain drop-shadow-lg" />
         <p className="text-white/70 text-[13px]">Sign in to your account</p>
       </div>
 
