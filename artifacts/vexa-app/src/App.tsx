@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Route, Switch, Router as WouterRouter, useLocation, useRoute } from 'wouter';
 import {
   Headphones, Bell, Copy, EyeOff, Eye, Clock,
@@ -4462,10 +4462,12 @@ function Router() {
 
 /* Handles post-splash redirect — must live inside WouterRouter + AuthProvider */
 function AppShell() {
-  // Do not block the authenticated dashboard behind the splash animation.
-  // Supabase restores the session and profile in the background.
-  const [showSplash] = useState(false);
-  const [splashDone] = useState(true);
+  const [showSplash, setShowSplash] = useState(true);
+  const [splashDone, setSplashDone] = useState(false);
+  const handleSplashDone = useCallback(() => {
+    setShowSplash(false);
+    setSplashDone(true);
+  }, []);
   const { session, isAuthenticated, loading, profileError, refreshProfile, signOut, twoFactorPending } = useAuth();
   const [path, navigate] = useLocation();
   const { clearVerification } = useBusinessSecurity();
@@ -4555,7 +4557,7 @@ function AppShell() {
 
   return (
     <>
-      {showSplash && <SplashScreen onDone={() => undefined} />}
+      {showSplash && <SplashScreen onDone={handleSplashDone} />}
       {!loading && profileError && session && !isAuthenticated && (
         <div className="fixed top-3 left-1/2 z-[60] w-[min(92vw,420px)] -translate-x-1/2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 shadow-lg">
           <p className="text-[13px] font-semibold text-red-700">Your session is active, but your profile could not be loaded.</p>
