@@ -609,7 +609,7 @@ function MoniepointHome() {
             {/* Vexa logo — visible top-right */}
             <div className="absolute top-3 right-4 pointer-events-none select-none flex flex-col items-center gap-1">
               <img
-                src="/vexa-icon.png"
+                src="/vexa-mark.svg"
                 alt="Vexa"
                 className="w-8 h-8 object-contain"
                 style={{ opacity: 0.85 }}
