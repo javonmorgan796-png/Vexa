@@ -610,11 +610,10 @@ function MoniepointHome() {
             <div className="absolute top-3 right-4 pointer-events-none select-none flex flex-col items-center gap-1">
               <img
                 src="/vexa-icon.png"
-                alt=""
+                alt="Vexa"
                 className="w-10 h-10 object-contain"
                 style={{ opacity: 0.85 }}
               />
-              <span className="text-[9px] font-bold tracking-widest text-white/50 uppercase">Vexa</span>
             </div>
 
             {/* account number row */}
@@ -1044,11 +1043,27 @@ type ChatMessage = {
   text: string;
   time: string;
   attachment?: ChatAttachment;
+  actions?: { label: string; path: string }[];
 };
 
-const AI_FAQ_MAP: { keywords: string[]; answer: string }[] = [
+const AI_FAQ_MAP: { keywords: string[]; answer: string; actions?: { label: string; path: string }[] }[] = [
+  { keywords: ['vexa user', 'vexa-to-vexa', 'vexa to vexa', 'vexa transfer'],
+    answer: 'To send to another Vexa user, open Vexa to Vexa, enter their 10-digit account number or scan their QR code, verify the recipient, enter the amount, and confirm with your transaction PIN. No bank selection is needed.',
+    actions: [{ label: 'Open Vexa transfers', path: '/vexa-transfer' }] },
+  { keywords: ['scan qr', 'scan code', 'qr code', 'qr'],
+    answer: 'Open Vexa to Vexa and choose Scan QR. Allow camera access, scan the recipient’s code, check the account number, then enter the amount and PIN. If the camera does not work, enter the 10-digit Vexa account number instead.',
+    actions: [{ label: 'Open Scan QR', path: '/vexa-transfer' }] },
+  { keywords: ['receive money', 'receive payment', 'get paid', 'someone send'],
+    answer: 'Open Vexa to Vexa and choose My QR code. Show or share that code with the other Vexa user. It contains only your Vexa account identifier; never share your PIN or OTP.',
+    actions: [{ label: 'Open My QR code', path: '/vexa-transfer?mode=my-qr' }] },
+  { keywords: ['qr not working', 'camera not working', 'cannot scan', 'can’t scan'],
+    answer: 'Increase your screen brightness, hold the camera steady, and try again. If camera permission was denied, enable it in your browser or phone settings. You can always use the 10-digit account number field instead.',
+    actions: [{ label: 'Use manual transfer', path: '/vexa-transfer' }] },
   { keywords: ['transfer', 'send money', 'send'],
-    answer: 'To transfer money, go to the home screen and tap "Transfer". Enter the recipient\'s account number, select their bank, enter the amount, and confirm with your transaction PIN.' },
+    answer: 'For a bank transfer, go to Transfer, select the recipient’s bank, enter their 10-digit account number, wait for the account name to resolve, enter the amount, and confirm with your transaction PIN. For another Vexa user, choose Vexa to Vexa instead.',
+    actions: [{ label: 'Open transfers', path: '/transfer' }] },
+  { keywords: ['account name', 'resolve account', 'paystack', 'bank account'],
+    answer: 'For a bank recipient, choose the bank first and enter the 10-digit account number. Vexa checks the account name through Paystack before you can continue. If the name does not load, check the bank and number and try again.' },
   { keywords: ['limit', 'daily limit', 'how much'],
     answer: 'Level 1 accounts can transfer up to ₦50,000/day. Level 2 up to ₦200,000/day. Level 3 verified accounts enjoy a ₦5,000,000 daily limit.' },
   { keywords: ['airtime', 'data', 'recharge'],
@@ -1065,12 +1080,16 @@ const AI_FAQ_MAP: { keywords: string[]; answer: string }[] = [
     answer: 'You can manage your Vexa debit card from the "Card" section on the home screen. You can freeze, unfreeze, or request a new card there.' },
 ];
 
-function getAIReply(userText: string): string {
+function getAIReply(userText: string): { text: string; actions?: { label: string; path: string }[] } {
   const lower = userText.toLowerCase();
   for (const entry of AI_FAQ_MAP) {
-    if (entry.keywords.some(k => lower.includes(k))) return entry.answer;
+    if (entry.keywords.some(k => lower.includes(k))) {
+      return { text: entry.answer, actions: entry.actions };
+    }
   }
-  return "I'm not sure about that one. I can connect you with a live agent who can help right away — tap the button below.";
+  return {
+    text: "I'm not sure about that one. I can connect you with a live agent who can help right away — tap the button below.",
+  };
 }
 
 function nowTime() {
@@ -1087,19 +1106,20 @@ const AGENT = {
 };
 
 const QUICK_REPLIES = [
-  'How do I transfer money?',
-  'What are my transfer limits?',
-  'How do I buy airtime?',
-  'Is my money safe?',
+  'How do I send to a Vexa user?',
+  'How do I scan a Vexa QR?',
+  'How do I receive money?',
+  'What if my QR is not working?',
 ];
 
 function LiveChatModal({ onClose }: { onClose: () => void }) {
+  const [, navigate] = useLocation();
   const [mode, setMode] = useState<'ai' | 'live'>('ai');
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: '1',
       from: 'ai',
-      text: "Hi! I'm Vexa AI 👋 I can answer most questions instantly. What do you need help with today?",
+      text: "Hi! I'm Vexa AI. I can answer questions about bank transfers, Vexa-to-Vexa transfers, QR codes, account access, and more. What do you need help with today?",
       time: nowTime(),
     },
   ]);
@@ -1166,7 +1186,8 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
       setIsTyping(true);
       setTimeout(() => {
         setIsTyping(false);
-        addMessage({ from: 'ai', text: getAIReply(txt), time: nowTime() });
+        const reply = getAIReply(txt);
+        addMessage({ from: 'ai', text: reply.text, actions: reply.actions, time: nowTime() });
       }, 1100 + Math.random() * 600);
     } else {
       // Live agent — simulate reply
@@ -1193,7 +1214,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
       setMode('live');
       addMessage({
         from: 'agent',
-        text: `Hi! I'm ${AGENT.name} from Vexa Support 😊 I've reviewed your conversation and I'm here to help. What can I do for you?`,
+        text: `Hi! I'm ${AGENT.name} from Vexa Support. I've reviewed your conversation and I'm here to help. What can I do for you?`,
         time: nowTime(),
       });
     }, 2000);
@@ -1341,6 +1362,19 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
                     style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
                   >
                     {msg.text}
+                  </div>
+                )}
+                {msg.actions && msg.actions.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {msg.actions.map(action => (
+                      <button
+                        key={action.path}
+                        onClick={() => { onClose(); navigate(action.path); }}
+                        className="rounded-full bg-[#EAF2FF] border border-[#CFE0FF] px-3.5 py-2 text-[11px] font-bold text-[#1D4ED8] active:bg-[#DCEBFF]"
+                      >
+                        {action.label}
+                      </button>
+                    ))}
                   </div>
                 )}
 
@@ -1527,7 +1561,11 @@ function HelpSupportPage() {
   const [showChat, setShowChat] = useState(false);
 
   const faqs = [
-    { q: 'How do I transfer money?', a: 'Go to the home screen and tap "Transfer". Enter the recipient\'s account number, select their bank, enter the amount, and confirm with your transaction PIN.' },
+    { q: 'How do I send money to another Vexa user?', a: 'Open Transfer → Vexa to Vexa. Enter the recipient’s 10-digit Vexa account number or scan their QR code, verify the recipient, enter the amount, and confirm with your transaction PIN. No bank selection is needed.' },
+    { q: 'How do I scan a Vexa QR code?', a: 'Open Transfer → Vexa to Vexa → Scan QR. Allow camera access, scan the code shown by the recipient, check the account number, then continue with the amount and PIN. Manual account entry is always available.' },
+    { q: 'How do I receive money with a QR code?', a: 'Open Transfer → Vexa to Vexa → My QR code. Show or share the QR code with another Vexa user. It contains only your Vexa account identifier. Never share your PIN or OTP.' },
+    { q: 'What if my QR code is not working?', a: 'Increase screen brightness, hold the camera steady, and try again. If camera permission was denied, enable it in your browser or phone settings. You can also enter the 10-digit Vexa account number manually.' },
+    { q: 'How do I transfer money to a bank account?', a: 'Go to the home screen and tap Transfer. Select the recipient’s bank, enter their account number, wait for the Paystack account-name check, enter the amount, and confirm with your transaction PIN.' },
     { q: 'What are the transfer limits?', a: 'Level 1 accounts can transfer up to ₦50,000 per day. Level 2 accounts can transfer up to ₦200,000 per day. Level 3 verified accounts have a ₦5,000,000 daily limit.' },
     { q: 'How do I buy airtime or data?', a: 'From the home screen, tap "Airtime" or "Data", select your network provider, enter the phone number and amount, then confirm the purchase.' },
     { q: 'I forgot my passcode. What do I do?', a: 'On the Sign In screen, tap "Forgot Passcode?" and follow the steps to reset it using your registered phone number and OTP verification.' },
@@ -1556,10 +1594,10 @@ function HelpSupportPage() {
             <p className="text-white font-bold text-[15px] mb-1">Need help?</p>
             <p className="text-white/60 text-[12px] mb-4">Our support team is available 24/7 to assist you.</p>
             <div className="flex gap-3">
-              <button className="flex-1 bg-white/15 rounded-xl py-3 flex flex-col items-center gap-1.5 active:bg-white/25 transition-colors">
+              <a href="tel:+2348008392600" className="flex-1 bg-white/15 rounded-xl py-3 flex flex-col items-center gap-1.5 active:bg-white/25 transition-colors">
                 <Phone className="w-5 h-5 text-white" />
                 <span className="text-[11px] font-semibold text-white">Call Us</span>
-              </button>
+              </a>
               <button
                 onClick={() => setShowChat(true)}
                 className="flex-1 bg-white/25 border border-white/30 rounded-xl py-3 flex flex-col items-center gap-1.5 active:bg-white/35 transition-colors"
@@ -1567,10 +1605,10 @@ function HelpSupportPage() {
                 <MessageCircle className="w-5 h-5 text-white" />
                 <span className="text-[11px] font-semibold text-white">Live Chat</span>
               </button>
-              <button className="flex-1 bg-white/15 rounded-xl py-3 flex flex-col items-center gap-1.5 active:bg-white/25 transition-colors">
+              <a href="mailto:support@vexa.com" className="flex-1 bg-white/15 rounded-xl py-3 flex flex-col items-center gap-1.5 active:bg-white/25 transition-colors">
                 <Mail className="w-5 h-5 text-white" />
                 <span className="text-[11px] font-semibold text-white">Email Us</span>
-              </button>
+              </a>
             </div>
           </div>
 
@@ -1597,19 +1635,19 @@ function HelpSupportPage() {
           <div>
             <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide mb-2 px-1">Contact Details</p>
             <div className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
-              {[
-                { icon: <Phone className="w-5 h-5" />, label: 'Phone Support', sub: '+234 800 839 2600' },
-                { icon: <Mail className="w-5 h-5" />, label: 'Email Support', sub: 'support@vexa.com' },
-                { icon: <MessageCircle className="w-5 h-5" />, label: 'WhatsApp', sub: '+234 800 839 2600' },
+                {[
+                  { icon: <Phone className="w-5 h-5" />, label: 'Phone Support', sub: '+234 800 839 2600', href: 'tel:+2348008392600' },
+                  { icon: <Mail className="w-5 h-5" />, label: 'Email Support', sub: 'support@vexa.com', href: 'mailto:support@vexa.com' },
+                  { icon: <MessageCircle className="w-5 h-5" />, label: 'WhatsApp', sub: '+234 800 839 2600', href: 'https://wa.me/2348008392600' },
               ].map((item, i, arr) => (
-                <div key={i} className={`flex items-center gap-3.5 px-4 py-4 ${i < arr.length - 1 ? 'border-b border-[#F5F5F5]' : ''}`}>
+                  <a key={i} href={item.href} className={`flex items-center gap-3.5 px-4 py-4 hover:bg-[#F8F9FB] ${i < arr.length - 1 ? 'border-b border-[#F5F5F5]' : ''}`}>
                   <span className="text-[#555]">{item.icon}</span>
                   <div className="flex-1">
                     <p className="text-[14px] font-semibold text-[#111]">{item.label}</p>
                     <p className="text-[12px] text-[#888] mt-0.5">{item.sub}</p>
                   </div>
                   <ExternalLink className="w-4 h-4 text-[#CBD5E1]" />
-                </div>
+                  </a>
               ))}
             </div>
           </div>
@@ -2411,7 +2449,7 @@ function TransferPage() {
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         </button>
         <span className="text-[16px] font-bold text-[#111]">Transfer</span>
-        <button onClick={() => navigate('/vexa-transfer')} className="ml-auto rounded-full bg-[#EAF2FF] text-[#2563EB] px-3 py-1.5 text-[10px] font-bold">Vexa user</button>
+        <button onClick={() => navigate('/vexa-transfer')} className="ml-auto rounded-full bg-[#EAF2FF] text-[#2563EB] px-3 py-1.5 text-[10px] font-bold">Vexa to Vexa</button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4" style={{ scrollbarWidth: 'none' }}>

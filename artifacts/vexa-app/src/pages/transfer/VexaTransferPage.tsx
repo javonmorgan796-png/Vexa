@@ -1,15 +1,73 @@
-import React, { useState } from 'react';
-import { ArrowLeftRight, CheckCircle2, ChevronLeft, Send } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  ArrowLeftRight,
+  Camera,
+  Check,
+  CheckCircle2,
+  ChevronLeft,
+  Copy,
+  QrCode,
+  ScanLine,
+  Send,
+  Share2,
+} from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/context/AuthContext';
 import { useUserData } from '@/context/UserDataContext';
 import { useVexaFinance } from '@/context/VexaFinanceContext';
+
+type TransferMode = 'scan' | 'my-qr';
+
+interface BarcodeResult {
+  rawValue: string;
+}
+
+interface BarcodeDetectorInstance {
+  detect(source: HTMLVideoElement): Promise<BarcodeResult[]>;
+}
+
+interface BarcodeDetectorConstructor {
+  new (options?: { formats: string[] }): BarcodeDetectorInstance;
+}
+
+function getBarcodeDetector() {
+  return (window as typeof window & { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
+}
+
+function createVexaQrValue(accountNumber: string, name: string) {
+  const params = new URLSearchParams({ account: accountNumber, name });
+  return `vexa://transfer?${params.toString()}`;
+}
+
+function parseVexaAccount(value: string): string | null {
+  const trimmed = value.trim();
+  if (/^\d{10}$/.test(trimmed)) return trimmed;
+
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== 'vexa:') return null;
+    const account = url.searchParams.get('account') ?? '';
+    return /^\d{10}$/.test(account) ? account : null;
+  } catch {
+    try {
+      const parsed = JSON.parse(trimmed) as { account?: unknown; accountNumber?: unknown };
+      const account = String(parsed.account ?? parsed.accountNumber ?? '');
+      return /^\d{10}$/.test(account) ? account : null;
+    } catch {
+      return null;
+    }
+  }
+}
 
 export default function VexaTransferPage() {
   const [, navigate] = useLocation();
   const { user } = useAuth();
   const { refreshAll } = useUserData();
   const { transferVexaMoney } = useVexaFinance();
+  const [mode, setMode] = useState<TransferMode>(() =>
+    new URLSearchParams(window.location.search).get('mode') === 'my-qr' ? 'my-qr' : 'scan'
+  );
   const [accountNumber, setAccountNumber] = useState('');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
@@ -17,15 +75,113 @@ export default function VexaTransferPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState<{ name: string; amount: number } | null>(null);
+  const [scannerActive, setScannerActive] = useState(false);
+  const [scannerError, setScannerError] = useState('');
+  const [scanMessage, setScanMessage] = useState('');
+  const [copied, setCopied] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const scanTimerRef = useRef<number | null>(null);
+
+  const stopCamera = () => {
+    if (scanTimerRef.current !== null) {
+      window.clearTimeout(scanTimerRef.current);
+      scanTimerRef.current = null;
+    }
+    streamRef.current?.getTracks().forEach(track => track.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setScannerActive(false);
+  };
+
+  useEffect(() => () => stopCamera(), []);
+
+  const startCamera = async () => {
+    const Detector = getBarcodeDetector();
+    if (!Detector) {
+      setScannerError('QR scanning is not available in this browser. Enter the 10-digit account number below instead.');
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setScannerError('Camera access is not available here. Enter the 10-digit account number below instead.');
+      return;
+    }
+
+    setScannerError('');
+    setScanMessage('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (!videoRef.current) {
+        stopCamera();
+        return;
+      }
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
+      setScannerActive(true);
+      const detector = new Detector({ formats: ['qr_code'] });
+
+      const scanFrame = async () => {
+        if (!streamRef.current || !videoRef.current) return;
+        try {
+          const results = await detector.detect(videoRef.current);
+          const account = results.map(result => parseVexaAccount(result.rawValue)).find(Boolean);
+          if (account) {
+            setAccountNumber(account);
+            setScanMessage('QR code found. Confirm the account number, then enter the amount below.');
+            stopCamera();
+            return;
+          }
+        } catch {
+          // Keep the camera open; a frame can be unavailable while the camera starts.
+        }
+        if (streamRef.current) scanTimerRef.current = window.setTimeout(() => void scanFrame(), 250);
+      };
+
+      void scanFrame();
+    } catch {
+      setScannerError('Camera permission was not granted. You can still enter a Vexa account number manually.');
+      stopCamera();
+    }
+  };
+
+  const copyMyQrDetails = async () => {
+    if (!user?.accountNumber) return;
+    try {
+      await navigator.clipboard.writeText(user.accountNumber);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setScannerError('Copy is not available on this device. Your account number is shown below the QR code.');
+    }
+  };
+
+  const shareMyQr = async () => {
+    if (!user?.accountNumber) return;
+    const text = `Send me money on Vexa. My Vexa account number is ${user.accountNumber}.`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'My Vexa account', text });
+        return;
+      } catch {
+        // Sharing was cancelled or is unavailable; copying is the fallback.
+      }
+    }
+    await copyMyQrDetails();
+  };
 
   const submit = async () => {
     const numericAmount = Number(amount.replace(/,/g, ''));
-    if (!/^\d{10}$/.test(accountNumber)) return setError('Enter the recipient’s 10-digit Vexa account number');
+    if (!/^\d{10}$/.test(accountNumber)) return setError('Enter or scan the recipient’s 10-digit Vexa account number');
     if (!numericAmount || numericAmount <= 0) return setError('Enter a valid amount');
     if (accountNumber === user?.accountNumber) return setError('You cannot transfer to your own account');
     if (user?.pin === '0000') return setError('Set your transaction PIN in Settings before sending money');
     if (pin.length !== 4) return setError('Enter your 4-digit transaction PIN');
-    setBusy(true); setError('');
+    setBusy(true);
+    setError('');
     const result = await transferVexaMoney(accountNumber, numericAmount, note, pin);
     setBusy(false);
     if (!result.success) return setError(result.error ?? 'Transfer failed');
@@ -44,31 +200,99 @@ export default function VexaTransferPage() {
           <CheckCircle2 className="w-16 h-16 text-[#16A34A]" />
           <p className="text-[22px] font-extrabold text-[#111] mt-5">Money sent</p>
           <p className="text-[14px] text-[#666] mt-2">₦{success.amount.toLocaleString('en-NG', { minimumFractionDigits: 2 })} was delivered to {success.name}.</p>
-          <button onClick={() => { setSuccess(null); setAccountNumber(''); setAmount(''); setNote(''); }} className="w-full max-w-sm mt-8 rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold">Send another transfer</button>
+          <button onClick={() => { setSuccess(null); setAccountNumber(''); setAmount(''); setNote(''); setPin(''); setScanMessage(''); }} className="w-full max-w-sm mt-8 rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold">Send another transfer</button>
           <button onClick={() => navigate('/')} className="mt-3 text-[#2563EB] text-[13px] font-semibold">Back to home</button>
         </div>
       </div>
     );
   }
 
+  const myQrValue = user?.accountNumber ? createVexaQrValue(user.accountNumber, user.name) : '';
+
   return (
     <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
       <div className="flex-none flex items-center gap-3 px-4 pb-3 bg-white border-b border-[#E8EBF0]" style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
-        <button onClick={() => navigate('/transfer')} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100"><ChevronLeft className="w-5 h-5" /></button>
-        <span className="text-[16px] font-bold text-[#111]">Transfer to Vexa user</span>
+        <button onClick={() => { stopCamera(); navigate('/transfer'); }} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100"><ChevronLeft className="w-5 h-5" /></button>
+        <span className="text-[16px] font-bold text-[#111]">Vexa to Vexa</span>
       </div>
+
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4" style={{ scrollbarWidth: 'none' }}>
         <div className="rounded-2xl bg-[#162353] text-white p-5">
-          <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center"><ArrowLeftRight className="w-5 h-5 text-[#8BE3FF]" /></div><div><p className="text-[14px] font-bold">Instant Vexa transfer</p><p className="text-[11px] text-white/60 mt-0.5">No fee · settles directly to their balance</p></div></div>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center"><ArrowLeftRight className="w-5 h-5 text-[#8BE3FF]" /></div>
+            <div><p className="text-[14px] font-bold">Instant Vexa transfer</p><p className="text-[11px] text-white/60 mt-0.5">No fee · settles directly to their balance</p></div>
+          </div>
+          <p className="text-[11px] leading-relaxed text-white/65 mt-4">Scan the recipient’s Vexa QR code or enter their account number. The transfer is only sent after you confirm the amount and PIN.</p>
         </div>
+
+        <div className="bg-white rounded-2xl border border-[#E8EBF0] p-1.5 flex gap-1">
+          <button onClick={() => { stopCamera(); setMode('scan'); }} className={`flex-1 rounded-xl py-3 text-[12px] font-bold flex items-center justify-center gap-2 ${mode === 'scan' ? 'bg-[#162353] text-white' : 'text-[#64748B]'}`}>
+            <ScanLine className="w-4 h-4" /> Scan QR
+          </button>
+          <button onClick={() => { stopCamera(); setMode('my-qr'); setScannerError(''); }} className={`flex-1 rounded-xl py-3 text-[12px] font-bold flex items-center justify-center gap-2 ${mode === 'my-qr' ? 'bg-[#162353] text-white' : 'text-[#64748B]'}`}>
+            <QrCode className="w-4 h-4" /> My QR code
+          </button>
+        </div>
+
+        {mode === 'scan' ? (
+          <>
+            <div className="bg-white rounded-2xl border border-[#F0F0F0] p-5">
+              <p className="text-[13px] font-bold text-[#111]">Scan a Vexa QR code</p>
+              <p className="text-[11px] text-[#888] mt-1 leading-relaxed">Ask the recipient to open Vexa to Vexa and choose My QR code. Scan the code they show you.</p>
+              <div className="mt-4 rounded-2xl overflow-hidden bg-[#0B122B] aspect-[4/3] relative flex items-center justify-center">
+                {scannerActive ? (
+                  <>
+                    <video ref={videoRef} muted playsInline className="absolute inset-0 w-full h-full object-cover" />
+                    <div className="absolute inset-[18%] border-2 border-[#8BE3FF] rounded-2xl shadow-[0_0_0_999px_rgba(11,18,43,0.42)]" />
+                    <p className="absolute bottom-3 left-0 right-0 text-center text-[11px] font-semibold text-white">Point the camera at the QR code</p>
+                  </>
+                ) : (
+                  <div className="relative z-10 flex flex-col items-center text-center px-6">
+                    <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center mb-3"><Camera className="w-7 h-7 text-[#8BE3FF]" /></div>
+                    <p className="text-[13px] font-bold text-white">Camera is ready when you are</p>
+                    <p className="text-[11px] text-white/60 mt-1">Allow camera access to scan securely.</p>
+                    <button onClick={() => void startCamera()} className="mt-4 rounded-xl bg-white text-[#162353] px-4 py-2.5 text-[12px] font-bold">Start camera</button>
+                  </div>
+                )}
+              </div>
+              {scannerError && <p className="mt-3 text-[11px] leading-relaxed text-red-600">{scannerError}</p>}
+              {scanMessage && <p className="mt-3 text-[11px] leading-relaxed text-[#166534]">{scanMessage}</p>}
+            </div>
+
+            <div className="bg-white rounded-2xl border border-[#F0F0F0] p-5">
+              <label className="block text-[11px] font-bold text-[#555] mb-1.5">Or enter account number</label>
+              <input value={accountNumber} onChange={e => { setAccountNumber(e.target.value.replace(/\D/g, '').slice(0, 10)); setScanMessage(''); }} inputMode="numeric" placeholder="10-digit Vexa account" className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3.5 text-[16px] tracking-[0.12em] outline-none focus:border-[#162353]" />
+              {accountNumber.length === 10 && <p className="mt-2 text-[11px] text-[#64748B]">Recipient account captured. Confirm the amount below before sending.</p>}
+            </div>
+          </>
+        ) : (
+          <div className="bg-white rounded-2xl border border-[#F0F0F0] p-5">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[#EAF2FF] flex items-center justify-center shrink-0"><QrCode className="w-5 h-5 text-[#2563EB]" /></div>
+              <div><p className="text-[14px] font-bold text-[#111]">Your Vexa QR code</p><p className="text-[11px] text-[#888] mt-1 leading-relaxed">Show this code to another Vexa user so they can scan it and send money to you.</p></div>
+            </div>
+            {myQrValue ? (
+              <div className="mt-5 flex flex-col items-center">
+                <div className="inline-flex rounded-2xl bg-white p-4 border border-[#E8EBF0]"><QRCodeSVG value={myQrValue} size={220} includeMargin fgColor="#162353" /></div>
+                <p className="text-[15px] font-bold text-[#111] mt-4">{user?.name}</p>
+                <p className="text-[13px] tracking-[0.14em] text-[#64748B] mt-1">{user?.accountNumber}</p>
+                <div className="flex gap-2 mt-4 w-full">
+                  <button onClick={() => void copyMyQrDetails()} className="flex-1 rounded-xl border border-[#DCE3EE] py-3 text-[12px] font-bold text-[#162353] flex items-center justify-center gap-2">{copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}{copied ? 'Copied' : 'Copy number'}</button>
+                  <button onClick={() => void shareMyQr()} className="flex-1 rounded-xl bg-[#162353] py-3 text-[12px] font-bold text-white flex items-center justify-center gap-2"><Share2 className="w-4 h-4" /> Share QR</button>
+                </div>
+              </div>
+            ) : <p className="mt-5 text-[12px] text-[#888]">Your Vexa account number is not available yet.</p>}
+          </div>
+        )}
+
         {error && <div className="rounded-2xl bg-red-50 border border-red-200 px-4 py-3 text-[12px] text-red-600">{error}</div>}
+
         <div className="bg-white rounded-2xl border border-[#F0F0F0] p-5 space-y-4">
-          <div><label className="block text-[11px] font-bold text-[#555] mb-1.5">Recipient account number</label><input value={accountNumber} onChange={e => setAccountNumber(e.target.value.replace(/\D/g, '').slice(0, 10))} inputMode="numeric" placeholder="10-digit Vexa account" className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3.5 text-[16px] tracking-[0.12em] outline-none focus:border-[#162353]" /></div>
           <div><label className="block text-[11px] font-bold text-[#555] mb-1.5">Amount</label><div className="flex items-center border border-[#E0E0E0] rounded-xl px-4 focus-within:border-[#162353]"><span className="text-[18px] font-bold text-[#555]">₦</span><input value={amount} onChange={e => setAmount(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" placeholder="0.00" className="w-full px-3 py-3.5 text-[18px] font-semibold outline-none" /></div></div>
           <div><label className="block text-[11px] font-bold text-[#555] mb-1.5">Note <span className="font-normal text-[#999]">(optional)</span></label><input value={note} onChange={e => setNote(e.target.value.slice(0, 120))} placeholder="What’s this for?" className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3.5 text-[14px] outline-none focus:border-[#162353]" /></div>
           <div><label className="block text-[11px] font-bold text-[#555] mb-1.5">Transaction PIN</label><input value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))} type="password" inputMode="numeric" placeholder="4-digit PIN" className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3.5 text-[16px] tracking-[0.4em] outline-none focus:border-[#162353]" /></div>
         </div>
-        <p className="text-[11px] text-[#888] text-center">Your transfer PIN is required in the standard transfer flow. Vexa-to-Vexa transfers are recorded in both users’ histories.</p>
+        <p className="text-[11px] text-[#888] text-center">Vexa verifies the recipient again when the transfer is submitted. Never share your PIN or OTP in a QR code.</p>
       </div>
       <div className="flex-none px-4 pb-6 pt-2"><button disabled={busy} onClick={() => void submit()} className="w-full rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold disabled:opacity-50"><span className="inline-flex items-center gap-2">{busy ? 'Sending…' : <><Send className="w-4 h-4" /> Send money</>}</span></button></div>
     </div>
