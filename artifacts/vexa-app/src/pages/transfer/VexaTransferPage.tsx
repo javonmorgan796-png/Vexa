@@ -235,6 +235,12 @@ export default function VexaTransferPage() {
             <p className="text-[17px] font-bold">Scan Vexa QR</p>
             <p className="text-[11px] text-[#64748B]">Scan to start your transfer</p>
           </div>
+          <button
+            onClick={() => { stopCamera(); setMode('my-qr'); }}
+            className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-2 text-[11px] font-bold text-[#162353] shadow-sm hover:bg-[#E8EDF1]"
+          >
+            <QrCode className="w-3.5 h-3.5" /> My QR code
+          </button>
         </div>
 
         <div className="flex-1 flex flex-col items-center justify-center px-5 pb-8">
@@ -248,7 +254,7 @@ export default function VexaTransferPage() {
             {scannerActive ? (
               <>
                 <div className="absolute inset-[12%] border-2 border-[#8BE3FF] rounded-[24px] shadow-[0_0_0_999px_rgba(11,18,43,0.55)]" />
-                <div className="absolute top-[12%] left-[18%] right-[18%] h-0.5 bg-[#8BE3FF] shadow-[0_0_14px_#8BE3FF] animate-pulse" />
+                <div className="vexa-scan-line absolute left-[18%] right-[18%] h-0.5 bg-[#8BE3FF] shadow-[0_0_14px_#8BE3FF]" />
                 <p className="absolute bottom-5 left-0 right-0 text-center text-[12px] font-semibold text-white">Point the camera at the QR code</p>
               </>
             ) : (

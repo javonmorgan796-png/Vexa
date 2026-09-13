@@ -6,6 +6,29 @@
   -webkit-text-security: disc;
 }
 
+@keyframes vexa-scan-sweep {
+  0%, 100% {
+    top: 12%;
+    opacity: 0.65;
+  }
+  50% {
+    top: 86%;
+    opacity: 1;
+  }
+}
+
+.vexa-scan-line {
+  animation: vexa-scan-sweep 2.1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vexa-scan-line {
+    animation: none;
+    top: 50%;
+    opacity: 1;
+  }
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
