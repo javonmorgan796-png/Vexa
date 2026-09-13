@@ -226,19 +226,19 @@ export default function VexaTransferPage() {
 
   if (mode === 'scan' && !scanComplete) {
     return (
-      <div className="fixed inset-0 bg-[#0B122B] text-white flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+      <div className="fixed inset-0 bg-[#F2F3F5] text-[#111] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
         <div className="flex-none flex items-center gap-3 px-5 pb-4" style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)' }}>
-          <button onClick={() => { stopCamera(); navigate('/transfer'); }} className="w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20" aria-label="Back to transfer">
+          <button onClick={() => { stopCamera(); navigate('/transfer'); }} className="w-10 h-10 flex items-center justify-center rounded-full bg-white hover:bg-[#E8EDF1]" aria-label="Back to transfer">
             <ChevronLeft className="w-5 h-5" />
           </button>
           <div>
             <p className="text-[17px] font-bold">Scan Vexa QR</p>
-            <p className="text-[11px] text-white/60">Scan to start your transfer</p>
+            <p className="text-[11px] text-[#64748B]">Scan to start your transfer</p>
           </div>
         </div>
 
         <div className="flex-1 flex flex-col items-center justify-center px-5 pb-8">
-          <div className="w-full max-w-md aspect-square rounded-[28px] overflow-hidden bg-black relative flex items-center justify-center shadow-2xl">
+          <div className="w-full max-w-md aspect-square rounded-[28px] overflow-hidden bg-[#E7EEF2] relative flex items-center justify-center shadow-2xl">
             <video
               ref={videoRef}
               muted
@@ -254,14 +254,14 @@ export default function VexaTransferPage() {
             ) : (
               <div className="relative z-10 flex flex-col items-center text-center px-8">
                 <div className="w-16 h-16 rounded-2xl bg-white/10 flex items-center justify-center mb-4"><Camera className="w-8 h-8 text-[#8BE3FF]" /></div>
-                <p className="text-[15px] font-bold">Ready to scan</p>
-                <p className="text-[12px] text-white/60 mt-2 leading-relaxed">Center the recipient’s Vexa QR code inside the frame.</p>
-                <button onClick={() => void startCamera()} className="mt-5 rounded-xl bg-white text-[#162353] px-5 py-3 text-[12px] font-bold">Start camera</button>
+                <p className="text-[15px] font-bold text-[#162353]">Ready to scan</p>
+                <p className="text-[12px] text-[#64748B] mt-2 leading-relaxed">Center the recipient’s Vexa QR code inside the frame.</p>
+                <button onClick={() => void startCamera()} className="mt-5 rounded-xl bg-[#162353] text-white px-5 py-3 text-[12px] font-bold">Start camera</button>
               </div>
             )}
           </div>
 
-          <p className="text-[12px] text-white/60 text-center mt-5 max-w-sm">Only a Vexa QR code containing a valid account number can continue.</p>
+          <p className="text-[12px] text-[#64748B] text-center mt-5 max-w-sm">Only a Vexa QR code containing a valid account number can continue.</p>
           {scannerError && (
             <div className="w-full max-w-md mt-4 rounded-xl bg-red-400/10 border border-red-300/20 px-4 py-3 text-[11px] leading-relaxed text-red-100">
               {scannerError}
