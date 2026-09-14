@@ -80,7 +80,8 @@ export default function VexaTransferPage() {
   const [accountNumber, setAccountNumber] = useState('');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
-  const [pin, setPin] = useState('');
+  const [pinDigits, setPinDigits] = useState(['', '', '', '']);
+  const pin = pinDigits.join('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState<{ name: string; amount: number } | null>(null);
@@ -94,6 +95,7 @@ export default function VexaTransferPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanTimerRef = useRef<number | null>(null);
+  const pinInputsRef = useRef<Array<HTMLInputElement | null>>([]);
 
   const stopCamera = () => {
     if (scanTimerRef.current !== null) {
@@ -217,7 +219,42 @@ export default function VexaTransferPage() {
       return;
     }
     setError('');
+    setPinDigits(['', '', '', '']);
     setTransferStep('pin');
+  };
+
+  const handlePinChange = (index: number, value: string) => {
+    const digits = value.replace(/\D/g, '');
+    if (!digits) {
+      const nextPin = [...pinDigits];
+      nextPin[index] = '';
+      setPinDigits(nextPin);
+      setError('');
+      return;
+    }
+
+    const nextPin = [...pinDigits];
+    nextPin[index] = digits.slice(-1);
+    setPinDigits(nextPin);
+    setError('');
+    if (index < 3) pinInputsRef.current[index + 1]?.focus();
+  };
+
+  const handlePinKeyDown = (index: number, event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Backspace' && !pinDigits[index] && index > 0) {
+      pinInputsRef.current[index - 1]?.focus();
+    }
+  };
+
+  const handlePinPaste = (event: React.ClipboardEvent<HTMLInputElement>) => {
+    event.preventDefault();
+    const digits = event.clipboardData.getData('text').replace(/\D/g, '').slice(0, 4);
+    if (!digits) return;
+    const nextPin = ['', '', '', ''];
+    digits.split('').forEach((digit, index) => { nextPin[index] = digit; });
+    setPinDigits(nextPin);
+    setError('');
+    pinInputsRef.current[Math.min(digits.length, 4) - 1]?.focus();
   };
 
   const resetScan = () => {
@@ -225,7 +262,7 @@ export default function VexaTransferPage() {
     setAccountNumber('');
     setAmount('');
     setNote('');
-    setPin('');
+    setPinDigits(['', '', '', '']);
     setRecipientName('');
     setError('');
     setScannerError('');
@@ -245,7 +282,7 @@ export default function VexaTransferPage() {
           <CheckCircle2 className="w-16 h-16 text-[#16A34A]" />
           <p className="text-[22px] font-extrabold text-[#111] mt-5">Money sent</p>
           <p className="text-[14px] text-[#666] mt-2">₦{success.amount.toLocaleString('en-NG', { minimumFractionDigits: 2 })} was delivered to {success.name}.</p>
-          <button onClick={() => { setSuccess(null); setAccountNumber(''); setAmount(''); setNote(''); setPin(''); setScanMessage(''); setRecipientName(''); setTransferStep('amount'); }} className="w-full max-w-sm mt-8 rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold">Send another transfer</button>
+          <button onClick={() => { setSuccess(null); setAccountNumber(''); setAmount(''); setNote(''); setPinDigits(['', '', '', '']); setScanMessage(''); setRecipientName(''); setTransferStep('amount'); }} className="w-full max-w-sm mt-8 rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold">Send another transfer</button>
           <button onClick={() => navigate('/')} className="mt-3 text-[#2563EB] text-[13px] font-semibold">Back to home</button>
         </div>
       </div>
@@ -416,7 +453,7 @@ export default function VexaTransferPage() {
                   <p className="text-[11px] text-[#64748B]">Amount to transfer</p>
                   <p className="text-[21px] font-extrabold text-[#162353]">₦{Number(amount || 0).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</p>
                 </div>
-                <button onClick={() => { setError(''); setTransferStep('amount'); }} className="text-[11px] font-bold text-[#2563EB]">Edit amount</button>
+                <button onClick={() => { setError(''); setPinDigits(['', '', '', '']); setTransferStep('amount'); }} className="text-[11px] font-bold text-[#2563EB]">Edit amount</button>
               </div>
               <div>
                 <p className="text-[14px] font-bold text-[#111]">Confirm with your PIN</p>
@@ -424,7 +461,24 @@ export default function VexaTransferPage() {
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-[#555] mb-1.5">Transaction PIN</label>
-                <input value={pin} onChange={e => { setPin(e.target.value.replace(/\D/g, '').slice(0, 4)); setError(''); }} type="password" inputMode="numeric" placeholder="4-digit PIN" autoFocus className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3.5 text-[16px] tracking-[0.4em] outline-none focus:border-[#162353]" />
+                <div className="flex gap-3">
+                  {[0, 1, 2, 3].map(index => (
+                    <input
+                      key={index}
+                      ref={element => { pinInputsRef.current[index] = element; }}
+                      value={pinDigits[index]}
+                      onChange={event => handlePinChange(index, event.target.value)}
+                      onKeyDown={event => handlePinKeyDown(index, event)}
+                      onPaste={handlePinPaste}
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={1}
+                      autoFocus={index === 0}
+                      aria-label={`Transaction PIN digit ${index + 1}`}
+                      className="h-14 w-full rounded-xl border border-[#D8E0EA] bg-[#FAFBFC] text-center text-[22px] font-bold text-[#162353] outline-none transition focus:border-[#162353] focus:ring-2 focus:ring-[#162353]/10"
+                    />
+                  ))}
+                </div>
               </div>
               <p className="text-[11px] text-[#888] text-center">Vexa verifies the recipient again when the transfer is submitted.</p>
             </div>
