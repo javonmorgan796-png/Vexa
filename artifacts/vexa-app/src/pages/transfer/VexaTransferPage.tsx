@@ -5,6 +5,7 @@ import {
   Check,
   CheckCircle2,
   ChevronLeft,
+  ChevronRight,
   Copy,
   QrCode,
   ScanLine,
@@ -18,6 +19,7 @@ import { useUserData } from '@/context/UserDataContext';
 import { useVexaFinance } from '@/context/VexaFinanceContext';
 
 type TransferMode = 'scan' | 'my-qr';
+type TransferStep = 'amount' | 'pin';
 
 interface BarcodeResult {
   rawValue: string;
@@ -87,6 +89,7 @@ export default function VexaTransferPage() {
   const [scanMessage, setScanMessage] = useState('');
   const [scanComplete, setScanComplete] = useState(false);
   const [recipientName, setRecipientName] = useState('');
+  const [transferStep, setTransferStep] = useState<TransferStep>('amount');
   const [copied, setCopied] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -116,6 +119,7 @@ export default function VexaTransferPage() {
     setScanMessage('');
     setScanComplete(false);
     setRecipientName('');
+    setTransferStep('amount');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' } },
@@ -206,6 +210,16 @@ export default function VexaTransferPage() {
     setSuccess({ name: result.recipientName ?? 'Vexa user', amount: numericAmount });
   };
 
+  const continueToPin = () => {
+    const numericAmount = Number(amount.replace(/,/g, ''));
+    if (!numericAmount || numericAmount <= 0) {
+      setError('Enter a valid amount before continuing');
+      return;
+    }
+    setError('');
+    setTransferStep('pin');
+  };
+
   const resetScan = () => {
     stopCamera();
     setAccountNumber('');
@@ -217,6 +231,7 @@ export default function VexaTransferPage() {
     setScannerError('');
     setScanMessage('');
     setScanComplete(false);
+    setTransferStep('amount');
   };
 
   if (success) {
@@ -230,7 +245,7 @@ export default function VexaTransferPage() {
           <CheckCircle2 className="w-16 h-16 text-[#16A34A]" />
           <p className="text-[22px] font-extrabold text-[#111] mt-5">Money sent</p>
           <p className="text-[14px] text-[#666] mt-2">₦{success.amount.toLocaleString('en-NG', { minimumFractionDigits: 2 })} was delivered to {success.name}.</p>
-          <button onClick={() => { setSuccess(null); setAccountNumber(''); setAmount(''); setNote(''); setPin(''); setScanMessage(''); setRecipientName(''); }} className="w-full max-w-sm mt-8 rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold">Send another transfer</button>
+          <button onClick={() => { setSuccess(null); setAccountNumber(''); setAmount(''); setNote(''); setPin(''); setScanMessage(''); setRecipientName(''); setTransferStep('amount'); }} className="w-full max-w-sm mt-8 rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold">Send another transfer</button>
           <button onClick={() => navigate('/')} className="mt-3 text-[#2563EB] text-[13px] font-semibold">Back to home</button>
         </div>
       </div>
@@ -372,14 +387,57 @@ export default function VexaTransferPage() {
 
         {error && <div className="rounded-2xl bg-red-50 border border-red-200 px-4 py-3 text-[12px] text-red-600">{error}</div>}
 
-        <div className="bg-white rounded-2xl border border-[#F0F0F0] p-5 space-y-4">
-          <div><label className="block text-[11px] font-bold text-[#555] mb-1.5">Amount</label><div className="flex items-center border border-[#E0E0E0] rounded-xl px-4 focus-within:border-[#162353]"><span className="text-[18px] font-bold text-[#555]">₦</span><input value={amount} onChange={e => setAmount(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" placeholder="0.00" className="w-full px-3 py-3.5 text-[18px] font-semibold outline-none" /></div></div>
-          <div><label className="block text-[11px] font-bold text-[#555] mb-1.5">Note <span className="font-normal text-[#999]">(optional)</span></label><input value={note} onChange={e => setNote(e.target.value.slice(0, 120))} placeholder="What’s this for?" className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3.5 text-[14px] outline-none focus:border-[#162353]" /></div>
-          <div><label className="block text-[11px] font-bold text-[#555] mb-1.5">Transaction PIN</label><input value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))} type="password" inputMode="numeric" placeholder="4-digit PIN" className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3.5 text-[16px] tracking-[0.4em] outline-none focus:border-[#162353]" /></div>
-        </div>
-        <p className="text-[11px] text-[#888] text-center">Vexa verifies the recipient again when the transfer is submitted. Never share your PIN or OTP in a QR code.</p>
+        {mode === 'scan' && scanComplete && (
+          transferStep === 'amount' ? (
+            <div className="bg-white rounded-2xl border border-[#F0F0F0] p-5 space-y-4">
+              <div>
+                <p className="text-[14px] font-bold text-[#111]">How much do you want to send?</p>
+                <p className="text-[11px] text-[#888] mt-1">Enter the amount for {recipientName || 'this Vexa account'}.</p>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-[#555] mb-1.5">Amount</label>
+                <div className="flex items-center border border-[#E0E0E0] rounded-xl px-4 focus-within:border-[#162353]">
+                  <span className="text-[18px] font-bold text-[#555]">₦</span>
+                  <input value={amount} onChange={e => { setAmount(e.target.value.replace(/[^\d.]/g, '')); setError(''); }} inputMode="decimal" placeholder="0.00" autoFocus className="w-full px-3 py-3.5 text-[18px] font-semibold outline-none" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-[#555] mb-1.5">Note <span className="font-normal text-[#999]">(optional)</span></label>
+                <input value={note} onChange={e => setNote(e.target.value.slice(0, 120))} placeholder="What’s this for?" className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3.5 text-[14px] outline-none focus:border-[#162353]" />
+              </div>
+              <button onClick={continueToPin} className="w-full rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold flex items-center justify-center gap-2">
+                Continue to PIN <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-[#F0F0F0] p-5 space-y-4">
+              <div className="flex items-center justify-between rounded-xl bg-[#F1F7FF] px-4 py-3">
+                <div>
+                  <p className="text-[11px] text-[#64748B]">Amount to transfer</p>
+                  <p className="text-[21px] font-extrabold text-[#162353]">₦{Number(amount || 0).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</p>
+                </div>
+                <button onClick={() => { setError(''); setTransferStep('amount'); }} className="text-[11px] font-bold text-[#2563EB]">Edit amount</button>
+              </div>
+              <div>
+                <p className="text-[14px] font-bold text-[#111]">Confirm with your PIN</p>
+                <p className="text-[11px] text-[#888] mt-1">Enter your 4-digit transaction PIN to send this amount.</p>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-[#555] mb-1.5">Transaction PIN</label>
+                <input value={pin} onChange={e => { setPin(e.target.value.replace(/\D/g, '').slice(0, 4)); setError(''); }} type="password" inputMode="numeric" placeholder="4-digit PIN" autoFocus className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3.5 text-[16px] tracking-[0.4em] outline-none focus:border-[#162353]" />
+              </div>
+              <p className="text-[11px] text-[#888] text-center">Vexa verifies the recipient again when the transfer is submitted.</p>
+            </div>
+          )
+        )}
       </div>
-      <div className="flex-none px-4 pb-6 pt-2"><button disabled={busy} onClick={() => void submit()} className="w-full rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold disabled:opacity-50"><span className="inline-flex items-center gap-2">{busy ? 'Sending…' : <><Send className="w-4 h-4" /> Send money</>}</span></button></div>
+      {mode === 'scan' && scanComplete && transferStep === 'pin' && (
+        <div className="flex-none px-4 pb-6 pt-2">
+          <button disabled={busy} onClick={() => void submit()} className="w-full rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold disabled:opacity-50">
+            <span className="inline-flex items-center gap-2">{busy ? 'Sending…' : <><Send className="w-4 h-4" /> Send ₦{Number(amount || 0).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</>}</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
