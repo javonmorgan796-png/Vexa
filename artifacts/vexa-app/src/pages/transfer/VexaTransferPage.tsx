@@ -435,6 +435,71 @@ export default function VexaTransferPage() {
     );
   }
 
+  if (mode === 'scan' && scanComplete && transferStep === 'amount') {
+    return (
+      <div className="fixed inset-0 bg-[#F2F3F5] text-[#111] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+        <div className="flex-none flex items-center gap-3 px-4 pb-3 bg-white border-b border-[#E8EBF0]" style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
+          <button
+            onClick={resetScan}
+            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100"
+            aria-label="Back to QR scanner"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <p className="text-[16px] font-bold">Enter amount</p>
+            <p className="text-[11px] text-[#64748B]">Choose how much to send</p>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-8" style={{ scrollbarWidth: 'none' }}>
+          <div className="mx-auto w-full max-w-md">
+            <div className="rounded-2xl border border-[#E8EBF0] bg-white p-5">
+              <p className="text-[11px] text-[#64748B]">Recipient</p>
+              <p className="mt-1 text-[16px] font-bold text-[#111]">{recipientName || 'Name not provided'}</p>
+              <p className="mt-1 text-[11px] tracking-[0.12em] text-[#64748B]">Account {accountNumber}</p>
+            </div>
+
+            <div className="mt-8">
+              <label className="block text-[14px] font-bold text-[#111] mb-2">How much do you want to send?</label>
+              <div className="flex items-center rounded-2xl border border-[#D8E0EA] bg-white px-5 focus-within:border-[#162353] focus-within:ring-2 focus-within:ring-[#162353]/10">
+                <span className="text-[24px] font-bold text-[#555]">₦</span>
+                <input
+                  value={amount}
+                  onChange={event => { setAmount(event.target.value.replace(/[^\d.]/g, '')); setError(''); }}
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  autoFocus
+                  className="w-full px-3 py-5 text-[28px] font-extrabold text-[#162353] outline-none"
+                  aria-label="Transfer amount"
+                />
+              </div>
+              <p className="mt-2 text-[11px] text-[#888]">Enter the amount in Nigerian naira.</p>
+            </div>
+
+            <div className="mt-6">
+              <label className="block text-[12px] font-bold text-[#555] mb-2">Note <span className="font-normal text-[#999]">(optional)</span></label>
+              <input
+                value={note}
+                onChange={event => setNote(event.target.value.slice(0, 120))}
+                placeholder="What’s this for?"
+                className="w-full rounded-xl border border-[#D8E0EA] bg-white px-4 py-4 text-[14px] outline-none focus:border-[#162353]"
+              />
+            </div>
+
+            {error && <div className="mt-4 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[12px] text-red-600">{error}</div>}
+          </div>
+        </div>
+
+        <div className="flex-none border-t border-[#E8EBF0] bg-white px-5 pb-6 pt-3" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+          <button onClick={continueToPin} className="mx-auto flex w-full max-w-md items-center justify-center gap-2 rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold">
+            Continue to PIN <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
       <div className="flex-none flex items-center gap-3 px-4 pb-3 bg-white border-b border-[#E8EBF0]" style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
@@ -499,28 +564,6 @@ export default function VexaTransferPage() {
 
         {error && <div className="rounded-2xl bg-red-50 border border-red-200 px-4 py-3 text-[12px] text-red-600">{error}</div>}
 
-        {mode === 'scan' && scanComplete && (
-          <div className="bg-white rounded-2xl border border-[#F0F0F0] p-5 space-y-4">
-            <div>
-              <p className="text-[14px] font-bold text-[#111]">How much do you want to send?</p>
-              <p className="text-[11px] text-[#888] mt-1">Enter the amount for {recipientName || 'this Vexa account'}.</p>
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-[#555] mb-1.5">Amount</label>
-              <div className="flex items-center border border-[#E0E0E0] rounded-xl px-4 focus-within:border-[#162353]">
-                <span className="text-[18px] font-bold text-[#555]">₦</span>
-                <input value={amount} onChange={e => { setAmount(e.target.value.replace(/[^\d.]/g, '')); setError(''); }} inputMode="decimal" placeholder="0.00" autoFocus className="w-full px-3 py-3.5 text-[18px] font-semibold outline-none" />
-              </div>
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-[#555] mb-1.5">Note <span className="font-normal text-[#999]">(optional)</span></label>
-              <input value={note} onChange={e => setNote(e.target.value.slice(0, 120))} placeholder="What’s this for?" className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3.5 text-[14px] outline-none focus:border-[#162353]" />
-            </div>
-            <button onClick={continueToPin} className="w-full rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold flex items-center justify-center gap-2">
-              Continue to PIN <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
