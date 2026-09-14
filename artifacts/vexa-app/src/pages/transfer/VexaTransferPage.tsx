@@ -40,20 +40,27 @@ function createVexaQrValue(accountNumber: string, name: string) {
   return `vexa://transfer?${params.toString()}`;
 }
 
-function parseVexaAccount(value: string): string | null {
+interface ParsedVexaRecipient {
+  account: string;
+  name: string;
+}
+
+function parseVexaRecipient(value: string): ParsedVexaRecipient | null {
   const trimmed = value.trim();
-  if (/^\d{10}$/.test(trimmed)) return trimmed;
+  if (/^\d{10}$/.test(trimmed)) return { account: trimmed, name: '' };
 
   try {
     const url = new URL(trimmed);
     if (url.protocol !== 'vexa:') return null;
     const account = url.searchParams.get('account') ?? '';
-    return /^\d{10}$/.test(account) ? account : null;
+    const name = url.searchParams.get('name')?.trim() ?? '';
+    return /^\d{10}$/.test(account) ? { account, name } : null;
   } catch {
     try {
-      const parsed = JSON.parse(trimmed) as { account?: unknown; accountNumber?: unknown };
+      const parsed = JSON.parse(trimmed) as { account?: unknown; accountNumber?: unknown; name?: unknown };
       const account = String(parsed.account ?? parsed.accountNumber ?? '');
-      return /^\d{10}$/.test(account) ? account : null;
+      const name = typeof parsed.name === 'string' ? parsed.name.trim() : '';
+      return /^\d{10}$/.test(account) ? { account, name } : null;
     } catch {
       return null;
     }
@@ -79,6 +86,7 @@ export default function VexaTransferPage() {
   const [scannerError, setScannerError] = useState('');
   const [scanMessage, setScanMessage] = useState('');
   const [scanComplete, setScanComplete] = useState(false);
+  const [recipientName, setRecipientName] = useState('');
   const [copied, setCopied] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -107,6 +115,7 @@ export default function VexaTransferPage() {
     setScannerError('');
     setScanMessage('');
     setScanComplete(false);
+    setRecipientName('');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' } },
@@ -130,10 +139,15 @@ export default function VexaTransferPage() {
         if (!streamRef.current || !videoRef.current) return;
         try {
           const results = await detector.detect(videoRef.current);
-          const account = results.map(result => parseVexaAccount(result.rawValue)).find(Boolean);
-          if (account) {
-            setAccountNumber(account);
-            setScanMessage('QR code found. Confirm the account number, then enter the amount below.');
+          const recipient = results.map(result => parseVexaRecipient(result.rawValue)).find(Boolean);
+          if (recipient) {
+            setAccountNumber(recipient.account);
+            setRecipientName(recipient.name);
+            setScanMessage(
+              recipient.name
+                ? 'QR code found. Confirm the recipient details, then enter the amount below.'
+                : 'QR code found. Confirm the account number, then enter the amount below.',
+            );
             setScanComplete(true);
             stopCamera();
             return;
@@ -198,6 +212,7 @@ export default function VexaTransferPage() {
     setAmount('');
     setNote('');
     setPin('');
+    setRecipientName('');
     setError('');
     setScannerError('');
     setScanMessage('');
@@ -215,7 +230,7 @@ export default function VexaTransferPage() {
           <CheckCircle2 className="w-16 h-16 text-[#16A34A]" />
           <p className="text-[22px] font-extrabold text-[#111] mt-5">Money sent</p>
           <p className="text-[14px] text-[#666] mt-2">₦{success.amount.toLocaleString('en-NG', { minimumFractionDigits: 2 })} was delivered to {success.name}.</p>
-          <button onClick={() => { setSuccess(null); setAccountNumber(''); setAmount(''); setNote(''); setPin(''); setScanMessage(''); }} className="w-full max-w-sm mt-8 rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold">Send another transfer</button>
+          <button onClick={() => { setSuccess(null); setAccountNumber(''); setAmount(''); setNote(''); setPin(''); setScanMessage(''); setRecipientName(''); }} className="w-full max-w-sm mt-8 rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold">Send another transfer</button>
           <button onClick={() => navigate('/')} className="mt-3 text-[#2563EB] text-[13px] font-semibold">Back to home</button>
         </div>
       </div>
@@ -325,8 +340,9 @@ export default function VexaTransferPage() {
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-10 h-10 rounded-xl bg-[#EAF8FC] flex items-center justify-center shrink-0"><Check className="w-5 h-5 text-[#0E7490]" /></div>
                   <div className="min-w-0">
-                    <p className="text-[11px] text-[#64748B]">Recipient account</p>
-                    <p className="text-[16px] font-bold tracking-[0.12em] text-[#111] truncate">{accountNumber}</p>
+                    <p className="text-[11px] text-[#64748B]">Recipient full name</p>
+                    <p className="text-[15px] font-bold text-[#111] truncate">{recipientName || 'Name not provided'}</p>
+                    <p className="text-[11px] tracking-[0.12em] text-[#64748B] mt-0.5">Account {accountNumber}</p>
                   </div>
                 </div>
                 <button onClick={resetScan} className="shrink-0 text-[11px] font-bold text-[#2563EB]">Scan again</button>
