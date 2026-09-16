@@ -2694,16 +2694,6 @@ function TransferReceipt({
   const [receiptActionMessage, setReceiptActionMessage] = useState('');
   const { transaction, recipientName, bank, accountNumber, senderName, senderAccountNumber } = receipt;
   const reference = `VX${transaction.id.replace(/-/g, '').slice(0, 10).toUpperCase()}`;
-  const shareText = [
-    'Vexa Transfer Receipt',
-    `Status: Completed`,
-    `Amount: ₦${transaction.amount}`,
-    `Recipient: ${recipientName}`,
-    `Bank: ${bank}`,
-    `Account: ${accountNumber}`,
-    `Reference: ${reference}`,
-    `Date: ${transaction.date}`,
-  ].join('\n');
 
   async function shareReceipt() {
     setReceiptAction('share');
@@ -2712,7 +2702,6 @@ function TransferReceipt({
       const image = await createTransferReceiptImage(receipt, reference);
       const shareData: ShareData = {
         title: 'Vexa Transfer Receipt',
-        text: shareText,
         files: [image],
       };
       const shareNavigator = navigator as Navigator & {
