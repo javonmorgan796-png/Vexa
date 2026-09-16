@@ -2049,6 +2049,153 @@ function formatAmt(raw: string) {
   return intP.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + dec;
 }
 
+function drawReceiptWrappedText(
+  context: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number,
+) {
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let line = '';
+
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (context.measureText(candidate).width <= maxWidth || !line) {
+      line = candidate;
+    } else {
+      lines.push(line);
+      line = word;
+    }
+  }
+  if (line) lines.push(line);
+
+  lines.forEach((lineText, index) => context.fillText(lineText, x, y + index * lineHeight));
+  return y + lines.length * lineHeight;
+}
+
+async function createTransferReceiptImage(receipt: TransferReceiptData, reference: string) {
+  const canvas = document.createElement('canvas');
+  const scale = 2;
+  const width = 900;
+  const height = 1180;
+  canvas.width = width * scale;
+  canvas.height = height * scale;
+
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Receipt image could not be created');
+  context.scale(scale, scale);
+  context.fillStyle = '#F2F3F5';
+  context.fillRect(0, 0, width, height);
+  context.textBaseline = 'top';
+
+  const cardX = 42;
+  const cardWidth = width - cardX * 2;
+  const navy = '#162353';
+  const muted = '#7A8191';
+  const ink = '#111827';
+
+  context.fillStyle = '#FFFFFF';
+  context.beginPath();
+  context.roundRect(cardX, 32, cardWidth, height - 64, 28);
+  context.fill();
+
+  context.fillStyle = navy;
+  context.font = '700 26px Inter, Arial, sans-serif';
+  context.textAlign = 'center';
+  context.fillText('VEXA', width / 2, 72);
+  context.fillStyle = '#16A34A';
+  context.beginPath();
+  context.arc(width / 2, 153, 36, 0, Math.PI * 2);
+  context.fill();
+  context.strokeStyle = '#FFFFFF';
+  context.lineWidth = 5;
+  context.lineCap = 'round';
+  context.beginPath();
+  context.moveTo(width / 2 - 14, 153);
+  context.lineTo(width / 2 - 3, 164);
+  context.lineTo(width / 2 + 17, 141);
+  context.stroke();
+
+  context.fillStyle = ink;
+  context.font = '800 30px Inter, Arial, sans-serif';
+  context.fillText('Transfer Successful', width / 2, 216);
+  context.fillStyle = muted;
+  context.font = '400 18px Inter, Arial, sans-serif';
+  context.fillText('Your money has been sent securely', width / 2, 258);
+
+  context.textAlign = 'left';
+  context.fillStyle = navy;
+  context.beginPath();
+  context.roundRect(cardX + 28, 310, cardWidth - 56, 170, 20);
+  context.fill();
+  context.textAlign = 'center';
+  context.fillStyle = 'rgba(255,255,255,0.64)';
+  context.font = '600 14px Inter, Arial, sans-serif';
+  context.fillText('AMOUNT SENT', width / 2, 338);
+  context.fillStyle = '#FFFFFF';
+  context.font = '800 48px Inter, Arial, sans-serif';
+  context.fillText(`₦${receipt.transaction.amount}`, width / 2, 370);
+  context.fillStyle = '#BBF7D0';
+  context.font = '700 15px Inter, Arial, sans-serif';
+  context.fillText('●  Completed', width / 2, 437);
+
+  context.textAlign = 'left';
+  context.fillStyle = '#F8F9FB';
+  context.beginPath();
+  context.roundRect(cardX + 28, 514, cardWidth - 56, 210, 18);
+  context.fill();
+  context.fillStyle = muted;
+  context.font = '700 14px Inter, Arial, sans-serif';
+  context.fillText('RECIPIENT', cardX + 52, 542);
+  context.fillStyle = ink;
+  context.font = '700 20px Inter, Arial, sans-serif';
+  context.fillText(receipt.recipientName, cardX + 52, 578);
+  context.fillStyle = muted;
+  context.font = '400 16px Inter, Arial, sans-serif';
+  drawReceiptWrappedText(
+    context,
+    `${receipt.bank} · ${receipt.accountNumber}`,
+    cardX + 52,
+    612,
+    cardWidth - 104,
+    24,
+  );
+
+  const detailX = cardX + 52;
+  const valueX = width - cardX - 52;
+  const detailRows = [
+    ['From', `${receipt.senderName} · ${receipt.senderAccountNumber}`],
+    ['Date', receipt.transaction.date],
+    ['Narration', receipt.transaction.note || 'Transfer'],
+    ['Reference', reference],
+  ];
+  let detailY = 776;
+  context.font = '400 16px Inter, Arial, sans-serif';
+  for (const [label, value] of detailRows) {
+    context.fillStyle = muted;
+    context.textAlign = 'left';
+    context.fillText(label, detailX, detailY);
+    context.fillStyle = ink;
+    context.font = '700 16px Inter, Arial, sans-serif';
+    context.textAlign = 'right';
+    drawReceiptWrappedText(context, value, valueX, detailY, 430, 22);
+    detailY += 55;
+    context.font = '400 16px Inter, Arial, sans-serif';
+  }
+
+  context.textAlign = 'center';
+  context.fillStyle = '#A0A7B5';
+  context.font = '400 14px Inter, Arial, sans-serif';
+  context.fillText('Vexa · Secure digital banking', width / 2, height - 76);
+
+  const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) throw new Error('Receipt image could not be created');
+  return new File([blob], `vexa-transfer-receipt-${reference}.png`, { type: 'image/png' });
+}
+
 function storedSelectedBank(): PaystackBank | null {
   try {
     const value = JSON.parse(sessionStorage.getItem('vexa.selectedBank') ?? 'null') as PaystackBank | null;
@@ -2543,6 +2690,8 @@ function TransferReceipt({
   onTransferAgain: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [receiptAction, setReceiptAction] = useState<'share' | null>(null);
+  const [receiptActionMessage, setReceiptActionMessage] = useState('');
   const { transaction, recipientName, bank, accountNumber, senderName, senderAccountNumber } = receipt;
   const reference = `VX${transaction.id.replace(/-/g, '').slice(0, 10).toUpperCase()}`;
   const shareText = [
@@ -2557,16 +2706,37 @@ function TransferReceipt({
   ].join('\n');
 
   async function shareReceipt() {
-    if (navigator.share) {
-      await navigator.share({
+    setReceiptAction('share');
+    setReceiptActionMessage('');
+    try {
+      const image = await createTransferReceiptImage(receipt, reference);
+      const shareData: ShareData = {
         title: 'Vexa Transfer Receipt',
         text: shareText,
-      }).catch(() => {});
-      return;
+        files: [image],
+      };
+      const shareNavigator = navigator as Navigator & {
+        canShare?: (data?: ShareData) => boolean;
+      };
+
+      if (navigator.share && (!shareNavigator.canShare || shareNavigator.canShare({ files: [image] }))) {
+        await navigator.share(shareData);
+        return;
+      }
+
+      const downloadUrl = URL.createObjectURL(image);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = image.name;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+      setReceiptActionMessage('Receipt image saved to your device');
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      setReceiptActionMessage('Could not create the receipt image. Please try again.');
+    } finally {
+      setReceiptAction(null);
     }
-    await navigator.clipboard?.writeText(shareText).catch(() => {});
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2000);
   }
 
   async function copyReference() {
@@ -2658,11 +2828,18 @@ function TransferReceipt({
           {copied && (
             <p className="text-center text-[11px] text-green-600 font-semibold mt-3">Copied to clipboard</p>
           )}
+          {receiptActionMessage && (
+            <p className="text-center text-[11px] text-[#2563EB] font-semibold mt-3">{receiptActionMessage}</p>
+          )}
 
           <div className="receipt-actions grid grid-cols-2 gap-3 mt-5">
-            <button onClick={shareReceipt} className="h-[48px] rounded-xl border border-[#D9E0EF] bg-white text-[#162353] text-[13px] font-semibold flex items-center justify-center gap-2 active:bg-[#F8F9FB]">
+            <button
+              onClick={shareReceipt}
+              disabled={receiptAction === 'share'}
+              className="h-[48px] rounded-xl border border-[#D9E0EF] bg-white text-[#162353] text-[13px] font-semibold flex items-center justify-center gap-2 active:bg-[#F8F9FB] disabled:opacity-60"
+            >
               <Share2 className="w-4 h-4" />
-              Share Receipt
+              {receiptAction === 'share' ? 'Preparing image…' : 'Share Receipt'}
             </button>
             <button onClick={() => window.print()} className="h-[48px] rounded-xl border border-[#D9E0EF] bg-white text-[#162353] text-[13px] font-semibold flex items-center justify-center gap-2 active:bg-[#F8F9FB]">
               <FileText className="w-4 h-4" />
