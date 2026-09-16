@@ -1,11 +1,19 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import {
+  checkRemoteLoginLockout,
+  clearRemoteLoginFailures,
+  recordRemoteLoginFailure,
+  normalizeLoginPhone,
+} from '@/lib/authSecurity';
 
 export interface User {
   id: string;
   name: string;
   email: string;
   phone: string;
+  balance: number;
   accountNumber: string;
   referralCode: string;
   pin: string;
@@ -14,13 +22,26 @@ export interface User {
   twoFactorEnabled: boolean;
 }
 
+export interface ActiveSession {
+  id: string;
+  sessionId: string;
+  deviceName: string;
+  deviceType: string;
+  lastActiveAt: string;
+  createdAt: string;
+  isCurrent: boolean;
+}
+
 interface AuthContextType {
   user: User | null;
+  session: Session | null;
   isAuthenticated: boolean;
   profilePhoto: string | null;
   loading: boolean;
+  profileError: string | null;
+  refreshProfile: () => Promise<void>;
   twoFactorPending: boolean;
-  signIn: (phone: string, passcode: string) => Promise<{ success: boolean; error?: string }>;
+  signIn: (phone: string, passcode: string) => Promise<{ success: boolean; error?: string; lockedUntil?: number }>;
   signUp: (name: string, phone: string, passcode: string) => Promise<{ success: boolean; error?: string }>;
   verifyPasscode: (passcode: string) => Promise<boolean>;
   signOut: () => Promise<void>;
@@ -32,6 +53,12 @@ interface AuthContextType {
   sendTwoFactorCode: () => Promise<{ success: boolean; error?: string }>;
   verifyTwoFactorCode: (code: string) => Promise<{ success: boolean; error?: string }>;
   updateTwoFactorEnabled: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
+  activeSessions: ActiveSession[];
+  sessionsLoading: boolean;
+  sessionsError: string;
+  refreshSessions: () => Promise<void>;
+  revokeSession: (sessionId: string) => Promise<{ success: boolean; error?: string }>;
+  revokeOtherSessions: () => Promise<{ success: boolean; error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -66,13 +93,262 @@ function genAccountNumber(): string {
   return '9' + Array.from({ length: 9 }, () => Math.floor(Math.random() * 10)).join('');
 }
 
+const DEVICE_SESSION_KEY = 'vexa_device_session_id';
+
+function getDeviceSessionId(): string {
+  try {
+    const stored = localStorage.getItem(DEVICE_SESSION_KEY);
+    if (stored) return stored;
+    const generated = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `device-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem(DEVICE_SESSION_KEY, generated);
+    return generated;
+  } catch {
+    return 'device-session';
+  }
+}
+
+interface DeviceDetails {
+  userAgent: string;
+  deviceType: 'mobile' | 'tablet' | 'desktop';
+  deviceName: string;
+}
+
+interface BrowserUserAgentData {
+  mobile?: boolean;
+  model?: string;
+  platform?: string;
+  getHighEntropyValues?: (hints: string[]) => Promise<{
+    mobile?: boolean;
+    model?: string;
+    platform?: string;
+  }>;
+}
+
+function getBrowserName(userAgent: string): string {
+  return /Edg\//.test(userAgent)
+    ? 'Edge'
+    : /OPR\//.test(userAgent)
+      ? 'Opera'
+      : /Chrome\//.test(userAgent)
+        ? 'Chrome'
+        : /Firefox\//.test(userAgent)
+          ? 'Firefox'
+          : /Safari\//.test(userAgent) && !/Chrome\//.test(userAgent)
+            ? 'Safari'
+            : 'Browser';
+}
+
+function cleanDeviceModel(model: string): string {
+  return model
+    .replace(/\s+Build\/.+$/i, '')
+    .replace(/\s+wv$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function androidModelFromUserAgent(userAgent: string): string {
+  const match = userAgent.match(/Android[^;)]*;\s*(?:[a-z]{2}(?:-[A-Z]{2})?;\s*)?([^;)]+?)(?:\s+Build\/[^;)]+)?\s*[;)]/i);
+  if (!match?.[1]) return '';
+  const model = cleanDeviceModel(match[1]);
+  if (!model || /wv|linux|mobile|tablet|en-us/i.test(model)) return '';
+  return model;
+}
+
+function formatAndroidDeviceName(model: string): string {
+  const normalized = model.trim();
+  if (!normalized) return 'Android phone — model unavailable to browser';
+  const normalizedInfinixModel = normalized.replace(/^infinix\s+/i, '').toUpperCase();
+  if (normalizedInfinixModel === 'X6886') return 'Infinix Hot 60 Pro+';
+  if (/^(pixel|nexus)/i.test(normalized)) return `Google ${normalized}`;
+  if (/^(sm-|gt-|sch-|sgh-|samsung)/i.test(normalized)) return `Samsung ${normalized}`;
+  if (/^(redmi|mi |mix |m[0-9]|220|230|240)/i.test(normalized)) return `Xiaomi ${normalized}`;
+  if (/^(oneplus|a[0-9]{3,4}|in[0-9])/i.test(normalized)) return `OnePlus ${normalized}`;
+  if (/^(cph|p[a-z][0-9]|oppo)/i.test(normalized)) return `OPPO ${normalized}`;
+  if (/^(rmx|realme)/i.test(normalized)) return `realme ${normalized}`;
+  if (/^(v[0-9]{3,4}|vivo)/i.test(normalized)) return `vivo ${normalized}`;
+  if (/^(huawei|honor|jny|ele-|lya-|stk-)/i.test(normalized)) return `Huawei ${normalized}`;
+  if (/^(moto|xt[0-9]|motorola)/i.test(normalized)) return `Motorola ${normalized}`;
+  if (/^(xq-|so-|sony)/i.test(normalized)) return `Sony ${normalized}`;
+  if (/^(ta-|nokia)/i.test(normalized)) return `Nokia ${normalized}`;
+  if (/^(lenovo|tb-|za[0-9])/i.test(normalized)) return `Lenovo ${normalized}`;
+  if (/^(asus|zs[0-9])/i.test(normalized)) return `ASUS ${normalized}`;
+  if (/^infinix/i.test(normalized)) return normalized;
+  return `Android ${normalized}`;
+}
+
+function isTabletUserAgent(userAgent: string): boolean {
+  return /iPad|Tablet|Android(?!.*Mobile)/i.test(userAgent);
+}
+
+async function getDeviceDetails(): Promise<DeviceDetails> {
+  const browserNavigator = typeof navigator === 'undefined' ? null : navigator;
+  const userAgent = browserNavigator?.userAgent ?? '';
+  const userAgentData = (browserNavigator as (Navigator & { userAgentData?: BrowserUserAgentData }) | null)?.userAgentData;
+  let model = cleanDeviceModel(userAgentData?.model ?? '');
+  let platform = userAgentData?.platform ?? '';
+
+  // Chromium hides model/platform behind User-Agent Client Hints. Ask for the
+  // high-entropy values when supported so Android models are not reduced to
+  // the generic "Android device" label.
+  if (userAgentData?.getHighEntropyValues) {
+    try {
+      const details = await userAgentData.getHighEntropyValues(['model', 'platform']);
+      model = cleanDeviceModel(details.model ?? model);
+      platform = details.platform ?? platform;
+    } catch {
+      // The normal user agent fallback below still identifies most devices.
+    }
+  }
+
+  const isAndroid = /Android/i.test(userAgent) || /Android/i.test(platform);
+  const isIPhone = /iPhone/i.test(userAgent);
+  const isIPad = /iPad/i.test(userAgent) || (platform === 'macOS' && /Macintosh/i.test(userAgent) && (browserNavigator?.maxTouchPoints ?? 0) > 1);
+  const isMobile = Boolean(userAgentData?.mobile) || /Mobi|Android|iPhone/i.test(userAgent);
+  const isTablet = isIPad || isTabletUserAgent(userAgent);
+  const deviceType: DeviceDetails['deviceType'] = isTablet ? 'tablet' : isMobile ? 'mobile' : 'desktop';
+  const browser = getBrowserName(userAgent);
+
+  let deviceName: string;
+  if (isIPhone) {
+    // iOS intentionally does not expose the exact iPhone generation to web
+    // pages, so make the missing model explicit rather than showing a partial
+    // hardware name.
+    deviceName = 'Apple iPhone — model unavailable to browser';
+  } else if (isIPad) {
+    deviceName = 'Apple iPad — model unavailable to browser';
+  } else if (isAndroid) {
+    const androidModel = model || androidModelFromUserAgent(userAgent);
+    deviceName = formatAndroidDeviceName(androidModel);
+    if (isTablet && !/tablet/i.test(deviceName)) deviceName += ' tablet';
+  } else if (/Windows/i.test(platform) || /Windows NT/i.test(userAgent)) {
+    deviceName = 'Microsoft Windows PC — model unavailable to browser';
+  } else if (/macOS|Macintosh|Mac OS X/i.test(platform || userAgent)) {
+    deviceName = 'Apple Mac — model unavailable to browser';
+  } else if (/Linux/i.test(platform || userAgent)) {
+    deviceName = 'Linux computer — model unavailable to browser';
+  } else {
+    deviceName = isTablet
+      ? 'Tablet — brand and model unavailable to browser'
+      : isMobile
+        ? 'Mobile phone — brand and model unavailable to browser'
+        : 'Computer — brand and model unavailable to browser';
+  }
+
+  return {
+    userAgent,
+    deviceType,
+    deviceName: `${browser} on ${deviceName}`,
+  };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser]               = useState<User | null>(null);
+  const [session, setSession]         = useState<Session | null>(null);
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
   const [loading, setLoading]         = useState(true);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [twoFactorPending, setTwoFactorPending] = useState(false);
+  const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsError, setSessionsError] = useState('');
   const verifiedTwoFactorUser = useRef<string | null>(null);
+  const twoFactorRequestId = useRef<string | null>(null);
   const profileRequestRef = useRef<{ userId: string; promise: Promise<{ success: boolean; error?: string }> } | null>(null);
+
+  const refreshSessions = useCallback(async () => {
+    if (!user) {
+      setActiveSessions([]);
+      setSessionsError('');
+      return;
+    }
+
+    setSessionsLoading(true);
+    const { data, error } = await supabase
+      .from('user_sessions')
+      .select('id, session_id, device_name, device_type, last_active_at, created_at')
+      .eq('user_id', user.id)
+      .is('revoked_at', null)
+      .order('last_active_at', { ascending: false });
+
+    if (error) {
+      setActiveSessions([]);
+      setSessionsError(
+        error.message.toLowerCase().includes('does not exist')
+          ? 'Run the latest Supabase security migration to manage active devices.'
+          : 'Could not load active devices.',
+      );
+    } else {
+      const currentSessionId = getDeviceSessionId();
+      setSessionsError('');
+      setActiveSessions((data ?? []).map(row => ({
+        id: row.id,
+        sessionId: row.session_id,
+        deviceName: row.device_name,
+        deviceType: row.device_type,
+        lastActiveAt: row.last_active_at,
+        createdAt: row.created_at,
+        isCurrent: row.session_id === currentSessionId,
+      })));
+    }
+    setSessionsLoading(false);
+  }, [user]);
+
+  const registerCurrentSession = useCallback(async (userId: string) => {
+    const sessionId = getDeviceSessionId();
+    const details = await getDeviceDetails();
+    const { error } = await supabase.from('user_sessions').upsert({
+      user_id: userId,
+      session_id: sessionId,
+      device_name: details.deviceName,
+      device_type: details.deviceType,
+      user_agent: details.userAgent,
+      last_active_at: new Date().toISOString(),
+      revoked_at: null,
+    }, { onConflict: 'user_id,session_id' });
+
+    if (error && !error.message.toLowerCase().includes('does not exist')) {
+      console.warn('[Auth] session registration error:', error.message);
+    }
+  }, []);
+
+  const revokeSession = useCallback(async (sessionId: string) => {
+    if (!user) return { success: false, error: 'Not authenticated' };
+
+    const { error } = await supabase
+      .from('user_sessions')
+      .update({ revoked_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+      .eq('session_id', sessionId);
+
+    if (error) return { success: false, error: 'Could not sign out that device.' };
+
+    if (sessionId === getDeviceSessionId()) {
+      await supabase.auth.signOut({ scope: 'local' });
+    }
+    await refreshSessions();
+    return { success: true };
+  }, [user, refreshSessions]);
+
+  const revokeOtherSessions = useCallback(async () => {
+    if (!user) return { success: false, error: 'Not authenticated' };
+    const currentSessionId = getDeviceSessionId();
+
+    const { error } = await supabase
+      .from('user_sessions')
+      .update({ revoked_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+      .neq('session_id', currentSessionId)
+      .is('revoked_at', null);
+
+    if (error) return { success: false, error: 'Could not sign out other devices.' };
+
+    const { error: authError } = await supabase.auth.signOut({ scope: 'others' });
+    if (authError) return { success: false, error: 'Could not sign out other devices.' };
+    await refreshSessions();
+    return { success: true };
+  }, [user, refreshSessions]);
 
   useEffect(() => {
     let mounted = true;
@@ -82,11 +358,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!mounted) return;
       if (error) {
         console.error('[Auth] session restore error:', error.message);
+        setSession(null);
         setUser(null);
         setProfilePhoto(null);
         setLoading(false);
         return;
       }
+      setSession(session);
       if (session?.user) {
         await fetchProfile(session.user);
       } else {
@@ -98,13 +376,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!mounted) return;
+      setSession(session);
       if (session?.user) {
         void fetchProfile(session.user);
       } else {
         setUser(null);
         setProfilePhoto(null);
+        setProfileError(null);
         setTwoFactorPending(false);
         verifiedTwoFactorUser.current = null;
+        twoFactorRequestId.current = null;
         setLoading(false);
       }
     });
@@ -132,10 +413,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const refreshProfile = useCallback(async () => {
+    if (session?.user) await fetchProfile(session.user);
+  }, [session]);
+
   async function hydrateProfile(
     authUser: { id: string; email?: string | null; user_metadata?: Record<string, unknown> | null },
   ): Promise<{ success: boolean; error?: string }> {
     setLoading(true);
+    setProfileError(null);
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
@@ -144,9 +430,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (error) {
       console.error('[Auth] fetchProfile error:', error?.message);
-      setUser(null);
-      setProfilePhoto(null);
       setLoading(false);
+      setProfileError('We could not load your profile. Your session is still active.');
       return { success: false, error: 'Could not load your account profile' };
     }
 
@@ -182,9 +467,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (createError || !createdProfile) {
         console.error('[Auth] profile creation error:', createError?.message);
-        setUser(null);
-        setProfilePhoto(null);
         setLoading(false);
+        setProfileError('We could not create your account profile. Your session is still active.');
         return { success: false, error: 'Could not create your account profile' };
       }
       profile = createdProfile;
@@ -215,6 +499,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       name:          profile.name ?? 'Vexa User',
       email:         profileEmail,
       phone:         profile.phone ?? '',
+      balance:       Number(profile.balance ?? 0),
       accountNumber: profile.account_number ?? '',
       referralCode,
       pin:           profile.pin ?? '0000',
@@ -226,6 +511,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setTwoFactorPending(true);
     }
     setProfilePhoto(profile.profile_photo ?? null);
+    setProfileError(null);
     setLoading(false);
 
     // Supabase Auth is the credential/identity record. Keep the safe,
@@ -252,10 +538,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { success: true };
   }
 
-  const signIn = async (phone: string, passcode: string): Promise<{ success: boolean; error?: string }> => {
+  const signIn = async (phone: string, passcode: string): Promise<{ success: boolean; error?: string; lockedUntil?: number }> => {
     const candidates = phoneToEmailCandidates(phone);
     if (!candidates.length || passcode.length !== 6) {
       return { success: false, error: 'Enter a valid phone number and 6-digit passcode' };
+    }
+
+    const normalizedPhone = normalizeLoginPhone(phone);
+    const lockout = await checkRemoteLoginLockout(normalizedPhone);
+    if (lockout.lockedUntil && lockout.lockedUntil > Date.now()) {
+      return {
+        success: false,
+        lockedUntil: lockout.lockedUntil,
+        error: 'Too many failed attempts. Please wait before trying again.',
+      };
     }
 
     let lastError: string | undefined;
@@ -270,9 +566,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // on this state and must not redirect a valid user back to sign-in.
       const profileResult = await fetchProfile(data.user);
       if (!profileResult.success) {
-        await supabase.auth.signOut();
         return { success: false, error: profileResult.error };
       }
+      await clearRemoteLoginFailures(normalizedPhone);
       return { success: true };
     }
 
@@ -287,7 +583,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
       }
     }
-    return { success: false, error: 'Invalid phone number or passcode' };
+    const recorded = await recordRemoteLoginFailure(normalizedPhone);
+    return {
+      success: false,
+      error: recorded.lockedUntil && recorded.lockedUntil > Date.now()
+        ? 'Too many failed attempts. Please wait before trying again.'
+        : 'Invalid phone number or passcode',
+      lockedUntil: recorded.lockedUntil,
+    };
   };
 
   const signUp = async (
@@ -342,36 +645,114 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    if (user) {
+      await supabase
+        .from('user_sessions')
+        .update({ revoked_at: new Date().toISOString() })
+        .eq('user_id', user.id)
+        .eq('session_id', getDeviceSessionId());
+    }
     await supabase.auth.signOut();
+    setSession(null);
+    setUser(null);
+    setProfilePhoto(null);
+    setProfileError(null);
     setTwoFactorPending(false);
     verifiedTwoFactorUser.current = null;
+    twoFactorRequestId.current = null;
+    setActiveSessions([]);
+    setSessionsError('');
   };
 
-  function smsPhone(phone: string) {
-    const digits = phone.replace(/\D/g, '');
-    if (digits.startsWith('234')) return `+${digits}`;
-    if (digits.startsWith('0')) return `+234${digits.slice(1)}`;
-    return phone.startsWith('+') ? phone : `+${digits}`;
+  useEffect(() => {
+    if (!user?.id) {
+      setActiveSessions([]);
+      return;
+    }
+
+    void (async () => {
+      await registerCurrentSession(user.id);
+      await refreshSessions();
+    })();
+
+    const interval = window.setInterval(async () => {
+      const sessionId = getDeviceSessionId();
+      const { data, error } = await supabase
+        .from('user_sessions')
+        .select('revoked_at')
+        .eq('user_id', user.id)
+        .eq('session_id', sessionId)
+        .maybeSingle();
+
+      if (error || !data) return;
+      if (data.revoked_at) {
+        await supabase.auth.signOut({ scope: 'local' });
+        return;
+      }
+
+      const details = await getDeviceDetails();
+      await supabase
+        .from('user_sessions')
+        .update({
+          device_name: details.deviceName,
+          device_type: details.deviceType,
+          user_agent: details.userAgent,
+          last_active_at: new Date().toISOString(),
+        })
+        .eq('user_id', user.id)
+        .eq('session_id', sessionId)
+        .is('revoked_at', null);
+    }, 30000);
+
+    return () => window.clearInterval(interval);
+  }, [user?.id, registerCurrentSession, refreshSessions]);
+
+  async function termiiRequest(
+    path: 'send' | 'verify',
+    body: Record<string, unknown>,
+  ): Promise<{ success: boolean; requestId?: string; error?: string }> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) return { success: false, error: 'Your session has expired. Please sign in again.' };
+
+    const response = await fetch(`/api/termii/otp/${path}`, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify(body),
+    });
+    const result = await response.json().catch(() => null) as { requestId?: string; verified?: boolean; message?: string } | null;
+    if (!response.ok) {
+      return { success: false, error: result?.message || 'Could not complete SMS verification' };
+    }
+    return {
+      success: path === 'send' ? Boolean(result?.requestId) : result?.verified === true,
+      requestId: result?.requestId,
+      error: path === 'send' && !result?.requestId ? 'Could not send the verification code' : undefined,
+    };
   }
 
   const sendTwoFactorCode = async (): Promise<{ success: boolean; error?: string }> => {
     if (!user?.phone) return { success: false, error: 'Add a phone number to your profile first' };
-    const { error } = await supabase.auth.signInWithOtp({
-      phone: smsPhone(user.phone),
-      options: { shouldCreateUser: false },
-    });
-    if (error) return { success: false, error: 'SMS could not be sent. Enable phone SMS in Supabase Auth first.' };
+    const result = await termiiRequest('send', { purpose: '2fa' });
+    if (!result.success || !result.requestId) {
+      return { success: false, error: result.error ?? 'SMS could not be sent' };
+    }
+    twoFactorRequestId.current = result.requestId;
     return { success: true };
   };
 
   const verifyTwoFactorCode = async (code: string): Promise<{ success: boolean; error?: string }> => {
     if (!user?.phone) return { success: false, error: 'No phone number is available for verification' };
-    const { error } = await supabase.auth.verifyOtp({
-      phone: smsPhone(user.phone),
-      token: code,
-      type: 'sms',
+    if (!twoFactorRequestId.current) return { success: false, error: 'Request a new verification code first' };
+    const result = await termiiRequest('verify', {
+      requestId: twoFactorRequestId.current,
+      code,
     });
-    if (error) return { success: false, error: 'That SMS code is invalid or expired' };
+    if (!result.success) return { success: false, error: result.error ?? 'That SMS code is invalid or expired' };
+    twoFactorRequestId.current = null;
     verifiedTwoFactorUser.current = user.id;
     setTwoFactorPending(false);
     return { success: true };
@@ -465,10 +846,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-       user, isAuthenticated: !!user, profilePhoto, loading, twoFactorPending,
+       user, session, isAuthenticated: !!user, profilePhoto, loading, profileError, refreshProfile, twoFactorPending,
        signIn, signUp, verifyPasscode, signOut,
-      updatePin, setInitialTransferPin, updatePassword, updateProfile, updateProfilePhoto,
-       sendTwoFactorCode, verifyTwoFactorCode, updateTwoFactorEnabled,
+       updatePin, setInitialTransferPin, updatePassword, updateProfile, updateProfilePhoto,
+        sendTwoFactorCode, verifyTwoFactorCode, updateTwoFactorEnabled,
+        activeSessions, sessionsLoading, sessionsError, refreshSessions, revokeSession, revokeOtherSessions,
     }}>
       {children}
     </AuthContext.Provider>

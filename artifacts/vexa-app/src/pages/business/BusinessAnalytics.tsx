@@ -95,7 +95,7 @@ export default function BusinessAnalytics() {
                   return (
                     <div key={m} className="flex-1 flex flex-col items-center gap-0.5">
                       <div className="flex items-end gap-0.5 w-full justify-center" style={{ height: barH }}>
-                        <div className="w-2.5 rounded-t-sm" style={{ height: incH, backgroundColor: '#162353', minHeight: 2 }} />
+                        <div className="w-2.5 rounded-t-sm" style={{ height: incH, backgroundColor: '#0e7490', minHeight: 2 }} />
                         <div className="w-2.5 rounded-t-sm" style={{ height: expH, backgroundColor: '#EF4444', minHeight: 2 }} />
                       </div>
                       <span className="text-[9px] text-[#888]">{m}</span>
@@ -148,7 +148,7 @@ export default function BusinessAnalytics() {
             <div className="bg-white rounded-2xl border border-[#F0F0F0] p-4">
               <p className="text-[13px] font-bold text-[#111] mb-4">Payroll by Department</p>
               {deptEntries.map(([dept, total], i) => {
-                const colors = ['#162353', '#2563EB', '#7C3AED', '#EA580C', '#16A34A', '#0891B2'];
+                const colors = ['#0e7490', '#0f4f5c', '#7C3AED', '#EA580C', '#16A34A', '#0891B2'];
                 const pct = totalPayroll > 0 ? (total / totalPayroll) * 100 : 0;
                 return (
                   <div key={dept} className="mb-4 last:mb-0">

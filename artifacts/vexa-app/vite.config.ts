@@ -36,19 +36,19 @@ const supabaseEnvPlugin = {
       code: source
         .replace(
           /import\.meta\.env\.SUPABASE_URL/g,
-          JSON.stringify(process.env.SUPABASE_URL ?? ''),
+          JSON.stringify(process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? ''),
         )
         .replace(
           /import\.meta\.env\.SUPABASE_ANON_KEY/g,
-          JSON.stringify(process.env.SUPABASE_ANON_KEY ?? ''),
+          JSON.stringify(process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? ''),
         )
         .replace(
           /\b__SUPABASE_URL__\b/g,
-          JSON.stringify(process.env.SUPABASE_URL ?? ''),
+          JSON.stringify(process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? ''),
         )
         .replace(
           /\b__SUPABASE_ANON_KEY__\b/g,
-          JSON.stringify(process.env.SUPABASE_ANON_KEY ?? ''),
+          JSON.stringify(process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? ''),
         ),
       map: null,
     };
@@ -63,8 +63,8 @@ export default defineConfig({
   define: {
     // Inject the public Supabase connection values into the browser bundle.
     // Explicit import.meta.env keys work with Replit secrets at dev and build time.
-    'import.meta.env.SUPABASE_URL': JSON.stringify(process.env.SUPABASE_URL ?? ''),
-    'import.meta.env.SUPABASE_ANON_KEY': JSON.stringify(process.env.SUPABASE_ANON_KEY ?? ''),
+    'import.meta.env.SUPABASE_URL': JSON.stringify(process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? ''),
+    'import.meta.env.SUPABASE_ANON_KEY': JSON.stringify(process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? ''),
     // Keep compatibility with older modules that reference these constants.
     __SUPABASE_URL__: JSON.stringify(process.env.SUPABASE_URL ?? ''),
     __SUPABASE_ANON_KEY__: JSON.stringify(process.env.SUPABASE_ANON_KEY ?? ''),

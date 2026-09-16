@@ -81,7 +81,7 @@ export default function TwoFactorSettingsPage() {
           {user?.twoFactorEnabled && <div className="mt-5 flex items-center gap-2 text-[12px] text-green-700 font-semibold"><CheckCircle2 className="w-4 h-4" /> SMS 2FA is active</div>}
           {user?.twoFactorEnabled && <button disabled={busy} onClick={() => void disable()} className="w-full mt-5 rounded-xl border border-red-200 text-red-600 py-3.5 text-[13px] font-bold disabled:opacity-50">{busy ? 'Updating…' : 'Disable SMS 2FA'}</button>}
         </div>
-        <div className="rounded-2xl bg-white border border-[#F0F0F0] px-4 py-4 text-[11px] text-[#777] leading-relaxed">SMS delivery must be enabled for your Supabase project under Authentication → Providers → Phone. If it is not configured, Vexa will not enable the setting and no code is stored in the browser.</div>
+         <div className="rounded-2xl bg-white border border-[#F0F0F0] px-4 py-4 text-[11px] text-[#777] leading-relaxed">Verification codes are delivered securely by SMS. Vexa never stores the code in the browser, and the code expires after a short period.</div>
       </div>
     </div>
   );

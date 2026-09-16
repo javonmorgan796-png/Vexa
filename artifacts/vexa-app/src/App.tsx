@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Route, Switch, Router as WouterRouter, useLocation, useRoute } from 'wouter';
 import {
   Headphones, Bell, Copy, EyeOff, Eye, Clock,
   ArrowLeftRight, PhoneCall, Tablet, Target,
   PiggyBank, BookOpen, FileText, LayoutGrid,
   Trophy, CreditCard, Home, ArrowDown, Settings,
-  ArrowUp, ChevronRight, Shield, Fingerprint, BriefcaseBusiness,
+  ArrowUp, ChevronRight, Shield, TriangleAlert, Fingerprint, BriefcaseBusiness,
   BellRing, HelpCircle, Info, LogOut, User, Lock,
   MessageCircle, Phone, Mail, ExternalLink, Star, ChevronDown,
   Send, X, Bot, CheckCheck, Wifi, Paperclip, ImagePlus, FileUp, FileText as FileIcon,
@@ -25,8 +25,11 @@ import ChangePinPage from '@/pages/settings/ChangePinPage';
 import ChangePasswordPage from '@/pages/settings/ChangePasswordPage';
 import TwoFactorSettingsPage from '@/pages/settings/TwoFactorSettingsPage';
 import TwoFactorChallenge from '@/pages/settings/TwoFactorChallenge';
+import ActiveDevicesPage from '@/pages/settings/ActiveDevicesPage';
 import CryptoExchangePage from '@/pages/crypto/CryptoExchangePage';
+import { IncomingCryptoPage, OutgoingCryptoPage } from '@/pages/crypto/CryptoHistoryPage';
 import VexaTransferPage from '@/pages/transfer/VexaTransferPage';
+import BankSelectionPage from '@/pages/transfer/BankSelectionPage';
 import { BusinessProvider } from '@/context/BusinessContext';
 import BusinessDashboard from '@/pages/business/BusinessDashboard';
 import BusinessOnboarding from '@/pages/business/BusinessOnboarding';
@@ -72,7 +75,7 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
     <div
       className="fixed inset-0 flex items-center justify-center z-50"
       style={{
-        backgroundColor: '#021029',
+        backgroundColor: '#0f4f5c',
         transition: 'opacity 0.6s ease',
         opacity: fadeOut ? 0 : 1,
         pointerEvents: fadeOut ? 'none' : 'auto',
@@ -87,8 +90,8 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
           100% { transform: scale(1);   opacity: 1; }
         }
         @keyframes vexaGlow {
-          0%, 100% { filter: drop-shadow(0 0 0px #00c6ff); }
-          50%       { filter: drop-shadow(0 0 22px #00c6ff) drop-shadow(0 0 40px #0072ff88); }
+          0%, 100% { filter: drop-shadow(0 0 0px #0e7490); }
+          50%       { filter: drop-shadow(0 0 22px #0e7490) drop-shadow(0 0 40px #0f4f5c88); }
         }
         @keyframes vexaShimmer {
           0%   { background-position: -200% center; }
@@ -100,7 +103,7 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
         }
         .vexa-tagline {
           animation: vexaPulse 1s cubic-bezier(.22,.61,.36,1) 0.3s both;
-          background: linear-gradient(90deg, #ffffff 0%, #00c6ff 40%, #ffffff 60%, #ffffff 100%);
+          background: linear-gradient(90deg, #ffffff 0%, #0e7490 40%, #ffffff 60%, #ffffff 100%);
           background-size: 200% auto;
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
@@ -113,7 +116,7 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
         <img
           src="/vexa-logo.png"
           alt="Vexa"
-          className="vexa-logo w-[320px]"
+          className="vexa-logo w-[220px] sm:w-[260px] max-w-[72vw]"
         />
       </div>
     </div>
@@ -420,7 +423,7 @@ function PasscodeLockScreen({ onUnlock, onSignOut }: { onUnlock: () => void; onS
   return (
     <div
       className="fixed inset-0 z-[9999] flex flex-col"
-      style={{ background: 'linear-gradient(170deg,#0b1730 0%,#05101f 60%,#020a18 100%)', fontFamily:"'Inter',sans-serif" }}
+      style={{ background: 'linear-gradient(170deg,#0f4f5c 0%,#083943 60%,#05242c 100%)', fontFamily:"'Inter',sans-serif" }}
     >
       {/* Header area */}
       <div className="flex flex-col items-center pt-16 pb-4 px-6">
@@ -524,6 +527,28 @@ function PasscodeLockScreen({ onUnlock, onSignOut }: { onUnlock: () => void; onS
   );
 }
 
+function TwoFactorWarningCard({ onEnable }: { onEnable: () => void }) {
+  const { user } = useAuth();
+  if (!user || user.twoFactorEnabled) return null;
+  return (
+    <div className="mx-3 mt-3">
+      <button
+        onClick={onEnable}
+        className="w-full flex items-center gap-2.5 text-left bg-[#FFF8E8] border border-[#F3D58B] rounded-xl px-3 py-2"
+      >
+        <div className="w-8 h-8 rounded-full bg-[#FDE7A9] flex items-center justify-center shrink-0">
+          <TriangleAlert className="w-4 h-4 text-[#9A6800]" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-bold text-[#6F4A00]">Secure your account</p>
+          <p className="text-[10px] text-[#8A6A2C] mt-0.5">Enable 2FA to protect your balance</p>
+        </div>
+        <ChevronRight className="w-3.5 h-3.5 text-[#9A6800] shrink-0" />
+      </button>
+    </div>
+  );
+}
+
 function MoniepointHome() {
   const [balanceHidden, setBalanceHidden] = useState(false);
   const [, navigate] = useLocation();
@@ -575,6 +600,8 @@ function MoniepointHome() {
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
 
+          <TwoFactorWarningCard onEnable={() => navigate('/two-factor')} />
+
           {/* ── Account card ────────────────────────────────────────── */}
           {/* mx 12px, mt 12px, rounded-2xl (20px), p-5 */}
           <div className="mx-3 mt-3 bg-[#162353] rounded-[20px] px-4 py-3 text-white relative overflow-hidden">
@@ -582,12 +609,11 @@ function MoniepointHome() {
             {/* Vexa logo — visible top-right */}
             <div className="absolute top-3 right-4 pointer-events-none select-none flex flex-col items-center gap-1">
               <img
-                src="/vexa-icon.png"
-                alt=""
-                className="w-10 h-10 object-contain"
-                style={{ opacity: 0.85 }}
+                src="/vexa-logo.png"
+                alt="Vexa"
+                className="w-[78px] h-8 object-contain"
+                style={{ opacity: 0.95 }}
               />
-              <span className="text-[9px] font-bold tracking-widest text-white/50 uppercase">Vexa</span>
             </div>
 
             {/* account number row */}
@@ -616,11 +642,11 @@ function MoniepointHome() {
 
             {/* action buttons — content-width pills, left-aligned */}
             <div className="flex gap-3">
-              <button onClick={() => navigate('/deposit')} className="bg-[#1E3A6E] rounded-full h-[30px] px-4 flex items-center gap-1.5 text-[11px] font-semibold text-white">
+              <button onClick={() => navigate('/deposit')} className="bg-transparent border border-white/70 rounded-full h-[30px] px-4 flex items-center gap-1.5 text-[11px] font-semibold text-white hover:bg-white/10 transition-colors">
                 <span className="text-[14px] leading-none font-light">+</span>
                 Deposit
               </button>
-              <button onClick={() => navigate('/history')} className="bg-[#1E3A6E] rounded-full h-[30px] px-4 flex items-center gap-1.5 text-[11px] font-semibold text-white">
+              <button onClick={() => navigate('/history')} className="bg-transparent border border-white/70 rounded-full h-[30px] px-4 flex items-center gap-1.5 text-[11px] font-semibold text-white hover:bg-white/10 transition-colors">
                 <Clock className="w-3 h-3" strokeWidth={2} />
                 History
               </button>
@@ -906,6 +932,7 @@ function SettingsPage() {
         { icon: <Lock className="w-5 h-5" />,        label: 'Change Transaction PIN', action: () => navigate('/change-pin') },
         { icon: <Fingerprint className="w-5 h-5" />, label: 'Biometric Login',        sub: biometrics ? 'On' : 'Off' },
         { icon: <Lock className="w-5 h-5" />,        label: 'Change Password',        action: () => navigate('/change-password') },
+         { icon: <Tablet className="w-5 h-5" />,      label: 'Active Devices',         sub: 'Manage signed-in sessions', action: () => navigate('/active-devices') },
          { icon: <Shield className="w-5 h-5" />,      label: 'Passcode on App Return', sub: passcodeOnReturn ? 'On · locks when you leave' : 'Off' },
          { icon: <i className="fa-solid fa-key text-[17px]" aria-hidden="true" />, label: 'Two-Factor Authentication', sub: user?.twoFactorEnabled ? 'Enabled via SMS' : 'Off', action: () => navigate('/two-factor') },
       ],
@@ -1016,11 +1043,27 @@ type ChatMessage = {
   text: string;
   time: string;
   attachment?: ChatAttachment;
+  actions?: { label: string; path: string }[];
 };
 
-const AI_FAQ_MAP: { keywords: string[]; answer: string }[] = [
+const AI_FAQ_MAP: { keywords: string[]; answer: string; actions?: { label: string; path: string }[] }[] = [
+  { keywords: ['vexa user', 'vexa-to-vexa', 'vexa to vexa', 'vexa transfer'],
+    answer: 'To send to another Vexa user, open Vexa to Vexa, enter their 10-digit account number or scan their QR code, verify the recipient, enter the amount, and confirm with your transaction PIN. No bank selection is needed.',
+    actions: [{ label: 'Open Vexa transfers', path: '/vexa-transfer' }] },
+  { keywords: ['scan qr', 'scan code', 'qr code', 'qr'],
+    answer: 'Open Vexa to Vexa and choose Scan QR. Allow camera access, scan the recipient’s code, check the account number, then enter the amount and PIN. If the camera does not work, enter the 10-digit Vexa account number instead.',
+    actions: [{ label: 'Open Scan QR', path: '/vexa-transfer' }] },
+  { keywords: ['receive money', 'receive payment', 'get paid', 'someone send'],
+    answer: 'Open Vexa to Vexa and choose My QR code. Show or share that code with the other Vexa user. It contains only your Vexa account identifier; never share your PIN or OTP.',
+    actions: [{ label: 'Open My QR code', path: '/vexa-transfer?mode=my-qr' }] },
+  { keywords: ['qr not working', 'camera not working', 'cannot scan', 'can’t scan'],
+    answer: 'Increase your screen brightness, hold the camera steady, and try again. If camera permission was denied, enable it in your browser or phone settings. You can always use the 10-digit account number field instead.',
+    actions: [{ label: 'Use manual transfer', path: '/vexa-transfer' }] },
   { keywords: ['transfer', 'send money', 'send'],
-    answer: 'To transfer money, go to the home screen and tap "Transfer". Enter the recipient\'s account number, select their bank, enter the amount, and confirm with your transaction PIN.' },
+    answer: 'For a bank transfer, go to Transfer, select the recipient’s bank, enter their 10-digit account number, wait for the account name to resolve, enter the amount, and confirm with your transaction PIN. For another Vexa user, choose Vexa to Vexa instead.',
+    actions: [{ label: 'Open transfers', path: '/transfer' }] },
+  { keywords: ['account name', 'resolve account', 'paystack', 'bank account'],
+    answer: 'For a bank recipient, choose the bank first and enter the 10-digit account number. Vexa checks the account name through Paystack before you can continue. If the name does not load, check the bank and number and try again.' },
   { keywords: ['limit', 'daily limit', 'how much'],
     answer: 'Level 1 accounts can transfer up to ₦50,000/day. Level 2 up to ₦200,000/day. Level 3 verified accounts enjoy a ₦5,000,000 daily limit.' },
   { keywords: ['airtime', 'data', 'recharge'],
@@ -1037,12 +1080,16 @@ const AI_FAQ_MAP: { keywords: string[]; answer: string }[] = [
     answer: 'You can manage your Vexa debit card from the "Card" section on the home screen. You can freeze, unfreeze, or request a new card there.' },
 ];
 
-function getAIReply(userText: string): string {
+function getAIReply(userText: string): { text: string; actions?: { label: string; path: string }[] } {
   const lower = userText.toLowerCase();
   for (const entry of AI_FAQ_MAP) {
-    if (entry.keywords.some(k => lower.includes(k))) return entry.answer;
+    if (entry.keywords.some(k => lower.includes(k))) {
+      return { text: entry.answer, actions: entry.actions };
+    }
   }
-  return "I'm not sure about that one. I can connect you with a live agent who can help right away — tap the button below.";
+  return {
+    text: "I'm not sure about that one. I can connect you with a live agent who can help right away — tap the button below.",
+  };
 }
 
 function nowTime() {
@@ -1059,19 +1106,20 @@ const AGENT = {
 };
 
 const QUICK_REPLIES = [
-  'How do I transfer money?',
-  'What are my transfer limits?',
-  'How do I buy airtime?',
-  'Is my money safe?',
+  'How do I send to a Vexa user?',
+  'How do I scan a Vexa QR?',
+  'How do I receive money?',
+  'What if my QR is not working?',
 ];
 
 function LiveChatModal({ onClose }: { onClose: () => void }) {
+  const [, navigate] = useLocation();
   const [mode, setMode] = useState<'ai' | 'live'>('ai');
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: '1',
       from: 'ai',
-      text: "Hi! I'm Vexa AI 👋 I can answer most questions instantly. What do you need help with today?",
+      text: "Hi! I'm Vexa AI. I can answer questions about bank transfers, Vexa-to-Vexa transfers, QR codes, account access, and more. What do you need help with today?",
       time: nowTime(),
     },
   ]);
@@ -1138,7 +1186,8 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
       setIsTyping(true);
       setTimeout(() => {
         setIsTyping(false);
-        addMessage({ from: 'ai', text: getAIReply(txt), time: nowTime() });
+        const reply = getAIReply(txt);
+        addMessage({ from: 'ai', text: reply.text, actions: reply.actions, time: nowTime() });
       }, 1100 + Math.random() * 600);
     } else {
       // Live agent — simulate reply
@@ -1165,7 +1214,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
       setMode('live');
       addMessage({
         from: 'agent',
-        text: `Hi! I'm ${AGENT.name} from Vexa Support 😊 I've reviewed your conversation and I'm here to help. What can I do for you?`,
+        text: `Hi! I'm ${AGENT.name} from Vexa Support. I've reviewed your conversation and I'm here to help. What can I do for you?`,
         time: nowTime(),
       });
     }, 2000);
@@ -1213,7 +1262,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
           <div className="flex items-center gap-3 bg-white/10 rounded-2xl px-4 py-3">
             <div
               className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-[14px] flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg,#1E3A6E,#2563EB)' }}
+              style={{ background: 'linear-gradient(135deg,#0f4f5c,#0e7490)' }}
             >
               {AGENT.avatar}
             </div>
@@ -1262,7 +1311,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
                   ) : (
                     <div
                       className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[11px]"
-                      style={{ background: 'linear-gradient(135deg,#1E3A6E,#2563EB)' }}
+                      style={{ background: 'linear-gradient(135deg,#0f4f5c,#0e7490)' }}
                     >
                       {AGENT.avatar}
                     </div>
@@ -1315,6 +1364,19 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
                     {msg.text}
                   </div>
                 )}
+                {msg.actions && msg.actions.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {msg.actions.map(action => (
+                      <button
+                        key={action.path}
+                        onClick={() => { onClose(); navigate(action.path); }}
+                        className="rounded-full bg-[#EAF2FF] border border-[#CFE0FF] px-3.5 py-2 text-[11px] font-bold text-[#1D4ED8] active:bg-[#DCEBFF]"
+                      >
+                        {action.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 <div className={`flex items-center gap-1 mt-1 px-1 ${isUser ? 'flex-row-reverse' : ''}`}>
                   <span className="text-[10px] text-[#CBD5E1]">{msg.time}</span>
@@ -1336,7 +1398,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
               ) : (
                 <div
                   className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[11px]"
-                  style={{ background: 'linear-gradient(135deg,#1E3A6E,#2563EB)' }}
+                  style={{ background: 'linear-gradient(135deg,#0f4f5c,#0e7490)' }}
                 >
                   {AGENT.avatar}
                 </div>
@@ -1499,7 +1561,11 @@ function HelpSupportPage() {
   const [showChat, setShowChat] = useState(false);
 
   const faqs = [
-    { q: 'How do I transfer money?', a: 'Go to the home screen and tap "Transfer". Enter the recipient\'s account number, select their bank, enter the amount, and confirm with your transaction PIN.' },
+    { q: 'How do I send money to another Vexa user?', a: 'Open Transfer → Vexa to Vexa. Enter the recipient’s 10-digit Vexa account number or scan their QR code, verify the recipient, enter the amount, and confirm with your transaction PIN. No bank selection is needed.' },
+    { q: 'How do I scan a Vexa QR code?', a: 'Open Transfer → Vexa to Vexa → Scan QR. Allow camera access, scan the code shown by the recipient, check the account number, then continue with the amount and PIN. Manual account entry is always available.' },
+    { q: 'How do I receive money with a QR code?', a: 'Open Transfer → Vexa to Vexa → My QR code. Show or share the QR code with another Vexa user. It contains only your Vexa account identifier. Never share your PIN or OTP.' },
+    { q: 'What if my QR code is not working?', a: 'Increase screen brightness, hold the camera steady, and try again. If camera permission was denied, enable it in your browser or phone settings. You can also enter the 10-digit Vexa account number manually.' },
+    { q: 'How do I transfer money to a bank account?', a: 'Go to the home screen and tap Transfer. Select the recipient’s bank, enter their account number, wait for the Paystack account-name check, enter the amount, and confirm with your transaction PIN.' },
     { q: 'What are the transfer limits?', a: 'Level 1 accounts can transfer up to ₦50,000 per day. Level 2 accounts can transfer up to ₦200,000 per day. Level 3 verified accounts have a ₦5,000,000 daily limit.' },
     { q: 'How do I buy airtime or data?', a: 'From the home screen, tap "Airtime" or "Data", select your network provider, enter the phone number and amount, then confirm the purchase.' },
     { q: 'I forgot my passcode. What do I do?', a: 'On the Sign In screen, tap "Forgot Passcode?" and follow the steps to reset it using your registered phone number and OTP verification.' },
@@ -1528,10 +1594,10 @@ function HelpSupportPage() {
             <p className="text-white font-bold text-[15px] mb-1">Need help?</p>
             <p className="text-white/60 text-[12px] mb-4">Our support team is available 24/7 to assist you.</p>
             <div className="flex gap-3">
-              <button className="flex-1 bg-white/15 rounded-xl py-3 flex flex-col items-center gap-1.5 active:bg-white/25 transition-colors">
+              <a href="tel:+2348008392600" className="flex-1 bg-white/15 rounded-xl py-3 flex flex-col items-center gap-1.5 active:bg-white/25 transition-colors">
                 <Phone className="w-5 h-5 text-white" />
                 <span className="text-[11px] font-semibold text-white">Call Us</span>
-              </button>
+              </a>
               <button
                 onClick={() => setShowChat(true)}
                 className="flex-1 bg-white/25 border border-white/30 rounded-xl py-3 flex flex-col items-center gap-1.5 active:bg-white/35 transition-colors"
@@ -1539,10 +1605,10 @@ function HelpSupportPage() {
                 <MessageCircle className="w-5 h-5 text-white" />
                 <span className="text-[11px] font-semibold text-white">Live Chat</span>
               </button>
-              <button className="flex-1 bg-white/15 rounded-xl py-3 flex flex-col items-center gap-1.5 active:bg-white/25 transition-colors">
+              <a href="mailto:support@vexa.com" className="flex-1 bg-white/15 rounded-xl py-3 flex flex-col items-center gap-1.5 active:bg-white/25 transition-colors">
                 <Mail className="w-5 h-5 text-white" />
                 <span className="text-[11px] font-semibold text-white">Email Us</span>
-              </button>
+              </a>
             </div>
           </div>
 
@@ -1569,19 +1635,19 @@ function HelpSupportPage() {
           <div>
             <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide mb-2 px-1">Contact Details</p>
             <div className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
-              {[
-                { icon: <Phone className="w-5 h-5" />, label: 'Phone Support', sub: '+234 800 839 2600' },
-                { icon: <Mail className="w-5 h-5" />, label: 'Email Support', sub: 'support@vexa.com' },
-                { icon: <MessageCircle className="w-5 h-5" />, label: 'WhatsApp', sub: '+234 800 839 2600' },
+                {[
+                  { icon: <Phone className="w-5 h-5" />, label: 'Phone Support', sub: '+234 800 839 2600', href: 'tel:+2348008392600' },
+                  { icon: <Mail className="w-5 h-5" />, label: 'Email Support', sub: 'support@vexa.com', href: 'mailto:support@vexa.com' },
+                  { icon: <MessageCircle className="w-5 h-5" />, label: 'WhatsApp', sub: '+234 800 839 2600', href: 'https://wa.me/2348008392600' },
               ].map((item, i, arr) => (
-                <div key={i} className={`flex items-center gap-3.5 px-4 py-4 ${i < arr.length - 1 ? 'border-b border-[#F5F5F5]' : ''}`}>
+                  <a key={i} href={item.href} className={`flex items-center gap-3.5 px-4 py-4 hover:bg-[#F8F9FB] ${i < arr.length - 1 ? 'border-b border-[#F5F5F5]' : ''}`}>
                   <span className="text-[#555]">{item.icon}</span>
                   <div className="flex-1">
                     <p className="text-[14px] font-semibold text-[#111]">{item.label}</p>
                     <p className="text-[12px] text-[#888] mt-0.5">{item.sub}</p>
                   </div>
                   <ExternalLink className="w-4 h-4 text-[#CBD5E1]" />
-                </div>
+                  </a>
               ))}
             </div>
           </div>
@@ -1881,7 +1947,7 @@ function DepositPage() {
               <p className="text-[11px] text-[#888] mb-0.5">Bank</p>
               <p className="text-[14px] font-semibold text-[#111]">{bankName}</p>
             </div>
-            <img src="/vexa-icon.png" alt="Vexa" className="w-10 h-10 rounded-full object-cover" />
+            <img src="/vexa-icon.png" alt="Vexa" className="w-8 h-8 rounded-full object-cover" />
           </div>
 
           <div className="h-px bg-[#F0F0F0] mb-4" />
@@ -1958,19 +2024,12 @@ function DepositPage() {
 }
 
 /* ─── Transfer Page ──────────────────────────────────────────────────── */
-const BANKS = [
-  'Access Bank', 'First Bank', 'GTBank', 'Zenith Bank', 'UBA',
-  'Fidelity Bank', 'Sterling Bank', 'Polaris Bank', 'Kuda Bank',
-  'Opay', 'PalmPay', 'Moniepoint MFB', 'Vexa Bank',
-];
-
-// Simulated account lookup: known acc numbers → names
-const KNOWN_ACCOUNTS: Record<string, string> = {
-  '0000000001': 'Ada Okonkwo',
-  '0000000002': 'Emeka Nwosu',
-  '1234567890': 'Tunde Bakare',
-  '9067212032': 'Chibuzor Emmanuel Dike',
-};
+interface PaystackBank {
+  name: string;
+  slug: string;
+  code: string;
+  logoUrl: string | null;
+}
 
 type TxStep = 'details' | 'amount' | 'create_pin' | 'pin' | 'success';
 
@@ -1990,17 +2049,28 @@ function formatAmt(raw: string) {
   return intP.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + dec;
 }
 
+function storedSelectedBank(): PaystackBank | null {
+  try {
+    const value = JSON.parse(sessionStorage.getItem('vexa.selectedBank') ?? 'null') as PaystackBank | null;
+    return value?.name && value.code ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 function TransferPage() {
   const [, navigate] = useLocation();
   const { user, setInitialTransferPin } = useAuth();
   const { debitBalance, creditBalance, addTransaction, addNotification } = useUserData();
   const [step, setStep]           = useState<TxStep>('details');
-  const [bank, setBank]           = useState('');
-  const [showBankList, setShowBankList] = useState(false);
-  const [bankSearch, setBankSearch] = useState('');
+  const initialBank = storedSelectedBank();
+  const [bank, setBank]           = useState(initialBank?.name ?? '');
+  const [bankCode, setBankCode]   = useState(initialBank?.code ?? '');
+  const [bankLogo, setBankLogo]   = useState<string | null>(initialBank?.logoUrl ?? null);
   const [acctNo, setAcctNo]       = useState('');
   const [resolvedName, setResolvedName] = useState('');
   const [lookingUp, setLookingUp] = useState(false);
+  const [lookupError, setLookupError] = useState('');
   const [amount, setAmount]       = useState('');
   const [narration, setNarration] = useState('');
   const [pin, setPin]             = useState('');
@@ -2014,21 +2084,43 @@ function TransferPage() {
   const [submitError, setSubmitError]         = useState('');
   const [receipt, setReceipt]                 = useState<TransferReceiptData | null>(null);
 
-  // Simulate account name lookup when 10-digit acc entered + bank chosen
+  // Resolve the destination account through the API server so Paystack's
+  // secret key never reaches the browser.
   useEffect(() => {
-    if (acctNo.length === 10 && bank) {
-      setLookingUp(true);
+    const controller = new AbortController();
+    if (acctNo.length !== 10 || !bankCode) {
       setResolvedName('');
-      const t = setTimeout(() => {
-        const name = KNOWN_ACCOUNTS[acctNo] ?? 'Account Holder';
-        setResolvedName(name);
-        setLookingUp(false);
-      }, 1200);
-      return () => clearTimeout(t);
+      setLookupError('');
+      setLookingUp(false);
+      return () => controller.abort();
     }
+
+    setLookingUp(true);
     setResolvedName('');
-    return undefined;
-  }, [acctNo, bank]);
+    setLookupError('');
+    const timer = window.setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ accountNumber: acctNo, bankCode });
+        const response = await fetch(`/api/paystack/resolve-account?${params.toString()}`, {
+          signal: controller.signal,
+        });
+        const body = await response.json().catch(() => null) as { accountName?: string; message?: string } | null;
+        if (!response.ok) throw new Error(body?.message || 'Could not verify the bank account');
+        if (!body?.accountName) throw new Error('Paystack did not return an account name');
+        setResolvedName(body.accountName);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setLookupError(error instanceof Error ? error.message : 'Could not verify the bank account');
+      } finally {
+        if (!controller.signal.aborted) setLookingUp(false);
+      }
+    }, 400);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [acctNo, bankCode]);
 
   function handlePinKey(k: string) {
     if (pin.length < 4) setPin(p => p + k);
@@ -2088,10 +2180,6 @@ function TransferPage() {
     });
     setStep('success');
   }
-
-  const filteredBanks = BANKS.filter(b =>
-    b.toLowerCase().includes(bankSearch.toLowerCase())
-  );
 
   const amtNum = parseFloat(amount.replace(/,/g, '') || '0');
 
@@ -2361,7 +2449,7 @@ function TransferPage() {
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         </button>
         <span className="text-[16px] font-bold text-[#111]">Transfer</span>
-        <button onClick={() => navigate('/vexa-transfer')} className="ml-auto rounded-full bg-[#EAF2FF] text-[#2563EB] px-3 py-1.5 text-[10px] font-bold">Vexa user</button>
+        <button onClick={() => navigate('/vexa-transfer')} className="ml-auto rounded-full bg-[#EAF2FF] text-[#2563EB] px-3 py-1.5 text-[10px] font-bold">Vexa to Vexa</button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4" style={{ scrollbarWidth: 'none' }}>
@@ -2370,40 +2458,31 @@ function TransferPage() {
         <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
           <p className="text-[12px] font-semibold text-[#444] mb-3">Select Bank</p>
           <button
-            onClick={() => setShowBankList(v => !v)}
-            className="w-full flex items-center justify-between border border-[#E0E0E0] rounded-xl px-4 py-3 focus:border-[#2563EB] transition-colors"
+            onClick={() => navigate('/bank-selection?returnTo=/transfer')}
+            className="w-full flex items-center justify-between border border-[#E0E0E0] rounded-xl px-4 py-3 focus:border-[#2563EB] transition-colors disabled:opacity-60"
           >
-            <span className={`text-[14px] ${bank ? 'text-[#111] font-semibold' : 'text-[#CCC]'}`}>
-              {bank || 'Choose bank…'}
+            <span className="flex min-w-0 items-center gap-2">
+              {bank ? (
+                <span className="w-7 h-7 rounded-full bg-[#F2F3F5] flex items-center justify-center overflow-hidden shrink-0">
+                  {bankLogo ? (
+                    <img
+                      src={bankLogo}
+                      alt=""
+                      className="w-6 h-6 object-contain"
+                    />
+                  ) : (
+                    <span className="text-[10px] font-bold text-[#162353]">{bank.slice(0, 1)}</span>
+                  )}
+                </span>
+              ) : null}
+              <span className={`truncate text-[14px] ${bank ? 'text-[#111] font-semibold' : 'text-[#CCC]'}`}>
+                {bank || 'Choose bank…'}
+              </span>
             </span>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points={showBankList ? '18 15 12 9 6 15' : '6 9 12 15 18 9'}/>
+              <polyline points="6 9 12 15 18 9"/>
             </svg>
           </button>
-
-          {showBankList && (
-            <div className="mt-2 border border-[#E0E0E0] rounded-xl overflow-hidden">
-              <div className="px-3 py-2 border-b border-[#F0F0F0]">
-                <input
-                  type="text" placeholder="Search bank…"
-                  value={bankSearch} onChange={e => setBankSearch(e.target.value)}
-                  className="w-full text-[13px] outline-none placeholder:text-[#CCC]"
-                  autoFocus
-                />
-              </div>
-              <div className="max-h-[180px] overflow-y-auto">
-                {filteredBanks.map(b => (
-                  <button key={b} onClick={() => { setBank(b); setShowBankList(false); setBankSearch(''); }}
-                    className={`w-full text-left px-4 py-3 text-[13px] hover:bg-[#F8F9FB] transition-colors border-b border-[#F8F9FB] last:border-0 ${bank === b ? 'font-semibold text-[#162353]' : 'text-[#333]'}`}>
-                    {b}
-                  </button>
-                ))}
-                {filteredBanks.length === 0 && (
-                  <p className="px-4 py-3 text-[12px] text-[#888]">No banks found</p>
-                )}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Account number */}
@@ -2430,29 +2509,12 @@ function TransferPage() {
                 <span className="text-[13px] font-semibold text-[#16A34A]">{resolvedName}</span>
               </div>
             )}
-          </div>
-        </div>
-
-        {/* Recent recipients */}
-        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
-          <p className="text-[12px] font-semibold text-[#444] mb-3">Recent Recipients</p>
-          <div className="space-y-3">
-            {[
-              { name: 'Ada Okonkwo',  acct: '0000000001', bank: 'Zenith Bank'  },
-              { name: 'Emeka Nwosu',  acct: '0000000002', bank: 'GTBank'       },
-              { name: 'Tunde Bakare', acct: '1234567890', bank: 'Access Bank'  },
-            ].map(r => (
-              <button key={r.acct} onClick={() => { setBank(r.bank); setAcctNo(r.acct); setResolvedName(r.name); }}
-                className="w-full flex items-center gap-3 hover:bg-[#F8F9FB] rounded-xl p-2 -mx-2 transition-colors">
-                <div className="w-9 h-9 rounded-full bg-[#EEF2FF] flex items-center justify-center text-[#2563EB] font-bold text-[13px] shrink-0">
-                  {r.name.charAt(0)}
-                </div>
-                <div className="text-left">
-                  <p className="text-[13px] font-semibold text-[#111]">{r.name}</p>
-                  <p className="text-[11px] text-[#888]">{r.acct} · {r.bank}</p>
-                </div>
-              </button>
-            ))}
+            {!lookingUp && !resolvedName && submitError && (
+              <span className="text-[12px] text-red-500">{submitError}</span>
+            )}
+            {!lookingUp && !resolvedName && lookupError && (
+              <span className="text-[12px] text-red-500">{lookupError}</span>
+            )}
           </div>
         </div>
 
@@ -2460,9 +2522,9 @@ function TransferPage() {
 
       <div className="flex-none px-4 pb-6 pt-2 bg-[#F2F3F5]">
         <button
-          onClick={() => { if (bank && resolvedName) setStep('amount'); }}
-          disabled={!bank || !resolvedName}
-          className={`w-full h-[50px] rounded-xl text-[14px] font-semibold text-white transition-all ${bank && resolvedName ? 'bg-[#162353] active:opacity-80' : 'bg-[#162353]/40'}`}
+           onClick={() => { if (bank && bankCode && resolvedName) setStep('amount'); }}
+           disabled={!bank || !bankCode || !resolvedName}
+           className={`w-full h-[50px] rounded-xl text-[14px] font-semibold text-white transition-all ${bank && bankCode && resolvedName ? 'bg-[#162353] active:opacity-80' : 'bg-[#162353]/40'}`}
         >
           Continue
         </button>
@@ -3014,7 +3076,7 @@ function SavingsPage() {
 
         {/* Summary Hero */}
         <div className="mx-4 mt-4 rounded-2xl overflow-hidden relative"
-          style={{ background: 'linear-gradient(135deg, #162353 0%, #1E3A6E 50%, #0a4fa3 100%)' }}>
+          style={{ background: 'linear-gradient(135deg, #0f4f5c 0%, #0e7490 50%, #083d49 100%)' }}>
           {/* Decorative arc */}
           <svg className="absolute right-0 top-0 opacity-10" width="160" height="120" viewBox="0 0 160 120">
             <circle cx="140" cy="20" r="90" fill="white"/>
@@ -3544,7 +3606,7 @@ function BudgetPage() {
     <PageShell title="Personal Budget" back="/">
       <div className="flex-1 overflow-y-auto px-4 py-4 pb-8" style={{ scrollbarWidth: 'none' }}>
         <div className="rounded-3xl p-5 text-white mb-4 overflow-hidden relative"
-          style={{ background: 'linear-gradient(135deg, #162353 0%, #1E3A8A 58%, #0369A1 100%)' }}>
+          style={{ background: 'linear-gradient(135deg, #0f4f5c 0%, #0e7490 58%, #086477 100%)' }}>
           <div className="absolute -right-10 -top-12 w-36 h-36 rounded-full border-[20px] border-white/10" />
           <div className="relative">
             <div className="flex items-center justify-between mb-5">
@@ -3755,7 +3817,7 @@ function CardPage() {
             style={{
               background: frozen
                 ? 'linear-gradient(135deg, #374151 0%, #1F2937 60%, #111827 100%)'
-                : 'linear-gradient(135deg, #162353 0%, #1E3A8A 45%, #1e40af 75%, #0369a1 100%)',
+                : 'linear-gradient(135deg, #0f4f5c 0%, #0e7490 45%, #086477 75%, #064b5a 100%)',
               minHeight: 200,
               transition: 'background 0.5s ease',
             }}>
@@ -4315,6 +4377,10 @@ function BusinessSecurityGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function BusinessBrandScope({ children }: { children: React.ReactNode }) {
+  return <div className="business-brand-scope contents">{children}</div>;
+}
+
 
 function Router() {
   return (
@@ -4322,8 +4388,11 @@ function Router() {
       <Route path="/" component={MoniepointHome} />
       <Route path="/deposit" component={DepositPage} />
       <Route path="/transfer" component={TransferPage} />
+      <Route path="/bank-selection" component={BankSelectionPage} />
       <Route path="/vexa-transfer" component={VexaTransferPage} />
       <Route path="/crypto" component={CryptoExchangePage} />
+      <Route path="/crypto/incoming" component={IncomingCryptoPage} />
+      <Route path="/crypto/outgoing" component={OutgoingCryptoPage} />
       <Route path="/history" component={HistoryPage} />
       <Route path="/receipt/:transactionId" component={TransactionReceiptPage} />
       <Route path="/settings" component={SettingsPage} />
@@ -4345,6 +4414,7 @@ function Router() {
       <Route path="/limits" component={LimitsPage} />
       <Route path="/change-pin" component={ChangePinPage} />
       <Route path="/change-password" component={ChangePasswordPage} />
+      <Route path="/active-devices" component={ActiveDevicesPage} />
       <Route path="/two-factor" component={TwoFactorSettingsPage} />
       <Route path="/help-support" component={HelpSupportPage} />
       <Route path="/notifications" component={NotificationsPage} />
@@ -4352,36 +4422,38 @@ function Router() {
       <Route path="/cashback" component={CashbackPage} />
       <Route path="/referrals" component={ReferralsPage} />
       {/* Vexa Business — onboarding is unguarded; all other routes require security verification */}
-      <Route path="/business/onboarding" component={BusinessOnboarding} />
+      <Route path="/business/onboarding">
+        <BusinessBrandScope><BusinessOnboarding /></BusinessBrandScope>
+      </Route>
       <Route path="/business">
-        <BusinessSecurityGate><BusinessDashboard /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><BusinessDashboard /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/transfers">
-        <BusinessSecurityGate><BusinessTransfers /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><BusinessTransfers /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/receive">
-        <BusinessSecurityGate><BusinessTransfers /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><BusinessTransfers /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/bills">
-        <BusinessSecurityGate><BusinessBills /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><BusinessBills /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/employees">
-        <BusinessSecurityGate><EmployeeManagement /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><EmployeeManagement /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/payroll">
-        <BusinessSecurityGate><PayrollManagement /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><PayrollManagement /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/analytics">
-        <BusinessSecurityGate><BusinessAnalytics /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><BusinessAnalytics /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/settings">
-        <BusinessSecurityGate><BusinessSettings /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><BusinessSettings /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/transactions">
-        <BusinessSecurityGate><BusinessTransactionHistory /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><BusinessTransactionHistory /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route path="/business/notifications">
-        <BusinessSecurityGate><NotificationsPage /></BusinessSecurityGate>
+        <BusinessBrandScope><BusinessSecurityGate><NotificationsPage /></BusinessSecurityGate></BusinessBrandScope>
       </Route>
       <Route component={NotFound} />
     </Switch>
@@ -4392,7 +4464,11 @@ function Router() {
 function AppShell() {
   const [showSplash, setShowSplash] = useState(true);
   const [splashDone, setSplashDone] = useState(false);
-  const { isAuthenticated, loading, signOut, twoFactorPending } = useAuth();
+  const handleSplashDone = useCallback(() => {
+    setShowSplash(false);
+    setSplashDone(true);
+  }, []);
+  const { session, isAuthenticated, loading, profileError, refreshProfile, signOut, twoFactorPending } = useAuth();
   const [path, navigate] = useLocation();
   const { clearVerification } = useBusinessSecurity();
   const prevPathRef = React.useRef('');
@@ -4462,15 +4538,17 @@ function AppShell() {
   }, [isAuthenticated, splashDone]);
 
   useEffect(() => {
-    if (splashDone && !loading && !isAuthenticated) {
+    if (splashDone && !loading && !session && !isAuthenticated) {
       navigate('/signin');
     }
-  }, [splashDone, loading, isAuthenticated]);
+  }, [splashDone, loading, session, isAuthenticated, navigate]);
 
   // Clear business verification when the user navigates away from the business section
   useEffect(() => {
     const wasOnBusiness = prevPathRef.current.startsWith('/business');
-    const isOnBusiness = path.startsWith('/business');
+    const bankSelectionForBusiness = path === '/bank-selection'
+      && new URLSearchParams(window.location.search).get('returnTo')?.startsWith('/business');
+    const isOnBusiness = path.startsWith('/business') || Boolean(bankSelectionForBusiness);
     if (wasOnBusiness && !isOnBusiness) {
       clearVerification();
     }
@@ -4479,11 +4557,12 @@ function AppShell() {
 
   return (
     <>
-      {showSplash && (
-        <SplashScreen onDone={() => {
-          setShowSplash(false);
-          setSplashDone(true);
-        }} />
+      {showSplash && <SplashScreen onDone={handleSplashDone} />}
+      {!loading && profileError && session && !isAuthenticated && (
+        <div className="fixed top-3 left-1/2 z-[60] w-[min(92vw,420px)] -translate-x-1/2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 shadow-lg">
+          <p className="text-[13px] font-semibold text-red-700">Your session is active, but your profile could not be loaded.</p>
+          <button onClick={() => void refreshProfile()} className="mt-2 text-[12px] font-bold text-[#162353]">Try again</button>
+        </div>
       )}
       <Router />
       {twoFactorPending && <TwoFactorChallenge />}

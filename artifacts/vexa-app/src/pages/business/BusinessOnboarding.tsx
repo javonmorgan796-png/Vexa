@@ -45,22 +45,27 @@ export default function BusinessOnboarding() {
     setStep(s => s + 1);
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     setLoading(true);
-    setTimeout(() => {
-      createBusiness({
-        businessName: businessName.trim(),
-        businessType: businessType as BusinessType,
-        industry,
-        description: description.trim(),
-        ownerName: user?.name || '',
-        ownerPhone: user?.phone || '',
-        email: email.trim(),
-        address: address.trim(),
-      });
-      setLoading(false);
+    setError('');
+    const result = await createBusiness({
+      businessName: businessName.trim(),
+      businessType: businessType as BusinessType,
+      industry,
+      description: description.trim(),
+      ownerName: user?.name || '',
+      ownerPhone: user?.phone || '',
+      email: email.trim(),
+      address: address.trim(),
+    });
+    setLoading(false);
+
+    if (!result.success) {
+      setError(result.error || 'Business account could not be saved. Please try again.');
+      return;
+    }
+
       navigate('/business');
-    }, 1200);
   }
 
   return (

@@ -115,8 +115,8 @@ const UserDataContext = createContext<UserDataContextType | null>(null);
 export function UserDataProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
 
-  const [balance, setBalance]                       = useState(0);
-  const [balanceLoading, setBalanceLoading]         = useState(true);
+  const [balance, setBalance]                       = useState(() => Number(user?.balance ?? 0));
+  const [balanceLoading, setBalanceLoading]         = useState(() => !user);
   const [lastBalanceUpdatedAt, setLastBalanceUpdatedAt] = useState<string | null>(null);
 
   const [cashbackHistory, setCashbackHistory]       = useState<CashbackItem[]>([]);
@@ -133,14 +133,14 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
 
   /* ── Fetch helpers ─────────────────────────────────────────────── */
 
-  const fetchBalance = useCallback(async () => {
+  const fetchBalance = useCallback(async (showLoading = true) => {
     if (!user) {
       setBalance(0);
       setLastBalanceUpdatedAt(null);
       setBalanceLoading(false);
       return;
     }
-    setBalanceLoading(true);
+    if (showLoading) setBalanceLoading(true);
     const { data } = await supabase.from('profiles').select('balance').eq('id', user.id).single();
     if (data) {
       setBalance(Number(data.balance));
@@ -235,7 +235,15 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (user) {
-      refreshAll();
+      // Auth already loaded the profile balance. Render it immediately and
+      // refresh the authoritative value in the background.
+      setBalance(Number(user.balance ?? 0));
+      setBalanceLoading(false);
+      void fetchBalance(false);
+      void fetchCashback();
+      void fetchReferrals();
+      void fetchNotifications();
+      void fetchTransactions();
     } else {
       setBalance(0); setCashbackHistory([]); setReferrals([]);
       setNotifications([]); setTransactions([]);

@@ -1,0 +1,99 @@
+The Supabase database is now working correctly. Do NOT modify any SQL, database tables, triggers, functions, migrations, or Row Level Security (RLS).
+
+Confirmed:
+- auth.users contains the authenticated users.
+- public.profiles contains the matching profile rows.
+- handle_new_user() works correctly.
+- on_auth_user_created trigger works correctly.
+
+The remaining issues are entirely inside the React + TypeScript application.
+
+Please perform a complete authentication and profile audit and fix every issue related to user sessions, profile loading, dashboard data, navigation, and state management.
+
+Fix the following:
+
+1. Authentication Session
+- Ensure the session is restored on application startup.
+- Wait for the authentication loading state before redirecting.
+- Never redirect to /signin while authentication is still loading.
+- Use supabase.auth.getSession() and onAuthStateChange correctly.
+
+2. AuthContext
+- Keep loading=true until both the Supabase session and the profile have been loaded.
+- Ensure fetchProfile() always loads the logged-in user's profile from public.profiles.
+- If the profile query fails, do not immediately sign the user out or redirect to login.
+- Add a refreshProfile() function so every page can reload the latest profile.
+- Keep user state synchronized after profile updates.
+
+3. Protected Routes
+- Inspect every route that redirects to /signin.
+- Redirect only if:
+  - loading === false
+  - currentSession === null
+  - currentUser === null
+- Never redirect simply because user is temporarily null.
+
+4. Profile Page
+- Fix the Profile page so it waits for loading before rendering.
+- Load the latest profile using the authenticated user's ID.
+- Display:
+  - profile photo
+  - full name
+  - phone number
+  - email
+  - account number
+  - referral code
+  - verification level
+  - balance
+- Remove any redirect caused by temporary loading.
+- When editing the profile or profile picture, update Supabase and immediately refresh AuthContext.
+
+5. Dashboard
+- Replace all placeholder values.
+- Load live values from public.profiles:
+  - balance
+  - account_number
+  - referral_code
+  - verification level
+  - profile photo
+  - user name
+- Refresh automatically after updates.
+
+6. Business Dashboard
+- Check whether a business_accounts record exists.
+- If one exists, open the Business Dashboard.
+- If none exists, open the Business Registration page.
+- Never redirect to login because of missing business data.
+
+7. React State
+- Remove any useState initialization that permanently stores empty values from user before it finishes loading.
+- Synchronize local form state with user using useEffect whenever user changes.
+
+8. Error Handling
+- Replace every automatic redirect to /signin caused by profile loading failures with proper loading and error messages.
+- Never log the user out because a profile query failed.
+
+9. Navigation
+- Search the entire project for:
+  - navigate('/signin')
+  - navigate('/login')
+  - router.push('/signin')
+  - router.push('/login')
+  - window.location
+- Remove incorrect redirects.
+
+10. Final Verification
+Verify that after login:
+- Dashboard loads correctly.
+- Balance is displayed.
+- Account number is displayed.
+- Referral code is displayed.
+- Profile photo is displayed.
+- Profile page opens without redirecting.
+- Editing profile works.
+- Uploading profile picture works.
+- Settings work.
+- Business Dashboard works correctly.
+- The user stays authenticated while navigating throughout the app.
+
+Do not modify the database. The database is already working. Focus only on fixing the React application, authentication flow, profile loading, routing, and state management.
