@@ -2096,6 +2096,12 @@ async function createTransferReceiptImage(receipt: TransferReceiptData, referenc
   const navy = '#162353';
   const muted = '#7A8191';
   const ink = '#111827';
+  const logo = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Receipt logo could not be loaded'));
+    image.src = `${import.meta.env.BASE_URL}vexa-logo.png`;
+  });
 
   context.fillStyle = '#FFFFFF';
   context.beginPath();
@@ -2103,63 +2109,65 @@ async function createTransferReceiptImage(receipt: TransferReceiptData, referenc
   context.fill();
 
   context.fillStyle = navy;
-  context.font = '700 26px Inter, Arial, sans-serif';
-  context.textAlign = 'center';
-  context.fillText('VEXA', width / 2, 72);
+  context.beginPath();
+  context.roundRect(width / 2 - 154, 45, 308, 92, 20);
+  context.fill();
+  context.drawImage(logo, width / 2 - 128, 32, 256, 128);
+
   context.fillStyle = '#16A34A';
   context.beginPath();
-  context.arc(width / 2, 153, 36, 0, Math.PI * 2);
+  context.arc(width / 2, 178, 36, 0, Math.PI * 2);
   context.fill();
   context.strokeStyle = '#FFFFFF';
   context.lineWidth = 5;
   context.lineCap = 'round';
   context.beginPath();
-  context.moveTo(width / 2 - 14, 153);
-  context.lineTo(width / 2 - 3, 164);
-  context.lineTo(width / 2 + 17, 141);
+  context.moveTo(width / 2 - 14, 178);
+  context.lineTo(width / 2 - 3, 189);
+  context.lineTo(width / 2 + 17, 166);
   context.stroke();
 
   context.fillStyle = ink;
   context.font = '800 30px Inter, Arial, sans-serif';
-  context.fillText('Transfer Successful', width / 2, 216);
+  context.fillText('Transfer Successful', width / 2, 241);
   context.fillStyle = muted;
   context.font = '400 18px Inter, Arial, sans-serif';
-  context.fillText('Your money has been sent securely', width / 2, 258);
+  context.fillText('Your money has been sent securely', width / 2, 283);
 
   context.textAlign = 'left';
   context.fillStyle = navy;
   context.beginPath();
-  context.roundRect(cardX + 28, 310, cardWidth - 56, 170, 20);
+  context.roundRect(cardX + 28, 335, cardWidth - 56, 170, 20);
   context.fill();
   context.textAlign = 'center';
   context.fillStyle = 'rgba(255,255,255,0.64)';
   context.font = '600 14px Inter, Arial, sans-serif';
-  context.fillText('AMOUNT SENT', width / 2, 338);
+  context.fillText('AMOUNT SENT', width / 2, 363);
   context.fillStyle = '#FFFFFF';
   context.font = '800 48px Inter, Arial, sans-serif';
-  context.fillText(`₦${receipt.transaction.amount}`, width / 2, 370);
+  context.fillText(`₦${receipt.transaction.amount}`, width / 2, 395);
   context.fillStyle = '#BBF7D0';
   context.font = '700 15px Inter, Arial, sans-serif';
-  context.fillText('●  Completed', width / 2, 437);
+  context.fillText('●  Completed', width / 2, 462);
 
   context.textAlign = 'left';
   context.fillStyle = '#F8F9FB';
   context.beginPath();
-  context.roundRect(cardX + 28, 514, cardWidth - 56, 210, 18);
+  context.roundRect(cardX + 28, 539, cardWidth - 56, 210, 18);
   context.fill();
   context.fillStyle = muted;
   context.font = '700 14px Inter, Arial, sans-serif';
-  context.fillText('RECIPIENT', cardX + 52, 542);
+  context.fillText('RECIPIENT', cardX + 52, 567);
   context.fillStyle = ink;
   context.font = '700 20px Inter, Arial, sans-serif';
-  context.fillText(receipt.recipientName, cardX + 52, 578);
+  context.fillText(receipt.recipientName, cardX + 52, 603);
   context.fillStyle = muted;
   context.font = '400 16px Inter, Arial, sans-serif';
   drawReceiptWrappedText(
     context,
     `${receipt.bank} · ${receipt.accountNumber}`,
     cardX + 52,
-    612,
+    637,
     cardWidth - 104,
     24,
   );
@@ -2172,7 +2180,7 @@ async function createTransferReceiptImage(receipt: TransferReceiptData, referenc
     ['Narration', receipt.transaction.note || 'Transfer'],
     ['Reference', reference],
   ];
-  let detailY = 776;
+  let detailY = 801;
   context.font = '400 16px Inter, Arial, sans-serif';
   for (const [label, value] of detailRows) {
     context.fillStyle = muted;
