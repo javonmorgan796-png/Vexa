@@ -9,8 +9,8 @@ Only show a completed transfer receipt after the balance debit and transaction i
 
 **How to apply:** Keep receipt data in the transfer flow until navigation, return the saved transaction from the persistence helper, make history rows navigate to a transaction-ID receipt route, and derive share/print content from the saved record.
 
-Reference-matched receipt artwork should use a receipt-specific logo asset rather than the app’s regular dark-surface wordmark.
+Receipt artwork should be treated as a replaceable visual template, with the latest user-provided reference overriding earlier receipt styling decisions.
 
-**Why:** The standard Vexa logo is optimized for navy backgrounds and loses the reference’s contrast and proportions on a white receipt header.
+**Why:** Receipt references can change substantially between iterations, so carrying forward logos, waves, or panels from an older reference creates visual mismatches.
 
-**How to apply:** Keep receipt branding separate from in-app branding, while rendering transaction values dynamically over the recreated receipt layout.
+**How to apply:** Keep transaction data and sharing behavior separate from the canvas layout, then rebuild the artwork around the newest reference without changing transfer persistence.
