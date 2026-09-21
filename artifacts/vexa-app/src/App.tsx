@@ -2079,125 +2079,239 @@ function drawReceiptWrappedText(
 async function createTransferReceiptImage(receipt: TransferReceiptData, reference: string) {
   const canvas = document.createElement('canvas');
   const scale = 2;
-  const width = 900;
-  const height = 1180;
+  const width = 1024;
+  const height = 1536;
   canvas.width = width * scale;
   canvas.height = height * scale;
 
   const context = canvas.getContext('2d');
   if (!context) throw new Error('Receipt image could not be created');
   context.scale(scale, scale);
-  context.fillStyle = '#F2F3F5';
+  context.fillStyle = '#F3F6FB';
   context.fillRect(0, 0, width, height);
   context.textBaseline = 'top';
 
-  const cardX = 42;
+  const cardX = 44;
+  const cardY = 38;
+  const cardBottom = height - 38;
   const cardWidth = width - cardX * 2;
-  const navy = '#162353';
-  const muted = '#7A8191';
-  const ink = '#111827';
+  const navy = '#102649';
+  const muted = '#6E7D94';
+  const ink = '#102649';
   const logo = await new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
     image.onerror = () => reject(new Error('Receipt logo could not be loaded'));
-    image.src = `${import.meta.env.BASE_URL}vexa-logo.png`;
+    image.src = `${import.meta.env.BASE_URL}vexa-receipt-logo.png`;
   });
 
   context.fillStyle = '#FFFFFF';
   context.beginPath();
-  context.roundRect(cardX, 32, cardWidth, height - 64, 28);
+  context.roundRect(cardX, cardY, cardWidth, cardBottom - cardY, 36);
   context.fill();
 
-  context.fillStyle = navy;
-  context.beginPath();
-  context.roundRect(width / 2 - 154, 45, 308, 92, 20);
-  context.fill();
-  context.drawImage(logo, width / 2 - 128, 32, 256, 128);
+  context.drawImage(logo, width / 2 - 235, 76, 470, 135);
 
-  context.fillStyle = '#16A34A';
+  context.fillStyle = '#0DB77E';
   context.beginPath();
-  context.arc(width / 2, 178, 36, 0, Math.PI * 2);
+  context.shadowColor = 'rgba(14, 190, 129, 0.18)';
+  context.shadowBlur = 22;
+  context.arc(width / 2, 271, 47, 0, Math.PI * 2);
   context.fill();
+  context.shadowBlur = 0;
   context.strokeStyle = '#FFFFFF';
-  context.lineWidth = 5;
+  context.lineWidth = 8;
   context.lineCap = 'round';
   context.beginPath();
-  context.moveTo(width / 2 - 14, 178);
-  context.lineTo(width / 2 - 3, 189);
-  context.lineTo(width / 2 + 17, 166);
+  context.moveTo(width / 2 - 21, 271);
+  context.lineTo(width / 2 - 5, 287);
+  context.lineTo(width / 2 + 27, 251);
   context.stroke();
 
   context.fillStyle = ink;
-  context.font = '800 30px Inter, Arial, sans-serif';
-  context.fillText('Transfer Successful', width / 2, 241);
-  context.fillStyle = muted;
-  context.font = '400 18px Inter, Arial, sans-serif';
-  context.fillText('Your money has been sent securely', width / 2, 283);
-
-  context.textAlign = 'left';
-  context.fillStyle = navy;
-  context.beginPath();
-  context.roundRect(cardX + 28, 335, cardWidth - 56, 170, 20);
-  context.fill();
   context.textAlign = 'center';
-  context.fillStyle = 'rgba(255,255,255,0.64)';
-  context.font = '600 14px Inter, Arial, sans-serif';
-  context.fillText('AMOUNT SENT', width / 2, 363);
-  context.fillStyle = '#FFFFFF';
-  context.font = '800 48px Inter, Arial, sans-serif';
-  context.fillText(`₦${receipt.transaction.amount}`, width / 2, 395);
-  context.fillStyle = '#BBF7D0';
-  context.font = '700 15px Inter, Arial, sans-serif';
-  context.fillText('●  Completed', width / 2, 462);
+  context.font = '800 40px Inter, Arial, sans-serif';
+  context.fillText('Transfer Successful', width / 2, 333);
+  context.fillStyle = muted;
+  context.font = '400 25px Inter, Arial, sans-serif';
+  context.fillText('Your money has been sent securely', width / 2, 390);
 
   context.textAlign = 'left';
-  context.fillStyle = '#F8F9FB';
+  const amountX = 78;
+  const amountY = 456;
+  const amountWidth = width - amountX * 2;
+  const amountHeight = 246;
+  const amountGradient = context.createLinearGradient(amountX, amountY, amountX + amountWidth, amountY);
+  amountGradient.addColorStop(0, '#073B54');
+  amountGradient.addColorStop(0.62, '#075C68');
+  amountGradient.addColorStop(1, '#008C7E');
+  context.fillStyle = amountGradient;
   context.beginPath();
-  context.roundRect(cardX + 28, 539, cardWidth - 56, 210, 18);
+  context.roundRect(amountX, amountY, amountWidth, amountHeight, 28);
   context.fill();
-  context.fillStyle = muted;
-  context.font = '700 14px Inter, Arial, sans-serif';
-  context.fillText('RECIPIENT', cardX + 52, 567);
-  context.fillStyle = ink;
-  context.font = '700 20px Inter, Arial, sans-serif';
-  context.fillText(receipt.recipientName, cardX + 52, 603);
-  context.fillStyle = muted;
-  context.font = '400 16px Inter, Arial, sans-serif';
-  drawReceiptWrappedText(
-    context,
-    `${receipt.bank} · ${receipt.accountNumber}`,
-    cardX + 52,
-    637,
-    cardWidth - 104,
-    24,
-  );
 
-  const detailX = cardX + 52;
-  const valueX = width - cardX - 52;
+  context.save();
+  context.beginPath();
+  context.roundRect(amountX, amountY, amountWidth, amountHeight, 28);
+  context.clip();
+  context.fillStyle = 'rgba(40, 205, 178, 0.16)';
+  context.beginPath();
+  context.moveTo(880, 702);
+  context.bezierCurveTo(902, 601, 985, 535, 1060, 505);
+  context.lineTo(1060, 700);
+  context.closePath();
+  context.fill();
+  context.fillStyle = 'rgba(47, 218, 192, 0.12)';
+  context.beginPath();
+  context.moveTo(760, 702);
+  context.bezierCurveTo(836, 606, 883, 552, 960, 514);
+  context.lineTo(1010, 702);
+  context.closePath();
+  context.fill();
+  context.restore();
+
+  context.textAlign = 'center';
+  context.fillStyle = 'rgba(255,255,255,0.78)';
+  context.font = '600 20px Inter, Arial, sans-serif';
+  context.fillText('AMOUNT SENT', width / 2, 494);
+  context.fillStyle = '#FFFFFF';
+  context.font = '800 58px Inter, Arial, sans-serif';
+  context.fillText(`₦${receipt.transaction.amount}`, width / 2, 538);
+  context.fillStyle = '#B8FFF0';
+  context.beginPath();
+  context.roundRect(width / 2 - 93, 630, 186, 44, 22);
+  context.fill();
+  context.fillStyle = '#FFFFFF';
+  context.font = '700 20px Inter, Arial, sans-serif';
+  context.fillText('•  Completed', width / 2, 641);
+
+  context.textAlign = 'left';
+  context.fillStyle = '#F7F9FD';
+  context.beginPath();
+  context.roundRect(amountX, 732, amountWidth, 172, 28);
+  context.fill();
+
+  context.fillStyle = '#4A8FEF';
+  context.beginPath();
+  context.arc(154, 818, 45, 0, Math.PI * 2);
+  context.fill();
+  context.fillStyle = '#FFFFFF';
+  context.beginPath();
+  context.arc(154, 803, 12, 0, Math.PI * 2);
+  context.fill();
+  context.beginPath();
+  context.arc(154, 841, 21, Math.PI, 0);
+  context.fill();
+
+  context.fillStyle = muted;
+  context.font = '700 16px Inter, Arial, sans-serif';
+  context.fillText('RECIPIENT', 243, 766);
+  context.fillStyle = ink;
+  context.font = '700 25px Inter, Arial, sans-serif';
+  drawReceiptWrappedText(context, receipt.recipientName, 243, 800, 690, 30);
+  context.fillStyle = muted;
+  context.font = '400 20px Inter, Arial, sans-serif';
+  context.fillText(`${receipt.bank || 'Vexa'} · ${receipt.accountNumber}`, 243, 844);
+
+  const detailX = 182;
+  const valueX = width - 78;
   const detailRows = [
     ['From', `${receipt.senderName} · ${receipt.senderAccountNumber}`],
     ['Date', receipt.transaction.date],
     ['Narration', receipt.transaction.note || 'Transfer'],
     ['Reference', reference],
   ];
-  let detailY = 801;
-  context.font = '400 16px Inter, Arial, sans-serif';
-  for (const [label, value] of detailRows) {
+  const rowY = [974, 1061, 1148, 1235];
+  const drawDetailIcon = (centerY: number, index: number) => {
+    context.fillStyle = index === 0 ? '#E4F8F7' : index === 1 ? '#EDF8FC' : '#F0F3FB';
+    context.beginPath();
+    context.roundRect(96, centerY - 28, 58, 58, 18);
+    context.fill();
+    context.strokeStyle = '#0E6B78';
+    context.lineWidth = 3;
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+    context.beginPath();
+    if (index === 0) {
+      context.moveTo(113, centerY);
+      context.lineTo(127, centerY + 9);
+      context.lineTo(139, centerY - 12);
+    } else if (index === 1) {
+      context.roundRect(114, centerY - 12, 23, 23, 3);
+      context.moveTo(114, centerY - 5);
+      context.lineTo(137, centerY - 5);
+      context.moveTo(119, centerY - 17);
+      context.lineTo(119, centerY - 9);
+      context.moveTo(132, centerY - 17);
+      context.lineTo(132, centerY - 9);
+    } else if (index === 2) {
+      context.roundRect(113, centerY - 14, 26, 24, 4);
+      context.moveTo(119, centerY - 5);
+      context.lineTo(133, centerY - 5);
+      context.moveTo(119, centerY + 2);
+      context.lineTo(129, centerY + 2);
+    } else {
+      context.moveTo(126, centerY - 16);
+      context.lineTo(126, centerY + 16);
+      context.moveTo(116, centerY - 5);
+      context.lineTo(136, centerY - 5);
+      context.moveTo(116, centerY + 7);
+      context.lineTo(136, centerY + 7);
+    }
+    context.stroke();
+  };
+
+  detailRows.forEach(([label, value], index) => {
+    const detailY = rowY[index];
+    drawDetailIcon(detailY, index);
     context.fillStyle = muted;
     context.textAlign = 'left';
-    context.fillText(label, detailX, detailY);
+    context.font = '400 19px Inter, Arial, sans-serif';
+    context.fillText(label, detailX, detailY - 11);
     context.fillStyle = ink;
-    context.font = '700 16px Inter, Arial, sans-serif';
+    context.font = '700 18px Inter, Arial, sans-serif';
     context.textAlign = 'right';
-    drawReceiptWrappedText(context, value, valueX, detailY, 430, 22);
-    detailY += 55;
-    context.font = '400 16px Inter, Arial, sans-serif';
-  }
+    drawReceiptWrappedText(context, value, valueX, detailY - 11, 560, 24);
+    if (index < detailRows.length - 1) {
+      context.strokeStyle = '#E9EDF3';
+      context.lineWidth = 1;
+      context.beginPath();
+      context.moveTo(detailX, detailY + 45);
+      context.lineTo(valueX, detailY + 45);
+      context.stroke();
+    }
+  });
 
   context.textAlign = 'center';
-  context.fillStyle = '#A0A7B5';
-  context.font = '400 14px Inter, Arial, sans-serif';
-  context.fillText('Vexa · Secure digital banking', width / 2, height - 76);
+  context.strokeStyle = '#E5EAF1';
+  context.lineWidth = 1;
+  context.beginPath();
+  context.moveTo(96, 1310);
+  context.lineTo(width - 96, 1310);
+  context.stroke();
+  context.fillStyle = '#6E7D94';
+  context.font = '400 16px Inter, Arial, sans-serif';
+  context.fillText('Vexa · Secure digital banking', width / 2, 1348);
+
+  context.save();
+  context.beginPath();
+  context.roundRect(cardX, cardY, cardWidth, cardBottom - cardY, 36);
+  context.clip();
+  context.fillStyle = '#0878F5';
+  context.beginPath();
+  context.moveTo(cardX, 1412);
+  context.bezierCurveTo(180, 1425, 230, 1480, 330, cardBottom);
+  context.lineTo(cardX, cardBottom);
+  context.closePath();
+  context.fill();
+  context.fillStyle = '#20C8BD';
+  context.beginPath();
+  context.moveTo(width, 1414);
+  context.bezierCurveTo(906, 1424, 836, 1477, 742, cardBottom);
+  context.lineTo(width, cardBottom);
+  context.closePath();
+  context.fill();
+  context.restore();
 
   const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
   if (!blob) throw new Error('Receipt image could not be created');
