@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { playNotificationSound } from '@/lib/notificationSound';
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 
@@ -71,6 +72,26 @@ function fmtAmount(raw: number): string {
   return raw.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+type NotificationRow = {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  read: boolean;
+  created_at: string;
+};
+
+function mapNotification(row: NotificationRow): AppNotification {
+  return {
+    id: row.id,
+    type: row.type as AppNotification['type'],
+    title: row.title,
+    body: row.body,
+    read: row.read,
+    time: timeAgo(row.created_at),
+  };
+}
+
 /* ── Context type ───────────────────────────────────────────────────── */
 
 interface UserDataContextType {
@@ -132,6 +153,7 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
 
   const [notifications, setNotifications]           = useState<AppNotification[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const notificationIdsRef = useRef<Set<string> | null>(null);
 
   const [transactions, setTransactions]             = useState<AppTransaction[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(true);
@@ -193,14 +215,15 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
       .from('notifications').select('*').eq('user_id', user.id)
       .order('created_at', { ascending: false });
     if (data) {
-      setNotifications(data.map(d => ({
-        id: d.id,
-        type: d.type as AppNotification['type'],
-        title: d.title,
-        body: d.body,
-        read: d.read,
-        time: timeAgo(d.created_at),
-      })));
+      const mapped = (data as NotificationRow[]).map(mapNotification);
+      const previousIds = notificationIdsRef.current;
+      if (previousIds) {
+        mapped
+          .filter(notification => !previousIds.has(notification.id) && !notification.read)
+          .forEach(() => playNotificationSound());
+      }
+      notificationIdsRef.current = new Set(mapped.map(notification => notification.id));
+      setNotifications(mapped);
     }
     setNotificationsLoading(false);
   }, [user]);
@@ -252,12 +275,43 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
     } else {
       setBalance(0); setCashbackHistory([]); setReferrals([]);
       setNotifications([]); setTransactions([]);
+      notificationIdsRef.current = null;
       setBalanceLoading(false); setCashbackLoading(false);
       setReferralsLoading(false); setNotificationsLoading(false);
       setTransactionsLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
+
+  // Listen for security, transfer, cashback, and other server-created
+  // notifications while the app is open. The database remains the source of
+  // truth; this only keeps the UI and sound responsive.
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel(`vexa-notifications:${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
+        payload => {
+          const notification = mapNotification(payload.new as NotificationRow);
+          setNotifications(previous => {
+            if (previous.some(item => item.id === notification.id)) return previous;
+            if (!notification.read) playNotificationSound();
+            notificationIdsRef.current = new Set([notification.id, ...(notificationIdsRef.current ?? [])]);
+            return [notification, ...previous];
+          });
+        },
+      )
+      .subscribe();
+
+    const interval = window.setInterval(() => { void fetchNotifications(); }, 15000);
+    return () => {
+      window.clearInterval(interval);
+      void supabase.removeChannel(channel);
+    };
+  }, [user?.id, fetchNotifications]);
 
   // Balance updates can come from another Vexa session, a peer transfer, or
   // an exchange deposit. Realtime is preferred, with polling as a fallback
@@ -333,10 +387,13 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
       user_id: user.id, type: n.type, title: n.title, body: n.body, read: false,
     }).select().single();
     if (data) {
-      setNotifications(prev => [{
+      const notification = {
         id: data.id, type: data.type, title: data.title,
         body: data.body, read: false, time: 'Just now',
-      }, ...prev]);
+      } as AppNotification;
+      setNotifications(prev => [notification, ...prev]);
+      notificationIdsRef.current?.add(notification.id);
+      playNotificationSound();
     }
   };
 

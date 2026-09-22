@@ -6,7 +6,7 @@ import {
   PiggyBank, BookOpen, FileText, LayoutGrid,
   Trophy, CreditCard, Home, ArrowDown, Settings,
   ArrowUp, ChevronRight, Shield, TriangleAlert, Fingerprint, BriefcaseBusiness,
-  BellRing, HelpCircle, Info, LogOut, User, Lock,
+  BellRing, Volume2, VolumeX, HelpCircle, Info, LogOut, User, Lock,
   MessageCircle, Phone, Mail, ExternalLink, Star, ChevronDown,
   Send, X, Bot, CheckCheck, Wifi, Paperclip, ImagePlus, FileUp, FileText as FileIcon,
   Gift, Users, Share2, Percent, TrendingUp, BadgeCheck, ChevronUp,
@@ -44,6 +44,7 @@ import { BusinessSecurityProvider, useBusinessSecurity } from '@/context/Busines
 import { UserDataProvider, useUserData } from '@/context/UserDataContext';
 import { VexaFinanceProvider } from '@/context/VexaFinanceContext';
 import { AccountSecurityProvider, useAccountSecurity } from '@/context/AccountSecurityContext';
+import { unlockNotificationSound } from '@/lib/notificationSound';
 import type { AppTransaction } from '@/context/UserDataContext';
 import BusinessSecurityScreen from '@/pages/business/BusinessSecurityScreen';
 
@@ -913,6 +914,9 @@ function SettingsPage() {
   } = useAccountSecurity();
   const [biometrics, setBiometrics] = useState(true);
   const [notifs, setNotifs] = useState(true);
+  const [notificationSound, setNotificationSound] = useState(() =>
+    localStorage.getItem('vexa.notificationSound') !== 'false'
+  );
   const [passcodeOnReturn, setPasscodeOnReturn] = useState(() =>
     localStorage.getItem(PASSCODE_RETURN_KEY) === 'true'
   );
@@ -926,6 +930,13 @@ function SettingsPage() {
     const next = !passcodeOnReturn;
     setPasscodeOnReturn(next);
     localStorage.setItem(PASSCODE_RETURN_KEY, String(next));
+  }
+
+  function toggleNotificationSound() {
+    const next = !notificationSound;
+    setNotificationSound(next);
+    localStorage.setItem('vexa.notificationSound', String(next));
+    if (next) unlockNotificationSound();
   }
 
   const userName = user?.name ?? 'Your account';
@@ -958,6 +969,7 @@ function SettingsPage() {
       heading: 'Preferences',
       items: [
         { icon: <BellRing className="w-5 h-5" />, label: 'Notifications', sub: notifs ? 'Enabled' : 'Disabled' },
+        { icon: notificationSound ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />, label: 'Notification Sound', sub: notificationSound ? 'On' : 'Off' },
       ],
     },
     {
@@ -1008,15 +1020,17 @@ function SettingsPage() {
               {section.items.map((item, ii) => {
                 const isBio  = item.label === 'Biometric Login';
                 const isNot  = item.label === 'Notifications';
+                const isSound = item.label === 'Notification Sound';
                 const isPCR  = item.label === 'Passcode on App Return';
-                const isToggle = isBio || isNot || isPCR;
-                const toggleState = isBio ? biometrics : isNot ? notifs : passcodeOnReturn;
+                const isToggle = isBio || isNot || isPCR || isSound;
+                const toggleState = isBio ? biometrics : isNot ? notifs : isPCR ? passcodeOnReturn : notificationSound;
                 return (
                   <button key={ii}
                     onClick={() => {
                       if (isBio) setBiometrics(v => !v);
                       else if (isNot) setNotifs(v => !v);
                       else if (isPCR) togglePasscodeOnReturn();
+                      else if (isSound) toggleNotificationSound();
                       else if (item.action) item.action();
                     }}
                     className={`w-full flex items-center gap-3.5 px-4 py-4 text-left transition-colors hover:bg-[#F8F9FB] ${ii < section.items.length - 1 ? 'border-b border-[#F5F5F5]' : ''}`}
