@@ -6,7 +6,7 @@ const TERMII_SENDER_ID = process.env["TERMII_SENDER_ID"]?.trim() || "N-Alert";
 const TERMII_BASE_URL = "https://v3.api.termii.com/api/sms/otp";
 const CHALLENGE_TTL_MS = 10 * 60 * 1000;
 
-type ChallengePurpose = "signup" | "2fa";
+type ChallengePurpose = "signup" | "2fa" | "sleep_mode_deactivate";
 
 type PendingChallenge = {
   pinId: string;
@@ -54,6 +54,28 @@ async function getProfilePhone(userId: string) {
   if (!response.ok) throw new Error("Could not load the account phone number");
   const rows = (await response.json().catch(() => [])) as Array<{ phone?: string | null }>;
   return rows[0]?.phone ?? "";
+}
+
+async function recordSecurityVerification(userId: string, purpose: ChallengePurpose) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("Account security storage is not configured");
+  }
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/security_verification_challenges`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify({
+      user_id: userId,
+      purpose,
+      verified_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + CHALLENGE_TTL_MS).toISOString(),
+    }),
+  });
+  if (!response.ok) throw new Error("Could not save security verification");
 }
 
 function termiiPhone(phone: string) {
@@ -119,11 +141,17 @@ function publicTermiiError(error: unknown) {
 
 router.post("/termii/otp/send", async (req, res) => {
   pruneChallenges();
-  const purpose: ChallengePurpose = req.body?.purpose === "signup" ? "signup" : "2fa";
+  const requestedPurpose = req.body?.purpose;
+  const purpose: ChallengePurpose =
+    requestedPurpose === "signup"
+      ? "signup"
+      : requestedPurpose === "sleep_mode_deactivate"
+        ? "sleep_mode_deactivate"
+        : "2fa";
   const token = bearer(req);
   const userId = token ? await getUserId(token) : null;
 
-  if (purpose === "2fa" && !userId) {
+  if (purpose !== "signup" && !userId) {
     res.status(401).json({ message: "Your session has expired. Please sign in again." });
     return;
   }
@@ -180,7 +208,7 @@ router.post("/termii/otp/verify", async (req, res) => {
     return;
   }
 
-  if (challenge.purpose === "2fa") {
+  if (challenge.purpose !== "signup") {
     const userId = await getUserId(bearer(req));
     if (!userId || userId !== challenge.userId) {
       res.status(401).json({ message: "Your session has expired. Please sign in again." });
@@ -200,6 +228,9 @@ router.post("/termii/otp/verify", async (req, res) => {
       return;
     }
     pendingChallenges.delete(pinId);
+    if (challenge.purpose === "sleep_mode_deactivate" && challenge.userId) {
+      await recordSecurityVerification(challenge.userId, challenge.purpose);
+    }
     res.json({ verified: true, purpose: challenge.purpose });
   } catch (error) {
     req.log.warn({ err: error }, "Termii OTP verification failed");

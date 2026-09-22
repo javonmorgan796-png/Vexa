@@ -4,6 +4,7 @@ import cryptoPricesRouter from "./crypto-prices";
 import cryptoWalletRouter from "./crypto-wallet";
 import paystackRouter from "./paystack";
 import termiiRouter from "./termii";
+import securityRouter from "./security";
 
 const router: IRouter = Router();
 
@@ -12,5 +13,6 @@ router.use(cryptoPricesRouter);
 router.use(cryptoWalletRouter);
 router.use(paystackRouter);
 router.use(termiiRouter);
+router.use(securityRouter);
 
 export default router;

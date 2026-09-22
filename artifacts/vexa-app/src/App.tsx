@@ -43,6 +43,7 @@ import PayrollManagement from '@/pages/business/PayrollManagement';
 import { BusinessSecurityProvider, useBusinessSecurity } from '@/context/BusinessSecurityContext';
 import { UserDataProvider, useUserData } from '@/context/UserDataContext';
 import { VexaFinanceProvider } from '@/context/VexaFinanceContext';
+import { AccountSecurityProvider, useAccountSecurity } from '@/context/AccountSecurityContext';
 import type { AppTransaction } from '@/context/UserDataContext';
 import BusinessSecurityScreen from '@/pages/business/BusinessSecurityScreen';
 
@@ -901,11 +902,25 @@ type SettingsSection = { heading: string; items: { icon: React.ReactNode; label:
 function SettingsPage() {
   const [, navigate] = useLocation();
   const { user, loading, signOut, profilePhoto } = useAuth();
+  const {
+    state: securityState,
+    busy: securityBusy,
+    error: securityError,
+    activateSleepMode,
+    activateFreeze,
+    requestUnlockCode,
+    unlock,
+  } = useAccountSecurity();
   const [biometrics, setBiometrics] = useState(true);
   const [notifs, setNotifs] = useState(true);
   const [passcodeOnReturn, setPasscodeOnReturn] = useState(() =>
     localStorage.getItem(PASSCODE_RETURN_KEY) === 'true'
   );
+  const [securityAction, setSecurityAction] = useState<'sleep_mode' | 'freeze_account' | null>(null);
+  const [unlockPin, setUnlockPin] = useState('');
+  const [unlockCode, setUnlockCode] = useState('');
+  const [codeSent, setCodeSent] = useState(false);
+  const [securityMessage, setSecurityMessage] = useState('');
 
   function togglePasscodeOnReturn() {
     const next = !passcodeOnReturn;
@@ -935,6 +950,8 @@ function SettingsPage() {
          { icon: <Tablet className="w-5 h-5" />,      label: 'Active Devices',         sub: 'Manage signed-in sessions', action: () => navigate('/active-devices') },
          { icon: <Shield className="w-5 h-5" />,      label: 'Passcode on App Return', sub: passcodeOnReturn ? 'On · locks when you leave' : 'Off' },
          { icon: <i className="fa-solid fa-key text-[17px]" aria-hidden="true" />, label: 'Two-Factor Authentication', sub: user?.twoFactorEnabled ? 'Enabled via SMS' : 'Off', action: () => navigate('/two-factor') },
+        { icon: <Lock className="w-5 h-5" />, label: 'Sleep Mode', sub: securityState.sleepModeActive ? 'Active · money movement blocked' : 'Pause all money movement', action: () => { setSecurityMessage(''); setSecurityAction('sleep_mode'); } },
+        { icon: <TriangleAlert className="w-5 h-5" />, label: 'Emergency Freeze Account', sub: securityState.freezeActive ? 'Active · strongest account lock' : 'Block all account activity', action: () => { setSecurityMessage(''); setSecurityAction('freeze_account'); } },
       ],
     },
     {
@@ -1025,6 +1042,95 @@ function SettingsPage() {
 
         <p className="text-center text-[11px] text-[#CCC] pb-2">Vexa Bank · v1.0.0</p>
       </div>
+      {securityAction && (
+        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-[#07122B]/55 px-4 pb-4 sm:items-center">
+          <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${securityAction === 'freeze_account' ? 'bg-red-50 text-red-600' : 'bg-[#EAF2FF] text-[#162353]'}`}>
+                {securityAction === 'freeze_account' ? <TriangleAlert className="h-5 w-5" /> : <Lock className="h-5 w-5" />}
+              </div>
+              <div className="min-w-0">
+                <p className="text-[17px] font-extrabold text-[#111]">
+                  {securityAction === 'freeze_account' ? 'Emergency Freeze Account' : 'Sleep Mode'}
+                </p>
+                <p className="mt-1 text-[12px] leading-relaxed text-[#667085]">
+                  {((securityAction === 'sleep_mode' && securityState.sleepModeActive) || (securityAction === 'freeze_account' && securityState.freezeActive))
+                    ? 'Removing this lock requires your transaction PIN and a fresh SMS verification code.'
+                    : securityAction === 'freeze_account'
+                      ? 'This is stronger than Sleep Mode and blocks all money movement until you remove it.'
+                      : 'Your balance and transaction history stay visible, but every money movement is blocked.'}
+                </p>
+              </div>
+            </div>
+
+            {((securityAction === 'sleep_mode' && securityState.sleepModeActive) || (securityAction === 'freeze_account' && securityState.freezeActive)) ? (
+              <div className="mt-5 space-y-3">
+                <input
+                  value={unlockPin}
+                  onChange={event => setUnlockPin(event.target.value.replace(/\D/g, '').slice(0, 4))}
+                  type="password"
+                  inputMode="numeric"
+                  placeholder="4-digit transaction PIN"
+                  className="w-full rounded-xl border border-[#D8E0EA] px-4 py-3.5 text-[14px] outline-none focus:border-[#162353]"
+                />
+                <div className="flex gap-2">
+                  <input
+                    value={unlockCode}
+                    onChange={event => setUnlockCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                    inputMode="numeric"
+                    placeholder="SMS code"
+                    className="min-w-0 flex-1 rounded-xl border border-[#D8E0EA] px-4 py-3.5 text-[14px] outline-none focus:border-[#162353]"
+                  />
+                  <button
+                    type="button"
+                    disabled={securityBusy}
+                    onClick={() => void requestUnlockCode().then(result => { if (result.success) setCodeSent(true); })}
+                    className="shrink-0 rounded-xl border border-[#162353] px-3 text-[11px] font-bold text-[#162353] disabled:opacity-50"
+                  >
+                    {codeSent ? 'Resend code' : 'Send code'}
+                  </button>
+                </div>
+                {securityMessage && <p className="text-[12px] text-red-600">{securityMessage}</p>}
+                {securityError && <p className="text-[12px] text-red-600">{securityError}</p>}
+                <button
+                  type="button"
+                  disabled={securityBusy || unlockPin.length !== 4 || unlockCode.length !== 6}
+                  onClick={() => void unlock(securityAction, unlockPin, unlockCode).then(result => {
+                    if (result.success) {
+                      setSecurityAction(null);
+                      setUnlockPin('');
+                      setUnlockCode('');
+                      setCodeSent(false);
+                    }
+                  })}
+                  className="w-full rounded-xl bg-[#162353] py-3.5 text-[13px] font-bold text-white disabled:opacity-50"
+                >
+                  {securityBusy ? 'Verifying…' : 'Remove lock'}
+                </button>
+              </div>
+            ) : (
+              <div className="mt-5">
+                {securityMessage && <p className="mb-3 text-[12px] text-red-600">{securityMessage}</p>}
+                {securityError && <p className="mb-3 text-[12px] text-red-600">{securityError}</p>}
+                <button
+                  type="button"
+                  disabled={securityBusy}
+                  onClick={() => void (securityAction === 'freeze_account' ? activateFreeze() : activateSleepMode()).then(result => {
+                    if (result.success) setSecurityAction(null);
+                    else setSecurityMessage(result.error ?? 'Could not update account security');
+                  })}
+                  className={`w-full rounded-xl py-3.5 text-[13px] font-bold text-white disabled:opacity-50 ${securityAction === 'freeze_account' ? 'bg-red-600' : 'bg-[#162353]'}`}
+                >
+                  {securityBusy ? 'Updating…' : securityAction === 'freeze_account' ? 'Freeze account' : 'Activate Sleep Mode'}
+                </button>
+              </div>
+            )}
+            <button type="button" onClick={() => { setSecurityAction(null); setSecurityMessage(''); }} className="mt-3 w-full py-2 text-[12px] font-semibold text-[#667085]">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2239,7 +2345,7 @@ function storedSelectedBank(): PaystackBank | null {
 function TransferPage() {
   const [, navigate] = useLocation();
   const { user, setInitialTransferPin } = useAuth();
-  const { debitBalance, creditBalance, addTransaction, addNotification } = useUserData();
+  const { completeBankTransfer } = useUserData();
   const [step, setStep]           = useState<TxStep>('details');
   const initialBank = storedSelectedBank();
   const [bank, setBank]           = useState(initialBank?.name ?? '');
@@ -2316,40 +2422,24 @@ function TransferPage() {
     setProcessing(true);
     setSubmitError('');
     const amtValue = parseFloat(amount.replace(/,/g, '') || '0');
-    const debited = await debitBalance(amtValue);
-    if (!debited) {
+    const result = await completeBankTransfer({
+      amount: amtValue,
+      pin,
+      recipientName: resolvedName,
+      recipientBank: bank,
+      recipientAccount: acctNo,
+      note: narration || 'Transfer',
+    });
+    if (!result.success || !result.transaction) {
       setProcessing(false);
-      setSubmitError('Transfer could not be completed. Please check your balance and try again.');
+      setSubmitError(result.error ?? 'Transfer could not be completed. Your balance was not changed.');
       setPin('');
       return;
     }
 
-    const savedTransaction = await addTransaction({
-      type: 'out', name: resolvedName, date: '',
-      amount, note: narration || 'Transfer', raw_amount: amtValue,
-      recipient_bank: bank,
-      recipient_account: acctNo,
-      sender_name: user?.name,
-      sender_account: user?.accountNumber,
-    });
-    if (!savedTransaction) {
-      // Restore the balance if the transaction could not be persisted. This
-      // keeps the receipt and transaction history aligned with the balance.
-      await creditBalance(amtValue);
-      setProcessing(false);
-      setSubmitError('We could not save this transfer. Your balance was not changed. Please try again.');
-      setPin('');
-      return;
-    }
-
-    await addNotification({
-      type: 'debit',
-      title: 'Transfer Successful',
-      body: `Transfer of ₦${amount} to ${resolvedName} (${bank}) was successful.`,
-    });
     setProcessing(false);
     setReceipt({
-      transaction: savedTransaction,
+      transaction: result.transaction,
       recipientName: resolvedName,
       bank,
       accountNumber: acctNo,
@@ -2946,10 +3036,19 @@ function PageShell({ title, back, children }: { title: string; back: string; chi
 }
 
 function PinModal({ amount, label, onSuccess, onClose }: { amount: string; label: string; onSuccess: () => void; onClose: () => void }) {
+  const { state: securityState } = useAccountSecurity();
   const [pin, setPin] = useState('');
   const [processing, setProcessing] = useState(false);
+  const [blockedMessage, setBlockedMessage] = useState('');
+  const movementBlocked = securityState.sleepModeActive || securityState.freezeActive;
   function submit() {
     if (pin.length < 4) return;
+    if (movementBlocked) {
+      setBlockedMessage(securityState.freezeActive
+        ? 'Freeze Account is active. Money movement is blocked.'
+        : 'Sleep Mode is active. Money movement is blocked.');
+      return;
+    }
     setProcessing(true);
     setTimeout(() => { setProcessing(false); onSuccess(); }, 1500);
   }
@@ -2966,6 +3065,7 @@ function PinModal({ amount, label, onSuccess, onClose }: { amount: string; label
           <p className="text-[11px] text-[#888]">{label}</p>
           <p className="text-[22px] font-extrabold text-[#111]">₦{amount}</p>
         </div>
+        {blockedMessage && <p className="mb-4 rounded-xl bg-red-50 px-3 py-2.5 text-center text-[12px] font-semibold text-red-600">{blockedMessage}</p>}
         <div className="flex justify-center gap-5 mb-6">
           {[0,1,2,3].map(i => (
             <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${i < pin.length ? 'bg-[#162353] border-[#162353]' : 'border-[#CBD5E1]'}`} />
@@ -2984,9 +3084,9 @@ function PinModal({ amount, label, onSuccess, onClose }: { amount: string; label
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12H9M15 6l-6 6 6 6"/></svg>
           </button>
         </div>
-        <button onClick={submit} disabled={pin.length < 4 || processing}
+        <button onClick={submit} disabled={pin.length < 4 || processing || movementBlocked}
           className={`w-full h-[50px] rounded-xl text-[14px] font-semibold text-white ${pin.length === 4 && !processing ? 'bg-[#162353]' : 'bg-[#162353]/40'}`}>
-          {processing ? 'Processing…' : 'Pay Now'}
+          {movementBlocked ? 'Money movement blocked' : processing ? 'Processing…' : 'Pay Now'}
         </button>
       </div>
     </div>
@@ -4578,6 +4678,26 @@ function BusinessBrandScope({ children }: { children: React.ReactNode }) {
   return <div className="business-brand-scope contents">{children}</div>;
 }
 
+function AccountSecurityBanner() {
+  const [, navigate] = useLocation();
+  const { state } = useAccountSecurity();
+  if (!state.sleepModeActive && !state.freezeActive) return null;
+
+  return (
+    <div className={`fixed left-0 right-0 top-0 z-[55] px-4 py-2.5 text-white shadow-md ${state.freezeActive ? 'bg-[#991B1B]' : 'bg-[#162353]'}`}>
+      <div className="mx-auto flex max-w-[760px] items-center gap-2">
+        <Lock className="h-4 w-4 shrink-0 text-[#8BE3FF]" />
+        <p className="min-w-0 flex-1 text-[11px] font-semibold">
+          {state.freezeActive ? 'Freeze Account Active' : 'Sleep Mode Active'}
+          <span className="ml-1 font-normal text-white/75">· Money movement is blocked</span>
+        </p>
+        <button onClick={() => navigate('/settings')} className="shrink-0 rounded-lg bg-white/15 px-2.5 py-1.5 text-[10px] font-bold hover:bg-white/25">
+          Manage
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function Router() {
   return (
@@ -4762,6 +4882,7 @@ function AppShell() {
         </div>
       )}
       <Router />
+      <AccountSecurityBanner />
       {twoFactorPending && <TwoFactorChallenge />}
       {locked && (
         <PasscodeLockScreen
@@ -4777,6 +4898,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <AccountSecurityProvider>
         <UserDataProvider>
         <VexaFinanceProvider>
         <BusinessProvider>
@@ -4791,6 +4913,7 @@ function App() {
         </BusinessProvider>
         </VexaFinanceProvider>
         </UserDataProvider>
+        </AccountSecurityProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

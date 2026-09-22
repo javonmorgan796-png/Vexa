@@ -5,6 +5,7 @@ import { SiTether } from 'react-icons/si';
 import type { IconType } from 'react-icons';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/context/AuthContext';
+import { useAccountSecurity } from '@/context/AccountSecurityContext';
 import { useVexaFinance, type CryptoAsset, type CryptoTransaction } from '@/context/VexaFinanceContext';
 import { supabase } from '@/lib/supabase';
 import { QRCodeSVG } from 'qrcode.react';
@@ -166,6 +167,7 @@ function CryptoActivityDetails({
 export default function CryptoExchangePage() {
   const [, navigate] = useLocation();
   const { user } = useAuth();
+  const { state: securityState } = useAccountSecurity();
   const { exchangeNaira, cryptoBalances, cryptoTransactions, loading, error, lastUpdatedAt, refreshFinance, depositToExchange, exchangeCrypto, transferCrypto } = useVexaFinance();
   const [rates, setRates] = useState<Record<CryptoAsset, number>>(FALLBACK_RATES);
   const [priceChanges, setPriceChanges] = useState<Record<CryptoAsset, number>>({ BTC: 0, ETH: 0, USDT: 0 });
@@ -237,6 +239,7 @@ export default function CryptoExchangePage() {
   const displayFiat = (valueInNaira: number) => formatFiat(valueInNaira, fiatCurrency, nairaPerUsd);
   const toNaira = (value: number) => fiatCurrency === 'USD' ? value * nairaPerUsd : value;
   const livePricesReady = Boolean(priceUpdatedAt && !priceStale);
+  const moneyMovementLocked = securityState.sleepModeActive || securityState.freezeActive;
 
   const selectedBalance = useMemo(
     () => cryptoBalances.find(item => item.asset === asset)?.amount ?? 0,
@@ -246,6 +249,14 @@ export default function CryptoExchangePage() {
   const loadDepositAddress = useCallback(async () => {
     setAddressLoading(true);
     setFormError('');
+    if (moneyMovementLocked) {
+      setDepositAddress(null);
+      setFormError(securityState.freezeActive
+        ? 'Freeze Account is active. Crypto deposits are blocked until the freeze is removed.'
+        : 'Sleep Mode is active. Crypto deposits are blocked until Sleep Mode is deactivated.');
+      setAddressLoading(false);
+      return;
+    }
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error('Your session has expired. Please sign in again.');
@@ -261,13 +272,14 @@ export default function CryptoExchangePage() {
     } finally {
       setAddressLoading(false);
     }
-  }, [asset]);
+  }, [asset, moneyMovementLocked, securityState.freezeActive]);
 
   useEffect(() => {
     if (tab === 'receive') void loadDepositAddress();
   }, [tab, loadDepositAddress]);
 
   const submitDeposit = async () => {
+    if (moneyMovementLocked) return setFormError('Money movement is blocked by account security.');
     const enteredAmount = Number(depositAmount.replace(/,/g, ''));
     const amountInNaira = toNaira(enteredAmount);
     if (!enteredAmount || enteredAmount <= 0) return setFormError(`Enter a valid ${fiatLabel} amount`);
@@ -279,6 +291,7 @@ export default function CryptoExchangePage() {
   };
 
   const submitExchange = async () => {
+    if (moneyMovementLocked) return setFormError('Money movement is blocked by account security.');
     const enteredAmount = Number(exchangeAmount.replace(/,/g, ''));
     const amountInNaira = toNaira(enteredAmount);
     if (!enteredAmount || enteredAmount <= 0) return setFormError(`Enter a valid ${fiatLabel} amount`);
@@ -293,6 +306,7 @@ export default function CryptoExchangePage() {
   };
 
   const submitTransfer = async () => {
+    if (moneyMovementLocked) return setFormError('Money movement is blocked by account security.');
     const amount = Number(transferAmount);
     if (!recipient.trim()) return setFormError('Enter the recipient account number');
     if (!amount || amount <= 0) return setFormError('Enter a valid crypto amount');
@@ -369,7 +383,12 @@ export default function CryptoExchangePage() {
 
          {error && <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-[12px] text-amber-700">{error}. Run the latest supabase-schema.sql migration to enable exchange data.</div>}
          {priceError && <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-[12px] text-amber-700">{priceError}</div>}
-        {formError && <div className="rounded-2xl bg-red-50 border border-red-200 px-4 py-3 text-[12px] text-red-600">{formError}</div>}
+         {moneyMovementLocked && (
+           <div className="rounded-2xl border border-[#F2C5C5] bg-[#FFF5F5] px-4 py-3 text-[12px] text-[#A33A3A]">
+             <b>{securityState.freezeActive ? 'Freeze Account Active' : 'Sleep Mode Active'}.</b> Your exchange balance and crypto history remain readable, but deposits, trades, and transfers are blocked.
+           </div>
+         )}
+         {formError && <div className="rounded-2xl bg-red-50 border border-red-200 px-4 py-3 text-[12px] text-red-600">{formError}</div>}
         {message && <div className="rounded-2xl bg-green-50 border border-green-200 px-4 py-3 text-[12px] text-green-700">{message}</div>}
 
         {tab === 'overview' && (
@@ -407,7 +426,7 @@ export default function CryptoExchangePage() {
               </div>
               <div className="flex items-center gap-2">
                  <input value={depositAmount} onChange={e => setDepositAmount(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" placeholder={`Amount in ${fiatLabel}`} className="flex-1 border border-[#E0E0E0] rounded-xl px-3 py-3 text-[13px] outline-none focus:border-[#162353]" />
-                <button disabled={busy || loading} onClick={() => void submitDeposit()} className="rounded-xl bg-[#162353] text-white text-[12px] font-bold px-4 py-3 disabled:opacity-50">{busy ? 'Working…' : 'Deposit'}</button>
+                 <button disabled={busy || loading || moneyMovementLocked} onClick={() => void submitDeposit()} className="rounded-xl bg-[#162353] text-white text-[12px] font-bold px-4 py-3 disabled:opacity-50">{busy ? 'Working…' : 'Deposit'}</button>
               </div>
             </div>
             <div>
@@ -449,7 +468,7 @@ export default function CryptoExchangePage() {
             </div>
               <div className="rounded-xl bg-[#F8F9FB] px-4 py-3 flex justify-between text-[12px]"><span className="text-[#777]">Live rate {priceUpdatedAt ? `· ${timeSince(priceUpdatedAt)}` : ''}</span><b>{displayFiat(rates[asset])} / {asset}</b></div>
              <input value={exchangeAmount} onChange={e => setExchangeAmount(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" placeholder={side === 'buy' ? `${fiatLabel} amount` : `${fiatLabel} value to sell (${crypto(selectedBalance)} ${asset} available)`} className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#162353]" />
-             <button disabled={busy || !livePricesReady} onClick={() => void submitExchange()} className="w-full rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold disabled:opacity-50">{busy ? 'Processing…' : !livePricesReady ? 'Waiting for live rate…' : `${side === 'buy' ? 'Buy' : 'Sell'} ${asset}`}</button>
+             <button disabled={busy || !livePricesReady || moneyMovementLocked} onClick={() => void submitExchange()} className="w-full rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold disabled:opacity-50">{busy ? 'Processing…' : !livePricesReady ? 'Waiting for live rate…' : `${side === 'buy' ? 'Buy' : 'Sell'} ${asset}`}</button>
           </div>
         )}
 
@@ -459,7 +478,7 @@ export default function CryptoExchangePage() {
             <div className="grid grid-cols-3 gap-2">{(Object.keys(ASSET_META) as CryptoAsset[]).map(item => <button key={item} onClick={() => setAsset(item)} className={`py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 ${asset === item ? 'bg-[#EAF2FF] text-[#1D4ED8] border border-[#BFD7FF]' : 'bg-[#F8F9FB] text-[#555]'}`}><span className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: ASSET_META[item].color }}><CryptoLogo asset={item} size={12} /></span>{item}</button>)}</div>
             <div><label className="block text-[11px] font-bold text-[#555] mb-1.5">Recipient account number</label><input value={recipient} onChange={e => setRecipient(e.target.value.replace(/\D/g, '').slice(0, 10))} inputMode="numeric" placeholder="10-digit Vexa account" className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#162353]" /></div>
             <div><label className="block text-[11px] font-bold text-[#555] mb-1.5">Amount ({asset})</label><input value={transferAmount} onChange={e => setTransferAmount(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" placeholder={`Available: ${crypto(selectedBalance)} ${asset}`} className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#162353]" /></div>
-            <button disabled={busy} onClick={() => void submitTransfer()} className="w-full rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold disabled:opacity-50"><span className="inline-flex items-center gap-2">{busy ? 'Sending…' : <><Send className="w-4 h-4" /> Send {asset}</>}</span></button>
+            <button disabled={busy || moneyMovementLocked} onClick={() => void submitTransfer()} className="w-full rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold disabled:opacity-50"><span className="inline-flex items-center gap-2">{busy ? 'Sending…' : <><Send className="w-4 h-4" /> Send {asset}</>}</span></button>
           </div>
         )}
 

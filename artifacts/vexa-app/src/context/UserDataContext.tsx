@@ -100,12 +100,17 @@ interface UserDataContextType {
   /* Transactions */
   transactions: AppTransaction[];
   transactionsLoading: boolean;
-  addTransaction: (t: Omit<AppTransaction, 'id'>) => Promise<AppTransaction | null>;
+  completeBankTransfer: (input: {
+    amount: number;
+    pin: string;
+    recipientName: string;
+    recipientBank: string;
+    recipientAccount: string;
+    note: string;
+  }) => Promise<{ success: boolean; error?: string; transaction?: AppTransaction }>;
   /* Actions */
   redeemCashback: () => Promise<void>;
   refreshAll: () => void;
-  creditBalance: (amount: number) => Promise<void>;
-  debitBalance: (amount: number) => Promise<boolean>;
 }
 
 const UserDataContext = createContext<UserDataContextType | null>(null);
@@ -302,31 +307,12 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
 
   const redeemCashback = async () => {
     if (!user || cashbackRedeemable <= 0) return;
-    const newBalance = balance + cashbackRedeemable;
-    const [balRes, histRes] = await Promise.all([
-      supabase.from('profiles').update({ balance: newBalance }).eq('id', user.id),
-      supabase.from('cashback_history').update({ status: 'redeemed' })
-        .in('id', cashbackHistory.filter(c => c.status === 'cleared').map(c => c.id)),
-    ]);
-    if (!balRes.error && !histRes.error) {
-      setBalance(newBalance);
+    const { data, error } = await supabase.rpc('redeem_cashback');
+    if (!error && data) {
+      setBalance(Number(data.balance ?? balance + cashbackRedeemable));
       await fetchCashback();
+      await fetchNotifications();
     }
-  };
-
-  const creditBalance = async (amount: number) => {
-    if (!user) return;
-    const newBalance = balance + amount;
-    const { error } = await supabase.from('profiles').update({ balance: newBalance }).eq('id', user.id);
-    if (!error) setBalance(newBalance);
-  };
-
-  const debitBalance = async (amount: number): Promise<boolean> => {
-    if (!user || balance < amount) return false;
-    const newBalance = balance - amount;
-    const { error } = await supabase.from('profiles').update({ balance: newBalance }).eq('id', user.id);
-    if (!error) { setBalance(newBalance); return true; }
-    return false;
   };
 
   const markNotificationRead = async (id: string) => {
@@ -354,34 +340,44 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const addTransaction = async (t: Omit<AppTransaction, 'id'>) => {
-    if (!user) return null;
-    const { data, error } = await supabase.from('transactions').insert({
-      user_id: user.id, type: t.type, name: t.name,
-      amount: t.raw_amount, note: t.note,
-      recipient_bank: t.recipient_bank ?? null,
-      recipient_account: t.recipient_account ?? null,
-      sender_name: t.sender_name ?? null,
-      sender_account: t.sender_account ?? null,
-    }).select().single();
+  const completeBankTransfer = async (input: {
+    amount: number;
+    pin: string;
+    recipientName: string;
+    recipientBank: string;
+    recipientAccount: string;
+    note: string;
+  }) => {
+    const { data, error } = await supabase.rpc('complete_bank_transfer', {
+      p_amount: input.amount,
+      p_pin: input.pin,
+      p_recipient_name: input.recipientName,
+      p_recipient_bank: input.recipientBank,
+      p_recipient_account: input.recipientAccount,
+      p_note: input.note,
+    });
     if (error || !data) {
-      console.error('[UserData] transaction insert error:', error?.message);
-      return null;
+      return { success: false, error: error?.message?.replace(/^.*?:\s*/, '').replace(/\.$/, '') ?? 'Transfer failed' };
     }
 
     const savedTransaction = {
-        id: data.id, type: t.type, name: t.name,
-        date: fmtTxDate(data.created_at),
-        amount: fmtAmount(Number(data.amount)),
-        note: t.note, raw_amount: Number(data.amount),
-        createdAt: data.created_at,
-        recipient_bank: data.recipient_bank ?? undefined,
-        recipient_account: data.recipient_account ?? undefined,
-        sender_name: data.sender_name ?? undefined,
-        sender_account: data.sender_account ?? undefined,
+      id: data.id,
+      type: data.type as 'in' | 'out',
+      name: data.name,
+      date: fmtTxDate(data.created_at),
+      amount: fmtAmount(Number(data.amount)),
+      note: data.note ?? input.note,
+      raw_amount: Number(data.amount),
+      createdAt: data.created_at,
+      recipient_bank: data.recipient_bank ?? undefined,
+      recipient_account: data.recipient_account ?? undefined,
+      sender_name: data.sender_name ?? undefined,
+      sender_account: data.sender_account ?? undefined,
     } satisfies AppTransaction;
     setTransactions(prev => [savedTransaction, ...prev]);
-    return savedTransaction;
+    await fetchBalance(false);
+    await fetchNotifications();
+    return { success: true, transaction: savedTransaction };
   };
 
   return (
@@ -393,8 +389,8 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
       referrals, referralCode, referralTotalEarned, referralTotalPending, referralsLoading,
       notifications, notificationsLoading, unreadNotificationsCount,
       markNotificationRead, markAllNotificationsRead, addNotification,
-      transactions, transactionsLoading, addTransaction,
-      redeemCashback, refreshAll, creditBalance, debitBalance,
+      transactions, transactionsLoading, completeBankTransfer,
+      redeemCashback, refreshAll,
     }}>
       {children}
     </UserDataContext.Provider>
