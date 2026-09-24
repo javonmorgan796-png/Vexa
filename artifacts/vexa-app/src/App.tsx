@@ -2244,8 +2244,6 @@ async function createTransferReceiptImage(receipt: TransferReceiptData, referenc
       [66, 477], [214, 470], [375, 478], [520, 468],
     ];
     watermarkPositions.forEach(([x, y]) => context.drawImage(receiptLogo, x, y + receiptTopOffset, 94, 47));
-    context.globalAlpha = 0.42;
-    context.drawImage(receiptLogo, width - 146, amountY + 16, 112, 56);
     context.restore();
   }
 
@@ -2917,12 +2915,6 @@ function TransferReceipt({
                  backgroundSize: '118px 59px',
                  transform: 'rotate(-8deg) scale(1.08)',
                }}
-             />
-             <img
-               src="/vexa-logo.png"
-               alt=""
-               aria-hidden="true"
-               className="absolute right-4 top-3 h-8 w-auto object-contain opacity-50"
              />
              <div className="relative">
             <p className="text-[11px] text-white/60 uppercase tracking-wider">Amount sent</p>
