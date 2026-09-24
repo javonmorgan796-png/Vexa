@@ -2208,32 +2208,38 @@ async function createTransferReceiptImage(receipt: TransferReceiptData, referenc
     image.onerror = () => resolve(null);
     image.src = '/vexa-logo.png';
   });
+  const receiptTopOffset = 26;
+  if (receiptLogo) {
+    context.globalAlpha = 0.95;
+    context.drawImage(receiptLogo, width / 2 - 60, 8, 120, 60);
+    context.globalAlpha = 1;
+  }
 
   context.fillStyle = '#D9FBE9';
   context.beginPath();
-  context.arc(width / 2, 97, 57, 0, Math.PI * 2);
+  context.arc(width / 2, 97 + receiptTopOffset, 57, 0, Math.PI * 2);
   context.fill();
   context.strokeStyle = '#159447';
   context.lineWidth = 7;
   context.lineCap = 'round';
   context.lineJoin = 'round';
   context.beginPath();
-  context.moveTo(width / 2 - 21, 97);
-  context.lineTo(width / 2 - 6, 111);
-  context.lineTo(width / 2 + 24, 80);
+  context.moveTo(width / 2 - 21, 97 + receiptTopOffset);
+  context.lineTo(width / 2 - 6, 111 + receiptTopOffset);
+  context.lineTo(width / 2 + 24, 80 + receiptTopOffset);
   context.stroke();
 
   context.fillStyle = ink;
   context.textAlign = 'center';
   context.font = '800 34px Inter, Arial, sans-serif';
-  context.fillText('Transfer Successful', width / 2, 187);
+  context.fillText('Transfer Successful', width / 2, 187 + receiptTopOffset);
   context.fillStyle = muted;
   context.font = '400 21px Inter, Arial, sans-serif';
-  context.fillText('Your money has been sent securely', width / 2, 241);
+  context.fillText('Your money has been sent securely', width / 2, 241 + receiptTopOffset);
 
   context.textAlign = 'left';
   const amountX = 26;
-  const amountY = 296;
+  const amountY = 296 + receiptTopOffset;
   const amountWidth = cardWidth;
   const amountHeight = 239;
   context.fillStyle = teal;
@@ -2251,7 +2257,7 @@ async function createTransferReceiptImage(receipt: TransferReceiptData, referenc
       [8, 390], [145, 402], [292, 392], [446, 401],
       [66, 477], [214, 470], [375, 478], [520, 468],
     ];
-    watermarkPositions.forEach(([x, y]) => context.drawImage(receiptLogo, x, y, 94, 47));
+    watermarkPositions.forEach(([x, y]) => context.drawImage(receiptLogo, x, y + receiptTopOffset, 94, 47));
     context.globalAlpha = 0.42;
     context.drawImage(receiptLogo, width - 146, amountY + 16, 112, 56);
     context.restore();
@@ -2260,24 +2266,24 @@ async function createTransferReceiptImage(receipt: TransferReceiptData, referenc
   context.textAlign = 'center';
   context.fillStyle = '#A9BCC1';
   context.font = '400 17px Inter, Arial, sans-serif';
-  context.fillText('AMOUNT SENT', width / 2, 340);
+  context.fillText('AMOUNT SENT', width / 2, 340 + receiptTopOffset);
   context.fillStyle = '#FFFFFF';
   context.font = '800 52px Inter, Arial, sans-serif';
-  context.fillText(`₦${receipt.transaction.amount}`, width / 2, 383);
+  context.fillText(`₦${receipt.transaction.amount}`, width / 2, 383 + receiptTopOffset);
   context.fillStyle = '#0B766F';
   context.beginPath();
-  context.roundRect(width / 2 - 73, 460, 146, 38, 19);
+  context.roundRect(width / 2 - 73, 460 + receiptTopOffset, 146, 38, 19);
   context.fill();
   context.fillStyle = '#FFFFFF';
   context.fillStyle = '#9FF2BB';
   context.beginPath();
-  context.arc(width / 2 - 50, 479, 4, 0, Math.PI * 2);
+  context.arc(width / 2 - 50, 479 + receiptTopOffset, 4, 0, Math.PI * 2);
   context.fill();
   context.fillStyle = '#A5F0C2';
   context.font = '700 17px Inter, Arial, sans-serif';
-  context.fillText('Completed', width / 2 + 10, 470);
+  context.fillText('Completed', width / 2 + 10, 470 + receiptTopOffset);
 
-  const infoY = 562;
+  const infoY = 562 + receiptTopOffset;
   const infoHeight = 432;
   context.textAlign = 'left';
   context.fillStyle = '#FFFFFF';
@@ -2290,30 +2296,30 @@ async function createTransferReceiptImage(receipt: TransferReceiptData, referenc
 
   context.fillStyle = muted;
   context.font = '700 16px Inter, Arial, sans-serif';
-  context.fillText('RECIPIENT', 57, 593);
+  context.fillText('RECIPIENT', 57, 593 + receiptTopOffset);
 
   context.fillStyle = '#EEF2FF';
   context.beginPath();
-  context.arc(92, 668, 35, 0, Math.PI * 2);
+  context.arc(92, 668 + receiptTopOffset, 35, 0, Math.PI * 2);
   context.fill();
   context.fillStyle = '#1B7282';
   context.textAlign = 'center';
   context.font = '700 27px Inter, Arial, sans-serif';
-  context.fillText((receipt.recipientName.trim()[0] || 'D').toUpperCase(), 92, 656);
+  context.fillText((receipt.recipientName.trim()[0] || 'D').toUpperCase(), 92, 656 + receiptTopOffset);
 
   context.textAlign = 'left';
   context.fillStyle = ink;
   context.font = '700 22px Inter, Arial, sans-serif';
-  drawReceiptWrappedText(context, receipt.recipientName, 145, 641, 440, 27);
+  drawReceiptWrappedText(context, receipt.recipientName, 145, 641 + receiptTopOffset, 440, 27);
   context.fillStyle = muted;
   context.font = '400 20px Inter, Arial, sans-serif';
-  context.fillText(`Vexa · ${receipt.accountNumber}`, 145, 676);
+  context.fillText(`Vexa · ${receipt.accountNumber}`, 145, 676 + receiptTopOffset);
 
   context.strokeStyle = '#E6E8EA';
   context.lineWidth = 1;
   context.beginPath();
-  context.moveTo(cardX, 726);
-  context.lineTo(cardX + cardWidth, 726);
+  context.moveTo(cardX, 726 + receiptTopOffset);
+  context.lineTo(cardX + cardWidth, 726 + receiptTopOffset);
   context.stroke();
 
   const detailX = 57;
@@ -2329,25 +2335,25 @@ async function createTransferReceiptImage(receipt: TransferReceiptData, referenc
     drawReceiptWrappedText(context, value, valueX, y, maxWidth, 27);
   };
 
-  drawDetail('From', `${receipt.senderName} · ${receipt.senderAccountNumber}`, 758, 315);
-  drawDetail('Date', receipt.transaction.date, 834, 300);
-  drawDetail('Narration', receipt.transaction.note || 'Transfer', 882, 300);
+  drawDetail('From', `${receipt.senderName} · ${receipt.senderAccountNumber}`, 758 + receiptTopOffset, 315);
+  drawDetail('Date', receipt.transaction.date, 834 + receiptTopOffset, 300);
+  drawDetail('Narration', receipt.transaction.note || 'Transfer', 882 + receiptTopOffset, 300);
 
   context.strokeStyle = '#E6E8EA';
   context.beginPath();
-  context.moveTo(detailX, 921);
-  context.lineTo(valueX, 921);
+  context.moveTo(detailX, 921 + receiptTopOffset);
+  context.lineTo(valueX, 921 + receiptTopOffset);
   context.stroke();
 
-  drawDetail('Reference', reference, 947, 300, '#1B7282');
+  drawDetail('Reference', reference, 947 + receiptTopOffset, 300, '#1B7282');
   context.strokeStyle = '#1B7282';
   context.lineWidth = 2;
   context.beginPath();
-  context.roundRect(570, 948, 15, 17, 3);
-  context.moveTo(574, 948);
-  context.lineTo(574, 945);
-  context.lineTo(581, 945);
-  context.lineTo(585, 949);
+  context.roundRect(570, 948 + receiptTopOffset, 15, 17, 3);
+  context.moveTo(574, 948 + receiptTopOffset);
+  context.lineTo(574, 945 + receiptTopOffset);
+  context.lineTo(581, 945 + receiptTopOffset);
+  context.lineTo(585, 949 + receiptTopOffset);
   context.stroke();
 
   const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
@@ -2904,6 +2910,7 @@ function TransferReceipt({
       <div className="vexa-receipt flex-1 overflow-y-auto px-4 py-6" style={{ scrollbarWidth: 'none' }}>
         <div className="max-w-md mx-auto">
           <div className="flex flex-col items-center text-center mb-5">
+             <img src="/vexa-logo.png" alt="Vexa" className="h-9 w-auto object-contain mb-3" />
             <div className="w-[72px] h-[72px] rounded-full bg-green-100 flex items-center justify-center mb-4">
               <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="20 6 9 17 4 12"/>
