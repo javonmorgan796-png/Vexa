@@ -3,6 +3,8 @@ import { Router, type IRouter } from "express";
 const router: IRouter = Router();
 const PAYSTACK_SECRET_KEY = process.env["PAYSTACK_SECRET_KEY"]?.trim();
 const LOGO_DEV_TOKEN = process.env["LOGO_DEV_TOKEN"]?.trim();
+const PAYSTACK_TEST_MODE = PAYSTACK_SECRET_KEY?.startsWith("sk_test_") === true;
+const PAYSTACK_TEST_BANK_CODE = "001";
 const PAYSTACK_BANKS_URL = "https://api.paystack.co/bank";
 const PAYSTACK_CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -64,13 +66,17 @@ async function paystackRequest(path: string) {
 
 router.get("/paystack/resolve-account", async (req, res) => {
   const accountNumber = String(req.query.accountNumber ?? "").replace(/\D/g, "");
-  const bankCode = String(req.query.bankCode ?? "").trim();
+  const requestedBankCode = String(req.query.bankCode ?? "").trim();
+  // Paystack's test environment only allows the dedicated test bank for
+  // account-name lookups. Keep the user's selected bank for the UI and the
+  // eventual transfer record, but use 001 for the provider lookup.
+  const bankCode = PAYSTACK_TEST_MODE ? PAYSTACK_TEST_BANK_CODE : requestedBankCode;
 
   if (!/^\d{10}$/.test(accountNumber)) {
     res.status(400).json({ message: "Enter a valid 10-digit account number" });
     return;
   }
-  if (!/^[A-Za-z0-9_-]{2,20}$/.test(bankCode)) {
+  if (!/^[A-Za-z0-9_-]{2,20}$/.test(requestedBankCode)) {
     res.status(400).json({ message: "Select a valid bank before verifying the account" });
     return;
   }
