@@ -2202,6 +2202,12 @@ async function createTransferReceiptImage(receipt: TransferReceiptData, referenc
   const teal = '#145D67';
   const cardX = 26;
   const cardWidth = width - cardX * 2;
+  const receiptLogo = await new Promise<HTMLImageElement | null>(resolve => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = '/vexa-logo.png';
+  });
 
   context.fillStyle = '#D9FBE9';
   context.beginPath();
@@ -2234,6 +2240,22 @@ async function createTransferReceiptImage(receipt: TransferReceiptData, referenc
   context.beginPath();
   context.roundRect(amountX, amountY, amountWidth, amountHeight, 26);
   context.fill();
+  if (receiptLogo) {
+    context.save();
+    context.beginPath();
+    context.roundRect(amountX, amountY, amountWidth, amountHeight, 26);
+    context.clip();
+    context.globalAlpha = 0.16;
+    const watermarkPositions = [
+      [50, 318], [182, 315], [335, 321], [488, 316],
+      [8, 390], [145, 402], [292, 392], [446, 401],
+      [66, 477], [214, 470], [375, 478], [520, 468],
+    ];
+    watermarkPositions.forEach(([x, y]) => context.drawImage(receiptLogo, x, y, 94, 47));
+    context.globalAlpha = 0.42;
+    context.drawImage(receiptLogo, width - 146, amountY + 16, 112, 56);
+    context.restore();
+  }
 
   context.textAlign = 'center';
   context.fillStyle = '#A9BCC1';
@@ -2891,13 +2913,32 @@ function TransferReceipt({
             <p className="text-[13px] text-[#888] mt-1">Your money has been sent securely</p>
           </div>
 
-          <div className="bg-[#162353] rounded-2xl px-5 py-6 text-center text-white shadow-sm">
+           <div className="relative overflow-hidden bg-[#075D68] rounded-2xl px-5 py-6 text-center text-white shadow-sm">
+             <div
+               aria-hidden="true"
+               className="absolute inset-0 opacity-[0.16] pointer-events-none"
+               style={{
+                 backgroundImage: "url('/vexa-logo.png')",
+                 backgroundPosition: '18px 14px',
+                 backgroundRepeat: 'repeat',
+                 backgroundSize: '118px 59px',
+                 transform: 'rotate(-8deg) scale(1.08)',
+               }}
+             />
+             <img
+               src="/vexa-logo.png"
+               alt=""
+               aria-hidden="true"
+               className="absolute right-4 top-3 h-8 w-auto object-contain opacity-50"
+             />
+             <div className="relative">
             <p className="text-[11px] text-white/60 uppercase tracking-wider">Amount sent</p>
-            <p className="text-[32px] font-extrabold mt-1">₦{transaction.amount}</p>
+             <p className="text-[36px] font-extrabold mt-1">₦{transaction.amount}</p>
             <div className="inline-flex items-center gap-1.5 bg-green-400/15 rounded-full px-3 py-1 mt-3">
               <span className="w-1.5 h-1.5 rounded-full bg-green-300" />
               <span className="text-[11px] font-semibold text-green-200">Completed</span>
             </div>
+             </div>
           </div>
 
           <div className="bg-white rounded-2xl border border-[#E8EBF0] mt-4 overflow-hidden">

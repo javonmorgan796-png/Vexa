@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { playNotificationAlert } from '@/lib/notificationSound';
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 
@@ -132,6 +133,7 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
 
   const [notifications, setNotifications]           = useState<AppNotification[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const notificationSnapshotRef = useRef<{ userId: string; unreadCount: number } | null>(null);
 
   const [transactions, setTransactions]             = useState<AppTransaction[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(true);
@@ -187,20 +189,35 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   const fetchNotifications = useCallback(async () => {
-    if (!user) { setNotifications([]); setNotificationsLoading(false); return; }
+    if (!user) {
+      setNotifications([]);
+      setNotificationsLoading(false);
+      notificationSnapshotRef.current = null;
+      return;
+    }
     setNotificationsLoading(true);
     const { data } = await supabase
       .from('notifications').select('*').eq('user_id', user.id)
       .order('created_at', { ascending: false });
     if (data) {
-      setNotifications(data.map(d => ({
+      const nextNotifications = data.map(d => ({
         id: d.id,
         type: d.type as AppNotification['type'],
         title: d.title,
         body: d.body,
         read: d.read,
         time: timeAgo(d.created_at),
-      })));
+      }));
+      const nextUnreadCount = nextNotifications.filter(notification => !notification.read).length;
+      const previousSnapshot = notificationSnapshotRef.current;
+      if (
+        previousSnapshot?.userId === user.id &&
+        nextUnreadCount > previousSnapshot.unreadCount
+      ) {
+        playNotificationAlert();
+      }
+      notificationSnapshotRef.current = { userId: user.id, unreadCount: nextUnreadCount };
+      setNotifications(nextNotifications);
     }
     setNotificationsLoading(false);
   }, [user]);
@@ -252,6 +269,7 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
     } else {
       setBalance(0); setCashbackHistory([]); setReferrals([]);
       setNotifications([]); setTransactions([]);
+      notificationSnapshotRef.current = null;
       setBalanceLoading(false); setCashbackLoading(false);
       setReferralsLoading(false); setNotificationsLoading(false);
       setTransactionsLoading(false);
@@ -283,6 +301,31 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
       void supabase.removeChannel(channel);
     };
   }, [user?.id, fetchBalance]);
+
+  // Realtime is the fast path for alerts. Polling keeps the sound working for
+  // Supabase projects where the notifications table is not in the realtime
+  // publication yet.
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel(`vexa-notifications:${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
+        () => { void fetchNotifications(); },
+      )
+      .subscribe();
+
+    const interval = window.setInterval(() => {
+      void fetchNotifications();
+    }, 30000);
+
+    return () => {
+      window.clearInterval(interval);
+      void supabase.removeChannel(channel);
+    };
+  }, [user?.id, fetchNotifications]);
 
   /* ── Derived cashback totals ─────────────────────────────────── */
 
@@ -337,6 +380,7 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
         id: data.id, type: data.type, title: data.title,
         body: data.body, read: false, time: 'Just now',
       }, ...prev]);
+      playNotificationAlert();
     }
   };
 
