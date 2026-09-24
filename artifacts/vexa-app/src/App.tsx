@@ -2206,28 +2206,14 @@ async function createTransferReceiptImage(receipt: TransferReceiptData, referenc
     const image = new Image();
     image.onload = () => resolve(image);
     image.onerror = () => resolve(null);
-    image.src = '/vexa-logo.png';
+    image.src = '/vexa-share-logo.png';
   });
-  const receiptTopOffset = 26;
+  const receiptTopOffset = 0;
   if (receiptLogo) {
     context.globalAlpha = 0.95;
-    context.drawImage(receiptLogo, width / 2 - 60, 8, 120, 60);
+    context.drawImage(receiptLogo, width / 2 - 150, 8, 300, 150);
     context.globalAlpha = 1;
   }
-
-  context.fillStyle = '#D9FBE9';
-  context.beginPath();
-  context.arc(width / 2, 97 + receiptTopOffset, 57, 0, Math.PI * 2);
-  context.fill();
-  context.strokeStyle = '#159447';
-  context.lineWidth = 7;
-  context.lineCap = 'round';
-  context.lineJoin = 'round';
-  context.beginPath();
-  context.moveTo(width / 2 - 21, 97 + receiptTopOffset);
-  context.lineTo(width / 2 - 6, 111 + receiptTopOffset);
-  context.lineTo(width / 2 + 24, 80 + receiptTopOffset);
-  context.stroke();
 
   context.fillStyle = ink;
   context.textAlign = 'center';
