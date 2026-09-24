@@ -28,7 +28,7 @@ export function playNotificationAlert() {
     oscillator.frequency.setValueAtTime(740, now);
     oscillator.frequency.setValueAtTime(988, now + 0.09);
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.075, now + 0.025);
+    gain.gain.exponentialRampToValueAtTime(0.14, now + 0.025);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
 
     oscillator.connect(gain);
