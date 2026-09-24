@@ -2146,6 +2146,8 @@ interface TransferReceiptData {
   accountNumber: string;
   senderName: string;
   senderAccountNumber: string;
+  balanceBefore?: number;
+  balanceAfter?: number;
 }
 
 function formatAmt(raw: string) {
@@ -2153,6 +2155,41 @@ function formatAmt(raw: string) {
   const [intP, ...rest] = clean.split('.');
   const dec = rest.length ? '.' + rest.join('') : '';
   return intP.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + dec;
+}
+
+function ordinalDay(day: number) {
+  const suffix = day % 100 >= 11 && day % 100 <= 13
+    ? 'th'
+    : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[day % 10] ?? 'th';
+  return `${day}${suffix}`;
+}
+
+function formatReceiptDate(transaction: AppTransaction) {
+  if (!transaction.createdAt) return transaction.date;
+  const date = new Date(transaction.createdAt);
+  if (Number.isNaN(date.getTime())) return transaction.date;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).formatToParts(date);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find(part => part.type === type)?.value ?? '';
+  return `${get('weekday')}, ${get('month')} ${ordinalDay(Number(get('day')))}, ${get('year')} | ${get('hour')}:${get('minute')} ${get('dayPeriod')}`;
+}
+
+function formatReceiptTime(transaction: AppTransaction) {
+  if (!transaction.createdAt) return transaction.date;
+  const date = new Date(transaction.createdAt);
+  if (Number.isNaN(date.getTime())) return transaction.date;
+  return new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date);
 }
 
 function drawReceiptWrappedText(
@@ -2357,7 +2394,7 @@ function storedSelectedBank(): PaystackBank | null {
 function TransferPage() {
   const [, navigate] = useLocation();
   const { user, setInitialTransferPin } = useAuth();
-  const { completeBankTransfer } = useUserData();
+  const { balance, completeBankTransfer } = useUserData();
   const [step, setStep]           = useState<TxStep>('details');
   const initialBank = storedSelectedBank();
   const [bank, setBank]           = useState(initialBank?.name ?? '');
@@ -2434,6 +2471,7 @@ function TransferPage() {
     setProcessing(true);
     setSubmitError('');
     const amtValue = parseFloat(amount.replace(/,/g, '') || '0');
+    const balanceBeforeTransfer = balance;
     const result = await completeBankTransfer({
       amount: amtValue,
       pin,
@@ -2457,6 +2495,8 @@ function TransferPage() {
       accountNumber: acctNo,
       senderName: user?.name ?? 'Vexa account',
       senderAccountNumber: user?.accountNumber ?? '—',
+      balanceBefore: balanceBeforeTransfer,
+      balanceAfter: Math.max(0, balanceBeforeTransfer - amtValue),
     });
     setStep('success');
   }
@@ -2823,10 +2863,14 @@ function TransferReceipt({
   onTransferAgain: () => void;
 }) {
   const [copied, setCopied] = useState(false);
-  const [receiptAction, setReceiptAction] = useState<'share' | null>(null);
+  const [receiptAction, setReceiptAction] = useState<'share' | 'download' | null>(null);
   const [receiptActionMessage, setReceiptActionMessage] = useState('');
   const { transaction, recipientName, bank, accountNumber, senderName, senderAccountNumber } = receipt;
   const reference = `VX${transaction.id.replace(/-/g, '').slice(0, 10).toUpperCase()}`;
+  const amountValue = Number(transaction.raw_amount) || Number(transaction.amount.replace(/,/g, '')) || 0;
+  const balanceAfter = receipt.balanceAfter ?? 0;
+  const balanceBefore = receipt.balanceBefore ?? balanceAfter + amountValue;
+  const formatReceiptAmount = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   async function shareReceipt() {
     setReceiptAction('share');
@@ -2861,14 +2905,39 @@ function TransferReceipt({
     }
   }
 
+  async function downloadReceipt() {
+    setReceiptAction('download');
+    setReceiptActionMessage('');
+    try {
+      const image = await createTransferReceiptImage(receipt, reference);
+      const downloadUrl = URL.createObjectURL(image);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = image.name;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+      setReceiptActionMessage('Receipt image saved to your device');
+    } catch {
+      setReceiptActionMessage('Could not download the receipt. Please try again.');
+    } finally {
+      setReceiptAction(null);
+    }
+  }
+
   async function copyReference() {
     await navigator.clipboard?.writeText(reference).catch(() => {});
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2000);
   }
 
+  const timelineSteps = [
+    { title: 'Transfer', subtitle: 'initiated' },
+    { title: 'Transfer', subtitle: 'processed' },
+    { title: 'Sent to', subtitle: recipientName },
+  ];
+
   return (
-    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="fixed inset-0 flex flex-col bg-[#F6F6F6]" style={{ fontFamily: "'Inter', sans-serif" }}>
       <style>{`
         @media print {
           body * { visibility: hidden !important; }
@@ -2878,116 +2947,130 @@ function TransferReceipt({
         }
       `}</style>
 
-      <div className="receipt-header-action flex-none flex items-center justify-between px-4 pb-3 bg-white border-b border-[#E8EBF0]"
-        style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
-        <button onClick={onHome} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100" aria-label="Back to home">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5M12 5l-7 7 7 7"/>
+      <div
+        className="receipt-header-action flex-none flex items-center justify-between px-5 pb-3 bg-[#F6F6F6]"
+        style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)' }}
+      >
+        <button onClick={onHome} className="w-8 h-8 flex items-center justify-center" aria-label="Back to home">
+          <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#1266C4" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 5l-7 7 7 7" />
           </svg>
         </button>
-        <span className="text-[16px] font-bold text-[#111]">Transfer Receipt</span>
-        <button onClick={() => window.print()} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100" aria-label="Print receipt">
-          <FileText className="w-[18px] h-[18px] text-[#162353]" />
+        <span className="text-[16px] font-bold text-[#111]">Transaction Details</span>
+        <button onClick={() => window.print()} className="w-8 h-8 flex items-center justify-center" aria-label="Print receipt">
+          <FileText className="w-[17px] h-[17px] text-transparent" />
         </button>
       </div>
 
-      <div className="vexa-receipt flex-1 overflow-y-auto px-4 py-6" style={{ scrollbarWidth: 'none' }}>
+      <div className="vexa-receipt flex-1 overflow-y-auto px-5 pt-6 pb-8" style={{ scrollbarWidth: 'none' }}>
         <div className="max-w-md mx-auto">
-          <div className="flex flex-col items-center text-center mb-5">
-             <img src="/vexa-logo.png" alt="Vexa" className="h-9 w-auto object-contain mb-3" />
-            <div className="w-[72px] h-[72px] rounded-full bg-green-100 flex items-center justify-center mb-4">
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
+          <section className="rounded-[20px] border border-dashed border-[#E1E3E6] bg-white px-5 py-5">
+            <div className="flex items-center justify-between">
+              <span className="inline-flex items-center gap-1 rounded-md bg-[#EAF2FF] px-2 py-1 text-[11px] font-bold text-[#1769C2]">
+                <ArrowUp className="h-3 w-3" strokeWidth={2.5} />
+                DEBIT
+              </span>
+              <span className="rounded-md bg-[#E9F8ED] px-2 py-1 text-[11px] font-bold text-[#269447]">SUCCESSFUL</span>
             </div>
-            <p className="text-[21px] font-extrabold text-[#111]">Transfer Successful</p>
-            <p className="text-[13px] text-[#888] mt-1">Your money has been sent securely</p>
-          </div>
+            <p className="mt-3 text-[28px] font-extrabold tracking-tight text-[#161616]">₦{transaction.amount}</p>
+            <p className="mt-2 text-[12px] text-[#888]">{formatReceiptDate(transaction)}</p>
+          </section>
 
-           <div className="relative overflow-hidden bg-[#075D68] rounded-2xl px-5 py-6 text-center text-white shadow-sm">
-             <div
-               aria-hidden="true"
-               className="absolute inset-0 opacity-[0.16] pointer-events-none"
-               style={{
-                 backgroundImage: "url('/vexa-logo.png')",
-                 backgroundPosition: '18px 14px',
-                 backgroundRepeat: 'repeat',
-                 backgroundSize: '118px 59px',
-                 transform: 'rotate(-8deg) scale(1.08)',
-               }}
-             />
-             <div className="relative">
-            <p className="text-[11px] text-white/60 uppercase tracking-wider">Amount sent</p>
-             <p className="text-[36px] font-extrabold mt-1">₦{transaction.amount}</p>
-            <div className="inline-flex items-center gap-1.5 bg-green-400/15 rounded-full px-3 py-1 mt-3">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-300" />
-              <span className="text-[11px] font-semibold text-green-200">Completed</span>
-            </div>
-             </div>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-[#E8EBF0] mt-4 overflow-hidden">
-            <div className="px-5 py-4 border-b border-[#F0F0F0]">
-              <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide">Recipient</p>
-              <div className="flex items-center gap-3 mt-3">
-                <div className="w-11 h-11 rounded-full bg-[#EEF2FF] flex items-center justify-center text-[#2563EB] text-[16px] font-bold">
-                  {recipientName.charAt(0).toUpperCase()}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[14px] font-bold text-[#111] truncate">{recipientName}</p>
-                  <p className="text-[12px] text-[#888] mt-0.5">{bank} · {accountNumber}</p>
-                </div>
+          <section className="mt-4 rounded-[20px] bg-white px-4 py-5">
+            <div className="relative px-3">
+              <div className="absolute left-5 right-5 top-[12px] h-[4px] rounded-full bg-[#2FAA48]" />
+              <div className="relative grid grid-cols-3">
+                {timelineSteps.map((step, index) => (
+                  <div key={`${step.title}-${index}`} className="flex justify-center">
+                    <div className="flex h-[26px] w-[26px] items-center justify-center rounded-full border-[3px] border-[#BCEFC6] bg-[#149B37] shadow-sm">
+                      <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-
-            <div className="px-5 py-4 space-y-3 text-[12px]">
-              {[
-                ['From', `${senderName} · ${senderAccountNumber}`],
-                ['Date', transaction.date],
-                ['Narration', transaction.note || 'Transfer'],
-              ].map(([label, value]) => (
-                <div key={label} className="flex items-start justify-between gap-4">
-                  <span className="text-[#888]">{label}</span>
-                  <span className="font-semibold text-[#222] text-right max-w-[68%] break-words">{value}</span>
+            <div className="mt-3 grid grid-cols-3 gap-2 text-center text-[13px] leading-[1.35] text-[#111]">
+              {timelineSteps.map((step, index) => (
+                <div key={`${step.title}-label-${index}`} className="min-w-0">
+                  <p>{step.title}</p>
+                  <p className="break-words">{step.subtitle}</p>
                 </div>
               ))}
-              <div className="flex items-center justify-between gap-4 pt-3 border-t border-[#F0F0F0]">
-                <span className="text-[#888]">Reference</span>
-                <button onClick={copyReference} className="flex items-center gap-1.5 font-semibold text-[#2563EB]" title="Copy reference">
-                  <span>{reference}</span>
-                  <Copy className="w-3.5 h-3.5" />
-                </button>
+            </div>
+            <p className="mt-3 text-[13px] text-[#929292]">Last updated {formatReceiptTime(transaction)}</p>
+          </section>
+
+          <button className="mt-4 flex w-full items-center gap-3 rounded-[18px] bg-white px-4 py-3.5 text-left">
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#F0F6FF]">
+              <Info className="h-4 w-4 text-[#1469C7]" strokeWidth={2.5} />
+            </span>
+            <span className="text-[14px] font-medium text-[#1769C2]">Beneficiary Not Credited?</span>
+          </button>
+
+          {copied && <p className="text-center text-[11px] font-semibold text-green-600 mt-3">Copied to clipboard</p>}
+          {receiptActionMessage && <p className="text-center text-[11px] font-semibold text-[#1769C2] mt-3">{receiptActionMessage}</p>}
+
+          <div className="receipt-actions mt-4 grid grid-cols-3 gap-2">
+            <button onClick={shareReceipt} disabled={receiptAction !== null} className="flex h-[90px] flex-col items-center justify-center rounded-[15px] bg-white text-[12px] text-[#111] disabled:opacity-60">
+              <span className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-[#F0F6FF]">
+                <Share2 className="h-5 w-5 text-[#1469C7]" />
+              </span>
+              {receiptAction === 'share' ? 'Preparing…' : 'Share'}
+            </button>
+            <button onClick={downloadReceipt} disabled={receiptAction !== null} className="flex h-[90px] flex-col items-center justify-center rounded-[15px] bg-white text-[12px] text-[#111] disabled:opacity-60">
+              <span className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-[#F0F6FF]">
+                <ArrowDown className="h-5 w-5 text-[#1469C7]" strokeWidth={2.5} />
+              </span>
+              {receiptAction === 'download' ? 'Preparing…' : 'Download'}
+            </button>
+            <button onClick={onTransferAgain} className="flex h-[90px] flex-col items-center justify-center rounded-[15px] bg-white text-[12px] text-[#111]">
+              <span className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-[#F0F6FF]">
+                <ArrowUp className="h-5 w-5 rotate-45 text-[#1469C7]" strokeWidth={2.5} />
+              </span>
+              Send Again
+            </button>
+          </div>
+
+          <section className="mt-4 rounded-[20px] bg-white px-4 py-5">
+            <div className="rounded-xl border border-dashed border-[#E4E5E7] px-4 py-4">
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center">
+                <div>
+                  <p className="text-[12px] text-[#969696]">Balance Before</p>
+                  <p className="mt-1 text-[16px] font-bold text-[#252525]">{formatReceiptAmount(balanceBefore)}</p>
+                </div>
+                <div className="mx-4 h-8 w-px bg-[#D3D5D7]" />
+                <div>
+                  <p className="text-[12px] text-[#969696]">Balance After</p>
+                  <p className="mt-1 text-[16px] font-bold text-[#252525]">{formatReceiptAmount(balanceAfter)}</p>
+                </div>
               </div>
             </div>
-          </div>
 
-          {copied && (
-            <p className="text-center text-[11px] text-green-600 font-semibold mt-3">Copied to clipboard</p>
-          )}
-          {receiptActionMessage && (
-            <p className="text-center text-[11px] text-[#2563EB] font-semibold mt-3">{receiptActionMessage}</p>
-          )}
+            <div className="mt-5 space-y-4 text-[13px]">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-[#858585]">Amount</span>
+                <span className="font-medium text-[#777]">₦{transaction.amount.replace(/\.00$/, '')}</span>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <span className="flex items-center gap-2 text-[#858585]">
+                  Our fee
+                  <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#858585] text-[9px] font-bold text-white">i</span>
+                </span>
+                <span className="font-medium text-[#777]">₦0</span>
+              </div>
+              <div className="border-t border-[#E8E8E8] pt-4 flex items-center justify-between gap-4 text-[15px] font-bold text-[#202020]">
+                <span>Total Debit</span>
+                <span>₦{transaction.amount.replace(/\.00$/, '')}</span>
+              </div>
+            </div>
+          </section>
 
-          <div className="receipt-actions grid grid-cols-2 gap-3 mt-5">
-            <button
-              onClick={shareReceipt}
-              disabled={receiptAction === 'share'}
-              className="h-[48px] rounded-xl border border-[#D9E0EF] bg-white text-[#162353] text-[13px] font-semibold flex items-center justify-center gap-2 active:bg-[#F8F9FB] disabled:opacity-60"
-            >
-              <Share2 className="w-4 h-4" />
-              {receiptAction === 'share' ? 'Preparing image…' : 'Share Receipt'}
-            </button>
-            <button onClick={() => window.print()} className="h-[48px] rounded-xl border border-[#D9E0EF] bg-white text-[#162353] text-[13px] font-semibold flex items-center justify-center gap-2 active:bg-[#F8F9FB]">
-              <FileText className="w-4 h-4" />
-              Save / Print
-            </button>
-          </div>
-          <button onClick={onTransferAgain} className="receipt-actions w-full h-[50px] rounded-xl bg-[#162353] text-white text-[14px] font-semibold mt-3 active:opacity-80">
-            Make Another Transfer
+          <button className="receipt-actions mt-5 flex w-full items-center justify-between px-1 text-left text-[13px] text-[#666]">
+            <span>Other Details</span>
+            <ChevronUp className="h-4 w-4 text-[#1469C7]" />
           </button>
-          <button onClick={onHome} className="receipt-actions w-full h-[46px] text-[#2563EB] text-[13px] font-semibold mt-1">
-            Back to Home
-          </button>
+
+          <div className="receipt-actions mt-5 h-4 rounded-t-2xl bg-white" />
         </div>
       </div>
     </div>
@@ -2998,7 +3081,7 @@ function TransactionReceiptPage() {
   const [, navigate] = useLocation();
   const [, params] = useRoute('/receipt/:transactionId');
   const { user } = useAuth();
-  const { transactions, transactionsLoading } = useUserData();
+  const { balance, transactions, transactionsLoading } = useUserData();
   const transaction = transactions.find(tx => tx.id === params?.transactionId);
 
   if (transactionsLoading) {
@@ -3033,6 +3116,8 @@ function TransactionReceiptPage() {
     accountNumber: transaction.recipient_account ?? 'Not recorded',
     senderName: transaction.sender_name ?? user?.name ?? 'Vexa account',
     senderAccountNumber: transaction.sender_account ?? user?.accountNumber ?? '—',
+    balanceAfter: balance,
+    balanceBefore: balance + transaction.raw_amount,
   };
 
   return (
