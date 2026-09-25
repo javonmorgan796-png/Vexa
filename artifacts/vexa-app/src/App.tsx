@@ -2930,10 +2930,9 @@ function TransferReceipt({
     window.setTimeout(() => setCopied(false), 2000);
   }
 
-  const timelineSteps = [
-    { title: 'Transfer', subtitle: 'initiated' },
-    { title: 'Transfer', subtitle: 'processed' },
-    { title: 'Sent to', subtitle: recipientName },
+  const progressSteps = [
+    { title: 'Transfer initiated', subtitle: 'Your transfer was accepted' },
+    { title: 'Recipient notified', subtitle: `Sent to ${recipientName}` },
   ];
 
   return (
@@ -2956,7 +2955,7 @@ function TransferReceipt({
             <path d="M19 12H5M12 5l-7 7 7 7" />
           </svg>
         </button>
-        <span className="text-[16px] font-bold text-[#111]">Transaction Details</span>
+        <span className="text-[16px] font-bold text-[#111]">Transfer Receipt</span>
         <button onClick={() => window.print()} className="w-8 h-8 flex items-center justify-center" aria-label="Print receipt">
           <FileText className="w-[17px] h-[17px] text-transparent" />
         </button>
@@ -2964,40 +2963,68 @@ function TransferReceipt({
 
       <div className="vexa-receipt flex-1 overflow-y-auto px-5 pt-6 pb-8" style={{ scrollbarWidth: 'none' }}>
         <div className="max-w-md mx-auto">
-          <section className="rounded-[20px] border border-dashed border-[#E1E3E6] bg-white px-5 py-5">
-            <div className="flex items-center justify-between">
-              <span className="inline-flex items-center gap-1 rounded-md bg-[#EAF2FF] px-2 py-1 text-[11px] font-bold text-[#1769C2]">
-                <ArrowUp className="h-3 w-3" strokeWidth={2.5} />
-                DEBIT
-              </span>
-              <span className="rounded-md bg-[#E9F8ED] px-2 py-1 text-[11px] font-bold text-[#269447]">SUCCESSFUL</span>
-            </div>
-            <p className="mt-3 text-[28px] font-extrabold tracking-tight text-[#161616]">₦{transaction.amount}</p>
-            <p className="mt-2 text-[12px] text-[#888]">{formatReceiptDate(transaction)}</p>
-          </section>
-
-          <section className="mt-4 rounded-[20px] bg-white px-4 py-5">
-            <div className="relative px-3">
-              <div className="absolute left-5 right-5 top-[12px] h-[4px] rounded-full bg-[#2FAA48]" />
-              <div className="relative grid grid-cols-3">
-                {timelineSteps.map((step, index) => (
-                  <div key={`${step.title}-${index}`} className="flex justify-center">
-                    <div className="flex h-[26px] w-[26px] items-center justify-center rounded-full border-[3px] border-[#BCEFC6] bg-[#149B37] shadow-sm">
-                      <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />
-                    </div>
-                  </div>
-                ))}
+          <section className="relative overflow-hidden rounded-[24px] bg-[#162353] px-5 py-6 text-white shadow-[0_12px_30px_rgba(22,35,83,0.18)]">
+            <div className="absolute -right-10 -top-12 h-36 w-36 rounded-full border-[18px] border-white/5" />
+            <div className="absolute -bottom-20 -left-12 h-40 w-40 rounded-full border-[20px] border-[#3AA7B8]/10" />
+            <div className="relative">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#3AA7B8]/20">
+                    <ArrowUp className="h-4 w-4 text-[#87E1E5]" strokeWidth={2.5} />
+                  </span>
+                  <span className="text-[12px] font-semibold text-white/70">Bank transfer</span>
+                </div>
+                <span className="rounded-full bg-[#B6F2C3] px-2.5 py-1 text-[10px] font-bold text-[#167231]">COMPLETED</span>
+              </div>
+              <p className="mt-6 text-[12px] font-medium uppercase tracking-[0.16em] text-white/50">Amount sent</p>
+              <p className="mt-1 text-[36px] font-extrabold tracking-tight">₦{transaction.amount}</p>
+              <div className="mt-5 flex items-end justify-between gap-4 text-[11px]">
+                <div>
+                  <p className="text-white/45">Completed on</p>
+                  <p className="mt-1 font-medium text-white/85">{formatReceiptDate(transaction)}</p>
+                </div>
+                <button onClick={copyReference} className="text-right" title="Copy reference">
+                  <p className="text-white/45">Reference</p>
+                  <p className="mt-1 inline-flex items-center gap-1 font-semibold text-[#87E1E5]">
+                    {reference}
+                    <Copy className="h-3 w-3" />
+                  </p>
+                </button>
               </div>
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-2 text-center text-[13px] leading-[1.35] text-[#111]">
-              {timelineSteps.map((step, index) => (
-                <div key={`${step.title}-label-${index}`} className="min-w-0">
-                  <p>{step.title}</p>
-                  <p className="break-words">{step.subtitle}</p>
+          </section>
+
+          <section className="mt-4 rounded-[20px] border border-[#E7EAF2] bg-white px-5 py-5">
+            <div className="flex items-center gap-0">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-[3px] border-[#BCEFC6] bg-[#149B37] shadow-sm">
+                <Check className="h-4 w-4 text-white" strokeWidth={3} />
+              </div>
+              <div className="h-1 flex-1 bg-[#2FAA48]" />
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-[3px] border-[#BCEFC6] bg-[#149B37] shadow-sm">
+                <Check className="h-4 w-4 text-white" strokeWidth={3} />
+              </div>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-5">
+              {progressSteps.map((step, index) => (
+                <div key={step.title} className={index === 1 ? 'text-right' : ''}>
+                  <p className="text-[13px] font-bold text-[#171717]">{step.title}</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-[#888]">{step.subtitle}</p>
                 </div>
               ))}
             </div>
-            <p className="mt-3 text-[13px] text-[#929292]">Last updated {formatReceiptTime(transaction)}</p>
+            <p className="mt-4 border-t border-[#F0F1F4] pt-3 text-[12px] text-[#929292]">Last updated {formatReceiptTime(transaction)}</p>
+          </section>
+
+          <section className="mt-4 flex items-center gap-3 rounded-[20px] border border-[#E7EAF2] bg-white px-4 py-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#EAF2FF] text-[18px] font-bold text-[#1769C2]">
+              {recipientName.charAt(0).toUpperCase() || 'R'}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-[#929292]">Recipient</p>
+              <p className="mt-1 truncate text-[15px] font-bold text-[#151515]">{recipientName}</p>
+              <p className="mt-0.5 truncate text-[12px] text-[#858585]">{bank} · {accountNumber}</p>
+            </div>
+            <ChevronRight className="h-4 w-4 shrink-0 text-[#A5A9B2]" />
           </section>
 
           <button className="mt-4 flex w-full items-center gap-3 rounded-[18px] bg-white px-4 py-3.5 text-left">
