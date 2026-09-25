@@ -1404,7 +1404,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col bg-[#F2F3F5]"
+      className="theme-page fixed inset-0 z-50 flex flex-col"
       style={{ fontFamily: "'Inter', sans-serif" }}
     >
       {/* ── Header ── */}
@@ -1501,7 +1501,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
 
               <div className={`flex flex-col max-w-[78%] ${isUser ? 'items-end' : 'items-start'}`}>
                 {!isUser && (
-                  <p className="text-[10px] font-semibold text-[#64748B] mb-1 px-1">
+                  <p className="theme-text-secondary text-[10px] font-semibold mb-1 px-1">
                     {isBot ? 'Vexa AI' : AGENT.name}
                   </p>
                 )}
@@ -1518,12 +1518,12 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
                         style={{ maxHeight: 200 }}
                       />
                     ) : (
-                      <div className={`flex items-center gap-3 px-4 py-3 ${isUser ? 'bg-[#162353]' : 'bg-white border border-[#F0F0F0]'}`}>
+                      <div className={`flex items-center gap-3 px-4 py-3 ${isUser ? 'bg-[#162353]' : 'theme-surface theme-border border'}`}>
                         <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${isUser ? 'bg-white/15' : 'bg-[#EFF6FF]'}`}>
                           <FileIcon className={`w-4 h-4 ${isUser ? 'text-white' : 'text-[#2563EB]'}`} />
                         </div>
                         <div className="min-w-0">
-                          <p className={`text-[12px] font-semibold truncate ${isUser ? 'text-white' : 'text-[#1E293B]'}`}>{msg.attachment.name}</p>
+                          <p className={`text-[12px] font-semibold truncate ${isUser ? 'text-white' : 'theme-text-primary'}`}>{msg.attachment.name}</p>
                           <p className={`text-[11px] mt-0.5 ${isUser ? 'text-white/60' : 'text-[#94A3B8]'}`}>{msg.attachment.size}</p>
                         </div>
                       </div>
@@ -1537,7 +1537,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
                     className={`px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${
                       isUser
                         ? 'bg-[#162353] text-white rounded-br-sm'
-                        : 'bg-white text-[#1E293B] rounded-bl-sm border border-[#F0F0F0]'
+                        : 'theme-surface theme-text-primary rounded-bl-sm theme-border border'
                     }`}
                     style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
                   >
@@ -1584,7 +1584,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
                 </div>
               )}
             </div>
-            <div className="bg-white border border-[#F0F0F0] rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1.5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            <div className="theme-surface theme-border border rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1.5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
               {[0, 1, 2].map(i => (
                 <span
                   key={i}
@@ -1602,7 +1602,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
             <button
               onClick={handleTransferToAgent}
               disabled={transferring}
-              className="flex items-center gap-2 bg-white border border-[#E2E8F0] rounded-full px-5 py-2.5 text-[12px] font-semibold text-[#162353] active:bg-[#F1F5F9] transition-colors disabled:opacity-60"
+              className="theme-surface theme-border border flex items-center gap-2 rounded-full px-5 py-2.5 text-[12px] font-semibold theme-text-primary active:bg-[#F1F5F9] transition-colors disabled:opacity-60"
               style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}
             >
               <Wifi className="w-3.5 h-3.5" />
@@ -1623,7 +1623,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
               <button
                 key={q}
                 onClick={() => handleSend(q)}
-                className="bg-white border border-[#E2E8F0] rounded-full px-3.5 py-1.5 text-[12px] font-medium text-[#334155] active:bg-[#F1F5F9] transition-colors"
+                className="theme-surface theme-border border rounded-full px-3.5 py-1.5 text-[12px] font-medium theme-text-primary active:bg-[#F1F5F9] transition-colors"
                 style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
               >
                 {q}
@@ -1635,27 +1635,27 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
 
       {/* ── Attach menu popup ── */}
       {showAttachMenu && (
-        <div className="flex-none bg-white border-t border-[#E8EBF0] px-4 pt-3 pb-2">
+        <div className="theme-surface theme-border flex-none border-t px-4 pt-3 pb-2">
           <div className="flex gap-3">
             {/* Camera / Photo */}
             <button
               onClick={() => { setShowAttachMenu(false); cameraInputRef.current?.click(); }}
-              className="flex-1 flex flex-col items-center gap-2 bg-[#F8F9FB] rounded-2xl py-4 active:bg-[#EEF2F7] transition-colors border border-[#E8EBF0]"
+              className="theme-surface theme-border flex-1 flex flex-col items-center gap-2 rounded-2xl py-4 active:bg-[#EEF2F7] transition-colors border"
             >
               <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#00C6FF] to-[#0072FF] flex items-center justify-center">
                 <ImagePlus className="w-5 h-5 text-white" />
               </div>
-              <span className="text-[12px] font-semibold text-[#334155]">Photo / Camera</span>
+              <span className="theme-text-primary text-[12px] font-semibold">Photo / Camera</span>
             </button>
             {/* File */}
             <button
               onClick={() => { setShowAttachMenu(false); fileInputRef.current?.click(); }}
-              className="flex-1 flex flex-col items-center gap-2 bg-[#F8F9FB] rounded-2xl py-4 active:bg-[#EEF2F7] transition-colors border border-[#E8EBF0]"
+              className="theme-surface theme-border flex-1 flex flex-col items-center gap-2 rounded-2xl py-4 active:bg-[#EEF2F7] transition-colors border"
             >
               <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#7C3AED] to-[#4F46E5] flex items-center justify-center">
                 <FileUp className="w-5 h-5 text-white" />
               </div>
-              <span className="text-[12px] font-semibold text-[#334155]">Document / File</span>
+              <span className="theme-text-primary text-[12px] font-semibold">Document / File</span>
             </button>
           </div>
           <button
@@ -1669,7 +1669,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
 
       {/* ── Input bar ── */}
       <div
-        className="flex-none bg-white border-t border-[#E8EBF0] px-4 py-3 flex items-end gap-2"
+        className="theme-surface theme-border flex-none border-t px-4 py-3 flex items-end gap-2"
         style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)' }}
       >
         {/* Attachment button */}
@@ -1685,7 +1685,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
         </button>
 
         {/* Text input */}
-        <div className="flex-1 bg-[#F8F9FB] rounded-2xl border border-[#E8EBF0] flex items-end px-4 py-2.5">
+        <div className="theme-control theme-border flex-1 rounded-2xl border flex items-end px-4 py-2.5">
           <input
             ref={inputRef}
             type="text"
@@ -1693,7 +1693,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
             onChange={e => setInputText(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSend()}
             placeholder={isAiMode ? 'Ask Vexa AI anything…' : `Message ${AGENT.name.split(' ')[0]}…`}
-            className="flex-1 bg-transparent text-[13px] text-[#1E293B] placeholder-[#94A3B8] outline-none resize-none"
+            className="theme-text-primary flex-1 bg-transparent text-[13px] placeholder-[#94A3B8] outline-none resize-none"
           />
         </div>
 
