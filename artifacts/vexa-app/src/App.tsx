@@ -2931,7 +2931,8 @@ function TransferReceipt({
   }
 
   const progressSteps = [
-    { title: 'Transfer initiated', subtitle: 'Your transfer was accepted' },
+    { title: 'Request started', subtitle: 'Transfer accepted' },
+    { title: 'Transfer processed', subtitle: 'Funds debited' },
     { title: 'Recipient notified', subtitle: `Sent to ${recipientName}` },
   ];
 
@@ -2994,21 +2995,32 @@ function TransferReceipt({
             </div>
           </section>
 
-          <section className="mt-4 rounded-[20px] border border-[#E7EAF2] bg-white px-5 py-5">
-            <div className="flex items-center gap-0">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-[3px] border-[#BCEFC6] bg-[#149B37] shadow-sm">
-                <Check className="h-4 w-4 text-white" strokeWidth={3} />
+          <section className="mt-4 rounded-[22px] border border-[#E7EAF2] bg-white px-5 py-5 shadow-[0_4px_18px_rgba(22,35,83,0.04)]">
+            <div className="mb-5 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[14px] font-bold text-[#171717]">Transfer journey</p>
+                <p className="mt-1 text-[11px] text-[#929292]">Every step completed successfully</p>
               </div>
-              <div className="h-1 flex-1 bg-[#2FAA48]" />
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-[3px] border-[#BCEFC6] bg-[#149B37] shadow-sm">
-                <Check className="h-4 w-4 text-white" strokeWidth={3} />
-              </div>
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#EAF8EE] px-2.5 py-1 text-[10px] font-bold text-[#218640]">
+                <BadgeCheck className="h-3.5 w-3.5" />
+                DONE
+              </span>
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-5">
+            <div className="flex items-center gap-0">
               {progressSteps.map((step, index) => (
-                <div key={step.title} className={index === 1 ? 'text-right' : ''}>
-                  <p className="text-[13px] font-bold text-[#171717]">{step.title}</p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-[#888]">{step.subtitle}</p>
+                <React.Fragment key={step.title}>
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-[3px] border-[#BCEFC6] bg-[#149B37] shadow-sm">
+                    <Check className="h-4 w-4 text-white" strokeWidth={3} />
+                  </div>
+                  {index < progressSteps.length - 1 && <div className="h-1 flex-1 bg-[#2FAA48]" />}
+                </React.Fragment>
+              ))}
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              {progressSteps.map((step, index) => (
+                <div key={step.title} className={`${index === 1 ? 'text-center' : index === 2 ? 'text-right' : 'text-left'} min-w-0`}>
+                  <p className="text-[11px] font-bold leading-tight text-[#171717]">{step.title}</p>
+                  <p className="mt-1 break-words text-[10px] leading-relaxed text-[#888]">{step.subtitle}</p>
                 </div>
               ))}
             </div>
