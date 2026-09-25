@@ -694,7 +694,7 @@ function MoniepointHome() {
           {/* mt 16px, px 16px */}
           <div className="px-4 mt-4">
             <div className="flex justify-between items-center mb-2.5">
-              <span className="text-[12px] font-semibold text-[#111]">Services</span>
+              <span className="theme-text-primary text-[12px] font-semibold">Services</span>
               <button className="text-[#2563EB] text-[11px] font-semibold">Edit</button>
             </div>
 
@@ -710,10 +710,10 @@ function MoniepointHome() {
                   <button
                     key={label}
                     onClick={() => navigate(routes[label] ?? '/')}
-                    className="bg-white rounded-xl py-3.5 px-1 flex flex-col items-center justify-center gap-2 border border-[#F0F0F0] active:bg-[#F2F3F5]"
+                    className="theme-surface theme-border rounded-xl py-3.5 px-1 flex flex-col items-center justify-center gap-2 border active:bg-[#F2F3F5]"
                   >
-                    <Icon className="text-[#1a1a1a]" size={22} strokeWidth={1.75} />
-                    <span className="text-[11px] font-medium text-[#333] text-center leading-tight">{label}</span>
+                    <Icon className="theme-icon" size={22} strokeWidth={1.75} />
+                    <span className="theme-text-primary text-[11px] font-medium text-center leading-tight">{label}</span>
                   </button>
                 );
               })}
