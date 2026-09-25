@@ -313,7 +313,9 @@ body {
 
 .dark [class~="text-[#111]"],
 .dark [class~="text-[#222]"],
-.dark [class~="text-[#444]"] {
+.dark [class~="text-[#333]"],
+.dark [class~="text-[#444]"],
+.dark [class~="text-[#1a1a1a]"] {
   color: var(--theme-primary-text) !important;
 }
 
