@@ -219,6 +219,122 @@
   --shadow-2xl: 0px 24px 48px -10px rgba(0,0,0,0.05);
 }
 
+/* App theme surfaces used by the mobile wallet screens. */
+:root {
+  --theme-page: #F2F3F5;
+  --theme-surface: #FFFFFF;
+  --theme-surface-alt: #F8F9FB;
+  --theme-primary-text: #111111;
+  --theme-secondary-text: #888888;
+  --theme-border: #E8EBF0;
+  --theme-icon: #555555;
+  --theme-control: #EEF2F7;
+  --theme-control-active: #FFFFFF;
+}
+
+.dark {
+  --background: 222 47% 11%;
+  --foreground: 210 40% 96%;
+  --border: 217 33% 27%;
+  --card: 222 39% 16%;
+  --card-foreground: 210 40% 96%;
+  --card-border: 217 33% 27%;
+  --popover: 222 39% 16%;
+  --popover-foreground: 210 40% 96%;
+  --popover-border: 217 33% 27%;
+  --secondary: 217 33% 22%;
+  --secondary-foreground: 210 40% 96%;
+  --muted: 217 33% 22%;
+  --muted-foreground: 215 20% 68%;
+  --accent: 217 33% 22%;
+  --accent-foreground: 210 40% 96%;
+  --input: 217 33% 27%;
+  --ring: 187 72% 42%;
+
+  --theme-page: #0B1220;
+  --theme-surface: #141E33;
+  --theme-surface-alt: #1B2942;
+  --theme-primary-text: #F4F7FB;
+  --theme-secondary-text: #A9B6CA;
+  --theme-border: #2B3A55;
+  --theme-icon: #B9C7DB;
+  --theme-control: #0F192C;
+  --theme-control-active: #2A3B59;
+}
+
+html,
+body {
+  background-color: var(--theme-page);
+}
+
+.theme-page {
+  background-color: var(--theme-page) !important;
+  color: var(--theme-primary-text);
+}
+
+.theme-surface {
+  background-color: var(--theme-surface) !important;
+}
+
+.theme-border {
+  border-color: var(--theme-border) !important;
+}
+
+.theme-text-primary {
+  color: var(--theme-primary-text) !important;
+}
+
+.theme-text-secondary {
+  color: var(--theme-secondary-text) !important;
+}
+
+.theme-icon {
+  color: var(--theme-icon);
+}
+
+.theme-control {
+  background-color: var(--theme-control);
+}
+
+.theme-control-active {
+  background-color: var(--theme-control-active);
+  color: var(--theme-primary-text);
+}
+
+/* Keep existing utility-heavy screens readable when the global theme changes. */
+.dark [class~="bg-white"] {
+  background-color: var(--theme-surface) !important;
+}
+
+.dark [class~="bg-[#F2F3F5]"],
+.dark [class~="bg-[#F6F6F6]"] {
+  background-color: var(--theme-page) !important;
+}
+
+.dark [class~="text-[#111]"],
+.dark [class~="text-[#222]"],
+.dark [class~="text-[#444]"] {
+  color: var(--theme-primary-text) !important;
+}
+
+.dark [class~="text-[#555]"],
+.dark [class~="text-[#666]"],
+.dark [class~="text-[#777]"],
+.dark [class~="text-[#888]"] {
+  color: var(--theme-secondary-text) !important;
+}
+
+.dark [class~="border-[#E8EBF0]"],
+.dark [class~="border-[#F0F0F0]"],
+.dark [class~="border-[#F5F5F5]"] {
+  border-color: var(--theme-border) !important;
+}
+
+.dark [class~="hover:bg-[#F8F9FB]"]:hover,
+.dark [class~="hover:bg-gray-100"]:hover {
+  background-color: var(--theme-surface-alt) !important;
+}
+
 @layer base {
   * {
     @apply border-border;

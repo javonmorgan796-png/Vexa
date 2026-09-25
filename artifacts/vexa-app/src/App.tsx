@@ -11,6 +11,7 @@ import {
   Send, X, Bot, CheckCheck, Wifi, Paperclip, ImagePlus, FileUp, FileText as FileIcon,
   Gift, Users, Share2, Percent, TrendingUp, BadgeCheck, ChevronUp,
   WalletCards, Plus, Trash2, Check, Coins,
+  Sun, Moon,
 } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
@@ -48,6 +49,41 @@ import type { AppTransaction } from '@/context/UserDataContext';
 import BusinessSecurityScreen from '@/pages/business/BusinessSecurityScreen';
 
 const queryClient = new QueryClient();
+
+type ThemeMode = 'light' | 'dark';
+const THEME_MODE_KEY = 'vexa_theme_mode';
+const ThemeModeContext = React.createContext<{
+  themeMode: ThemeMode;
+  setThemeMode: (mode: ThemeMode) => void;
+} | null>(null);
+
+function ThemeModeProvider({ children }: { children: React.ReactNode }) {
+  const [themeMode, setThemeModeState] = useState<ThemeMode>(() => (
+    localStorage.getItem(THEME_MODE_KEY) === 'dark' ? 'dark' : 'light'
+  ));
+
+  const setThemeMode = useCallback((mode: ThemeMode) => {
+    setThemeModeState(mode);
+    localStorage.setItem(THEME_MODE_KEY, mode);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', themeMode === 'dark');
+    document.documentElement.style.colorScheme = themeMode;
+  }, [themeMode]);
+
+  return (
+    <ThemeModeContext.Provider value={{ themeMode, setThemeMode }}>
+      {children}
+    </ThemeModeContext.Provider>
+  );
+}
+
+function useThemeMode() {
+  const context = React.useContext(ThemeModeContext);
+  if (!context) throw new Error('useThemeMode must be used inside ThemeModeProvider');
+  return context;
+}
 
 function timeSince(iso: string): string {
   const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
@@ -902,6 +938,7 @@ type SettingsSection = { heading: string; items: { icon: React.ReactNode; label:
 function SettingsPage() {
   const [, navigate] = useLocation();
   const { user, loading, signOut, profilePhoto } = useAuth();
+  const { themeMode, setThemeMode } = useThemeMode();
   const {
     state: securityState,
     busy: securityBusy,
@@ -976,14 +1013,14 @@ function SettingsPage() {
   ];
 
   return (
-    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="theme-page fixed inset-0 flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
       {/* Header */}
-      <div className="flex-none flex items-center gap-3 px-4 pb-3 bg-white border-b border-[#E8EBF0]"
+      <div className="theme-surface theme-border flex-none flex items-center gap-3 px-4 pb-3 border-b"
         style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
-        <button onClick={() => navigate('/')} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
+        <button onClick={() => navigate('/')} className="theme-icon w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         </button>
-        <span className="text-[16px] font-bold text-[#111]">Settings</span>
+        <span className="theme-text-primary text-[16px] font-bold">Settings</span>
       </div>
 
       <div className="flex-1 overflow-y-auto py-4 px-4 space-y-4" style={{ scrollbarWidth: 'none' }}>
@@ -1000,11 +1037,48 @@ function SettingsPage() {
           </div>
         </div>
 
+        {/* Appearance */}
+        <div>
+          <p className="theme-text-secondary text-[11px] font-semibold uppercase tracking-wide mb-2 px-1">Appearance</p>
+          <div className="theme-surface theme-border rounded-2xl border px-4 py-4">
+            <div className="flex items-center gap-3">
+              <span className="theme-icon flex h-10 w-10 items-center justify-center rounded-xl bg-[#EAF2FF] text-[#1769C2]">
+                {themeMode === 'dark' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="theme-text-primary text-[14px] font-semibold">App theme</p>
+                <p className="theme-text-secondary mt-0.5 text-[11px]">Choose how Vexa looks on this device</p>
+              </div>
+              <span className="theme-text-secondary text-[11px] font-semibold">{themeMode === 'dark' ? 'Dark' : 'Light'}</span>
+            </div>
+            <div className="theme-control mt-4 grid grid-cols-2 gap-1 rounded-xl p-1">
+              <button
+                type="button"
+                onClick={() => setThemeMode('light')}
+                aria-pressed={themeMode === 'light'}
+                className={`flex items-center justify-center gap-2 rounded-lg py-2.5 text-[12px] font-semibold transition-colors ${themeMode === 'light' ? 'theme-control-active shadow-sm' : 'theme-text-secondary'}`}
+              >
+                <Sun className="h-4 w-4" />
+                Light mode
+              </button>
+              <button
+                type="button"
+                onClick={() => setThemeMode('dark')}
+                aria-pressed={themeMode === 'dark'}
+                className={`flex items-center justify-center gap-2 rounded-lg py-2.5 text-[12px] font-semibold transition-colors ${themeMode === 'dark' ? 'theme-control-active shadow-sm' : 'theme-text-secondary'}`}
+              >
+                <Moon className="h-4 w-4" />
+                Dark mode
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* Settings sections */}
         {sections.map((section, si) => (
           <div key={si}>
-            {section.heading && <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide mb-2 px-1">{section.heading}</p>}
-            <div className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
+            {section.heading && <p className="theme-text-secondary text-[11px] font-semibold uppercase tracking-wide mb-2 px-1">{section.heading}</p>}
+            <div className="theme-surface theme-border rounded-2xl border overflow-hidden">
               {section.items.map((item, ii) => {
                 const isBio  = item.label === 'Biometric Login';
                 const isNot  = item.label === 'Notifications';
@@ -1019,12 +1093,12 @@ function SettingsPage() {
                       else if (isPCR) togglePasscodeOnReturn();
                       else if (item.action) item.action();
                     }}
-                    className={`w-full flex items-center gap-3.5 px-4 py-4 text-left transition-colors hover:bg-[#F8F9FB] ${ii < section.items.length - 1 ? 'border-b border-[#F5F5F5]' : ''}`}
+                     className={`theme-text-primary w-full flex items-center gap-3.5 px-4 py-4 text-left transition-colors hover:bg-[#F8F9FB] ${ii < section.items.length - 1 ? 'theme-border border-b' : ''}`}
                   >
-                    <span className={item.danger ? 'text-red-500' : 'text-[#555]'}>{item.icon}</span>
+                     <span className={item.danger ? 'text-red-500' : 'theme-icon'}>{item.icon}</span>
                     <div className="flex-1 min-w-0">
-                      <p className={`text-[14px] font-semibold ${item.danger ? 'text-red-500' : 'text-[#111]'}`}>{item.label}</p>
-                      {item.sub && <p className="text-[11px] text-[#888] mt-0.5 truncate">{item.sub}</p>}
+                       <p className={`text-[14px] font-semibold ${item.danger ? 'text-red-500' : 'theme-text-primary'}`}>{item.label}</p>
+                       {item.sub && <p className="theme-text-secondary text-[11px] mt-0.5 truncate">{item.sub}</p>}
                     </div>
                     {isToggle ? (
                       <div className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${toggleState ? 'bg-[#162353]' : 'bg-[#D1D5DB]'}`}>
@@ -1040,7 +1114,7 @@ function SettingsPage() {
           </div>
         ))}
 
-        <p className="text-center text-[11px] text-[#CCC] pb-2">Vexa Bank · v1.0.0</p>
+         <p className="theme-text-secondary text-center text-[11px] opacity-60 pb-2">Vexa Bank · v1.0.0</p>
       </div>
       {securityAction && (
         <div className="fixed inset-0 z-[70] flex items-end justify-center bg-[#07122B]/55 px-4 pb-4 sm:items-center">
@@ -5046,26 +5120,28 @@ function AppShell() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <AccountSecurityProvider>
-        <UserDataProvider>
-        <VexaFinanceProvider>
-        <BusinessProvider>
-          <BusinessSecurityProvider>
-            <TooltipProvider>
-              <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-                <AppShell />
-              </WouterRouter>
-              <Toaster />
-            </TooltipProvider>
-          </BusinessSecurityProvider>
-        </BusinessProvider>
-        </VexaFinanceProvider>
-        </UserDataProvider>
-        </AccountSecurityProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <ThemeModeProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <AccountSecurityProvider>
+          <UserDataProvider>
+          <VexaFinanceProvider>
+          <BusinessProvider>
+            <BusinessSecurityProvider>
+              <TooltipProvider>
+                <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+                  <AppShell />
+                </WouterRouter>
+                <Toaster />
+              </TooltipProvider>
+            </BusinessSecurityProvider>
+          </BusinessProvider>
+          </VexaFinanceProvider>
+          </UserDataProvider>
+          </AccountSecurityProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </ThemeModeProvider>
   );
 }
 
