@@ -44,6 +44,7 @@ interface AuthContextType {
   signIn: (phone: string, passcode: string) => Promise<{ success: boolean; error?: string; lockedUntil?: number }>;
   signUp: (name: string, phone: string, passcode: string) => Promise<{ success: boolean; error?: string }>;
   verifyPasscode: (passcode: string) => Promise<boolean>;
+  verifyPasscodeForAppReturn: (passcode: string) => Promise<{ success: boolean; lockedUntil?: number; error?: string }>;
   signOut: () => Promise<void>;
   updatePin: (oldPin: string, newPin: string) => Promise<{ success: boolean; error?: string }>;
   setInitialTransferPin: (newPin: string) => Promise<{ success: boolean; error?: string }>;
@@ -772,11 +773,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const verifyPasscode = async (passcode: string): Promise<boolean> => {
     if (!user) return false;
-      const { error } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signInWithPassword({
       email: phoneToEmail(user.phone),
       password: passcode,
     });
     return !error;
+  };
+
+  const verifyPasscodeForAppReturn = async (
+    passcode: string,
+  ): Promise<{ success: boolean; lockedUntil?: number; error?: string }> => {
+    if (!user) return { success: false, error: 'Your session has expired. Please sign in again.' };
+
+    const lockout = await checkRemoteLoginLockout(user.phone);
+    if (lockout.lockedUntil && lockout.lockedUntil > Date.now()) {
+      return {
+        success: false,
+        lockedUntil: lockout.lockedUntil,
+        error: 'Too many failed attempts. Please wait before trying again.',
+      };
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: phoneToEmail(user.phone),
+      password: passcode,
+    });
+    if (!error) {
+      await clearRemoteLoginFailures(user.phone);
+      return { success: true };
+    }
+
+    const recorded = await recordRemoteLoginFailure(user.phone);
+    return {
+      success: false,
+      lockedUntil: recorded.lockedUntil,
+      error: recorded.lockedUntil && recorded.lockedUntil > Date.now()
+        ? 'Too many failed attempts. Please wait before trying again.'
+        : 'Incorrect passcode',
+    };
   };
 
   const setInitialTransferPin = async (newPin: string): Promise<{ success: boolean; error?: string }> => {
@@ -847,7 +881,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider value={{
        user, session, isAuthenticated: !!user, profilePhoto, loading, profileError, refreshProfile, twoFactorPending,
-       signIn, signUp, verifyPasscode, signOut,
+       signIn, signUp, verifyPasscode, verifyPasscodeForAppReturn, signOut,
        updatePin, setInitialTransferPin, updatePassword, updateProfile, updateProfilePhoto,
         sendTwoFactorCode, verifyTwoFactorCode, updateTwoFactorEnabled,
         activeSessions, sessionsLoading, sessionsError, refreshSessions, revokeSession, revokeOtherSessions,

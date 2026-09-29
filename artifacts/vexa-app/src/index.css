@@ -473,3 +473,143 @@ body {
 .business-brand-scope [class*="border-[#2563EB]"] {
   border-color: var(--business-brand) !important;
 }
+
+/* Keep legacy utility-heavy screens in sync with the selected app theme. */
+.dark [class~="bg-white"],
+.dark [class~="bg-gray-50"],
+.dark [class~="bg-gray-100"] {
+  background-color: var(--theme-surface) !important;
+}
+
+.dark [class~="bg-[#F2F3F5]"],
+.dark [class~="bg-[#F5F5F5]"],
+.dark [class~="bg-[#F6F6F6]"] {
+  background-color: var(--theme-page) !important;
+}
+
+.dark [class~="bg-[#F8F9FB]"],
+.dark [class~="bg-[#F0F0F0]"],
+.dark [class~="bg-[#F5F6F8]"],
+.dark [class~="bg-[#F7F9FC]"],
+.dark [class~="bg-[#F8F8FA]"],
+.dark [class~="bg-[#EEF1F5]"],
+.dark [class~="bg-[#F1F2F7]"],
+.dark [class~="bg-[#F9F9F9]"] {
+  background-color: var(--theme-surface-alt) !important;
+}
+
+.dark [class~="bg-[#EAF0FF]"],
+.dark [class~="bg-[#EAF2FF]"],
+.dark [class~="bg-[#EEF2FF]"],
+.dark [class~="bg-[#EEF4FF]"],
+.dark [class~="bg-[#EFF6FF]"],
+.dark [class~="bg-[#F0F4FF]"],
+.dark [class~="bg-[#F0F6FF]"],
+.dark [class~="bg-[#E8F0FE]"],
+.dark [class~="bg-[#DCEBFF]"],
+.dark [class~="bg-blue-50"] {
+  background-color: var(--theme-control) !important;
+}
+
+.dark [class~="bg-[#FFF8E8]"] {
+  background-color: #2D281A !important;
+}
+
+.dark [class~="bg-[#FDE7A9]"] {
+  background-color: #594718 !important;
+}
+
+.dark [class~="text-[#111]"],
+.dark [class~="text-[#151515]"],
+.dark [class~="text-[#171717]"],
+.dark [class~="text-[#202020]"],
+.dark [class~="text-[#222]"],
+.dark [class~="text-[#252525]"],
+.dark [class~="text-[#333]"],
+.dark [class~="text-[#444]"],
+.dark [class~="text-gray-800"],
+.dark [class~="text-gray-900"] {
+  color: var(--theme-primary-text) !important;
+}
+
+.dark [class~="text-[#555]"],
+.dark [class~="text-[#666]"],
+.dark [class~="text-[#777]"],
+.dark [class~="text-[#888]"],
+.dark [class~="text-[#858585]"],
+.dark [class~="text-[#8D929C]"],
+.dark [class~="text-[#929292]"],
+.dark [class~="text-[#969696]"],
+.dark [class~="text-[#999]"],
+.dark [class~="text-[#A0A8B5]"],
+.dark [class~="text-[#A5A9B2]"],
+.dark [class~="text-[#AAA]"],
+.dark [class~="text-[#BBB]"],
+.dark [class~="text-gray-500"],
+.dark [class~="text-gray-600"] {
+  color: var(--theme-secondary-text) !important;
+}
+
+.dark [class~="text-[#6F4A00]"] {
+  color: #F7D989 !important;
+}
+
+.dark [class~="text-[#8A6A2C]"],
+.dark [class~="text-[#9A6800]"] {
+  color: #E0C16D !important;
+}
+
+.dark [class~="border-[#D8E0EA]"],
+.dark [class~="border-[#DCE3EE]"],
+.dark [class~="border-[#E0E0E0]"],
+.dark [class~="border-[#E2E8F0]"],
+.dark [class~="border-[#E4E5E7]"],
+.dark [class~="border-[#E7EAF2]"],
+.dark [class~="border-[#E8E8E8]"],
+.dark [class~="border-[#E8EBF0]"],
+.dark [class~="border-[#E8F0FE]"],
+.dark [class~="border-[#ECEEF2]"],
+.dark [class~="border-[#EDEEF1]"],
+.dark [class~="border-[#F0F0F0]"],
+.dark [class~="border-[#F0F1F4]"],
+.dark [class~="border-[#F0F2F5]"],
+.dark [class~="border-[#F5F5F5]"],
+.dark [class~="border-[#F9F9F9]"],
+.dark [class~="border-gray-200"],
+.dark [class~="border-gray-300"] {
+  border-color: var(--theme-border) !important;
+}
+
+.dark [class~="placeholder-[#C0C8D4]"]::placeholder,
+.dark [class~="placeholder-[#94A3B8]"]::placeholder {
+  color: var(--theme-secondary-text) !important;
+}
+
+.dark [class~="hover:bg-[#F8F9FB]"]:hover,
+.dark [class~="hover:bg-[#F9F9F9]"]:hover,
+.dark [class~="hover:bg-gray-100"]:hover,
+.dark [class~="active:bg-[#F1F5F9]"]:active,
+.dark [class~="active:bg-[#F2F3F5]"]:active,
+.dark [class~="active:bg-[#EEF2F7]"]:active,
+.dark [class~="active:bg-[#F8F9FB]"]:active {
+  background-color: var(--theme-surface-alt) !important;
+}
+
+/* Dark mode uses filled surfaces instead of the light-theme card outlines. */
+.dark [class*="border"] {
+  border-color: transparent !important;
+}
+
+/* The account actions are the only dark-mode controls that keep an outline. */
+.dark [class~="border-white/70"] {
+  border-color: rgba(255, 255, 255, 0.7) !important;
+}
+
+.dark [class*="outline"] {
+  outline-color: transparent !important;
+}
+
+.dark [class*="ring-"] {
+  --tw-ring-color: transparent !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+}

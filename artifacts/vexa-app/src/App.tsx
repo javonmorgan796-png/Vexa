@@ -11,7 +11,7 @@ import {
   Send, X, Bot, CheckCheck, Wifi, Paperclip, ImagePlus, FileUp, FileText as FileIcon,
   Gift, Users, Share2, Percent, TrendingUp, BadgeCheck, ChevronUp,
   WalletCards, Plus, Trash2, Check, Coins,
-  Sun, Moon,
+  Sun, Moon, Smartphone,
 } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
@@ -47,20 +47,31 @@ import { VexaFinanceProvider } from '@/context/VexaFinanceContext';
 import { AccountSecurityProvider, useAccountSecurity } from '@/context/AccountSecurityContext';
 import type { AppTransaction } from '@/context/UserDataContext';
 import BusinessSecurityScreen from '@/pages/business/BusinessSecurityScreen';
+import {
+  LOGIN_FAILURE_LIMIT,
+  LOGIN_LOCKOUT_MS,
+  normalizeLoginPhone,
+} from '@/lib/authSecurity';
 
 const queryClient = new QueryClient();
 
-type ThemeMode = 'light' | 'dark';
+type ThemeMode = 'light' | 'dark' | 'system';
 const THEME_MODE_KEY = 'vexa_theme_mode';
 const ThemeModeContext = React.createContext<{
   themeMode: ThemeMode;
+  resolvedThemeMode: 'light' | 'dark';
   setThemeMode: (mode: ThemeMode) => void;
 } | null>(null);
 
 function ThemeModeProvider({ children }: { children: React.ReactNode }) {
-  const [themeMode, setThemeModeState] = useState<ThemeMode>(() => (
-    localStorage.getItem(THEME_MODE_KEY) === 'dark' ? 'dark' : 'light'
+  const [themeMode, setThemeModeState] = useState<ThemeMode>(() => {
+    const stored = localStorage.getItem(THEME_MODE_KEY);
+    return stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system';
+  });
+  const [systemTheme, setSystemTheme] = useState<'light' | 'dark'>(() => (
+    window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
   ));
+  const resolvedThemeMode = themeMode === 'system' ? systemTheme : themeMode;
 
   const setThemeMode = useCallback((mode: ThemeMode) => {
     setThemeModeState(mode);
@@ -68,12 +79,22 @@ function ThemeModeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', themeMode === 'dark');
-    document.documentElement.style.colorScheme = themeMode;
-  }, [themeMode]);
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleSystemThemeChange = (event: MediaQueryListEvent) => {
+      setSystemTheme(event.matches ? 'dark' : 'light');
+    };
+    setSystemTheme(mediaQuery.matches ? 'dark' : 'light');
+    mediaQuery.addEventListener('change', handleSystemThemeChange);
+    return () => mediaQuery.removeEventListener('change', handleSystemThemeChange);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', resolvedThemeMode === 'dark');
+    document.documentElement.style.colorScheme = resolvedThemeMode;
+  }, [resolvedThemeMode]);
 
   return (
-    <ThemeModeContext.Provider value={{ themeMode, setThemeMode }}>
+    <ThemeModeContext.Provider value={{ themeMode, resolvedThemeMode, setThemeMode }}>
       {children}
     </ThemeModeContext.Provider>
   );
@@ -215,6 +236,7 @@ const PROMO_BANNERS = [
   {
     id: 'moneyworld',
     bg: '#F0EFFF',
+    darkBg: '#211F3B',
     accent: '#7C3AED',
     badge: '🌍 MoneyWorld',
     title: 'Earn big with MonieWorld',
@@ -244,6 +266,7 @@ const PROMO_BANNERS = [
   {
     id: 'cashback',
     bg: '#FFF4E6',
+    darkBg: '#382719',
     accent: '#EA580C',
     badge: '🔥 Limited Offer',
     title: '5% Cashback on Transfers',
@@ -269,6 +292,7 @@ const PROMO_BANNERS = [
   {
     id: 'savings',
     bg: '#E8F5F0',
+    darkBg: '#12372E',
     accent: '#059669',
     badge: '📈 Up to 15% p.a.',
     title: 'Grow Your Savings Faster',
@@ -291,6 +315,7 @@ const PROMO_BANNERS = [
 ];
 
 function PromoBannerCarousel() {
+  const { resolvedThemeMode } = useThemeMode();
   const [current, setCurrent] = useState(0);
   const [animDir, setAnimDir] = useState<'left'|'right'>('left');
   const [isAnimating, setIsAnimating] = useState(false);
@@ -317,6 +342,7 @@ function PromoBannerCarousel() {
   }, [current, isAnimating]);
 
   const b = PROMO_BANNERS[current];
+  const isDark = resolvedThemeMode === 'dark';
 
   const handleTouchStart = (e: React.TouchEvent) => { touchStart.current = e.touches[0].clientX; };
   const handleTouchEnd = (e: React.TouchEvent) => {
@@ -335,7 +361,7 @@ function PromoBannerCarousel() {
       <div
         className="rounded-xl p-4 flex items-center justify-between overflow-hidden relative select-none"
         style={{
-          background: b.bg,
+          background: isDark ? b.darkBg : b.bg,
           opacity: isAnimating ? 0 : 1,
           transform: isAnimating ? (animDir === 'left' ? 'translateX(-8px)' : 'translateX(8px)') : 'translateX(0)',
           transition: 'opacity 0.28s ease, transform 0.28s ease, background 0.3s ease',
@@ -346,11 +372,11 @@ function PromoBannerCarousel() {
         <div className="flex-1 pr-3">
           {/* Badge */}
           <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full mb-1.5"
-            style={{ background: `${b.accent}18`, color: b.accent }}>
+            style={{ background: `${b.accent}${isDark ? '35' : '18'}`, color: b.accent }}>
             {b.badge}
           </span>
-          <div className="text-[14px] font-bold text-[#111] mb-1 leading-snug">{b.title}</div>
-          <div className="text-[11px] text-[#555] leading-relaxed mb-2">{b.body}</div>
+          <div className="theme-text-primary text-[14px] font-bold mb-1 leading-snug">{b.title}</div>
+          <div className="theme-text-secondary text-[11px] leading-relaxed mb-2">{b.body}</div>
           <button className="text-[11px] font-bold px-3 py-1 rounded-lg text-white"
             style={{ background: b.accent }}>
             {b.cta} →
@@ -368,7 +394,7 @@ function PromoBannerCarousel() {
             style={{
               width: i === current ? 18 : 6,
               height: 6,
-              background: i === current ? PROMO_BANNERS[current].accent : '#D1D5DB',
+              background: i === current ? PROMO_BANNERS[current].accent : isDark ? 'var(--theme-border)' : '#D1D5DB',
             }} />
         ))}
       </div>
@@ -378,48 +404,67 @@ function PromoBannerCarousel() {
 
 /* ─── Passcode Lock Screen (shown on app-return if setting is ON) ──── */
 const PASSCODE_RETURN_KEY = 'vexa_passcode_on_return';
+const RETURN_LOCKOUT_KEY = 'vexa_passcode_return_lockout';
 
-/* ── Lock-timestamp helpers (localStorage so full-reload is covered) ── */
-const LOCK_HIDDEN_AT_KEY  = 'vexa_lock_hidden_at';   // ms timestamp written on hide
-const LOCK_TIMEOUT_MS     = 5 * 60 * 1000;           // 5 minutes
+type ReturnLockoutRecord = {
+  attempts: number;
+  lockedUntil: number | null;
+};
 
-function writeLockTimestamp() {
-  localStorage.setItem(LOCK_HIDDEN_AT_KEY, String(Date.now()));
+function returnLockoutKey(phone: string | undefined) {
+  return phone ? `${RETURN_LOCKOUT_KEY}_${normalizeLoginPhone(phone)}` : RETURN_LOCKOUT_KEY;
 }
-function clearLockTimestamp() {
-  localStorage.removeItem(LOCK_HIDDEN_AT_KEY);
+
+function loadReturnLockout(phone: string | undefined): ReturnLockoutRecord {
+  try {
+    const raw = localStorage.getItem(returnLockoutKey(phone));
+    if (!raw) return { attempts: 0, lockedUntil: null };
+    const parsed = JSON.parse(raw) as Partial<ReturnLockoutRecord>;
+    return {
+      attempts: typeof parsed.attempts === 'number' ? parsed.attempts : 0,
+      lockedUntil: typeof parsed.lockedUntil === 'number' ? parsed.lockedUntil : null,
+    };
+  } catch {
+    return { attempts: 0, lockedUntil: null };
+  }
 }
-/** Returns true when the stored timestamp is ≥ 5 min old (or missing). */
-function shouldLockNow(): boolean {
-  const raw = localStorage.getItem(LOCK_HIDDEN_AT_KEY);
-  if (!raw) return false;
-  return Date.now() - Number(raw) >= LOCK_TIMEOUT_MS;
+
+function saveReturnLockout(phone: string | undefined, record: ReturnLockoutRecord) {
+  localStorage.setItem(returnLockoutKey(phone), JSON.stringify(record));
+}
+
+function clearReturnLockout(phone: string | undefined) {
+  localStorage.removeItem(returnLockoutKey(phone));
 }
 
 /* ── Passcode Lock Screen ─────────────────────────────────────────────── */
-const MAX_LOCK_ATTEMPTS = 5;
-
 function PasscodeLockScreen({ onUnlock, onSignOut }: { onUnlock: () => void; onSignOut: () => void }) {
-  const { user, profilePhoto, verifyPasscode } = useAuth();
+  const { user, profilePhoto, verifyPasscodeForAppReturn } = useAuth();
   const [pin, setPin]           = useState('');
   const [shake, setShake]       = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [attempts, setAttempts] = useState(0);
-  const [lockedOut, setLockedOut] = useState(false);
-  const [countdown, setCountdown] = useState(0);
+  const [attempts, setAttempts] = useState(() => loadReturnLockout(user?.phone).attempts);
+  const [lockedUntil, setLockedUntil] = useState(() => loadReturnLockout(user?.phone).lockedUntil ?? 0);
+  const [now, setNow] = useState(() => Date.now());
+  const lockedOut = lockedUntil > now;
+  const countdown = Math.max(0, lockedUntil - now);
 
-  // Progressive lockout: 30 s after MAX_LOCK_ATTEMPTS wrong tries
+  // Keep the local countdown refresh-safe even if the optional security
+  // migration has not been installed yet. The RPC is still checked below
+  // whenever it is available, so another device cannot bypass the delay.
   useEffect(() => {
-    if (!lockedOut) return;
-    setCountdown(30);
-    const id = setInterval(() => {
-      setCountdown(c => {
-        if (c <= 1) { clearInterval(id); setLockedOut(false); setAttempts(0); return 0; }
-        return c - 1;
-      });
-    }, 1000);
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [lockedOut]);
+  }, []);
+
+  useEffect(() => {
+    if (lockedUntil > 0 && lockedUntil <= now) {
+      clearReturnLockout(user?.phone);
+      setLockedUntil(0);
+      setAttempts(0);
+      setErrorMsg('');
+    }
+  }, [lockedUntil, now, user?.phone]);
 
   function addDigit(d: string) {
     if (lockedOut || pin.length >= 6) return;
@@ -436,21 +481,40 @@ function PasscodeLockScreen({ onUnlock, onSignOut }: { onUnlock: () => void; onS
   }
 
   async function verify(code: string) {
-    if (user && await verifyPasscode(code)) {
-      clearLockTimestamp();
-      onUnlock();
+    if (lockedOut) {
+      setErrorMsg('Too many failed attempts. Please wait for the security delay to finish.');
       return;
     }
-    const newAttempts = attempts + 1;
-    setAttempts(newAttempts);
-    setShake(true);
-    setTimeout(() => { setShake(false); setPin(''); }, 500);
 
-    if (newAttempts >= MAX_LOCK_ATTEMPTS) {
-      setLockedOut(true);
-      setErrorMsg('Too many attempts — locked for 30 s');
-    } else {
-      setErrorMsg(`Incorrect passcode · ${MAX_LOCK_ATTEMPTS - newAttempts} attempt${MAX_LOCK_ATTEMPTS - newAttempts !== 1 ? 's' : ''} left`);
+    if (user) {
+      const result = await verifyPasscodeForAppReturn(code);
+      if (result.success) {
+        clearReturnLockout(user.phone);
+        setAttempts(0);
+        setLockedUntil(0);
+        onUnlock();
+        return;
+      }
+
+      const previous = loadReturnLockout(user.phone);
+      const nextAttempts = result.lockedUntil ? LOGIN_FAILURE_LIMIT : previous.attempts + 1;
+      const nextLockedUntil = result.lockedUntil && result.lockedUntil > Date.now()
+        ? result.lockedUntil
+        : nextAttempts >= LOGIN_FAILURE_LIMIT
+          ? Date.now() + LOGIN_LOCKOUT_MS
+          : null;
+      saveReturnLockout(user.phone, { attempts: nextAttempts, lockedUntil: nextLockedUntil });
+      setAttempts(nextAttempts);
+      setLockedUntil(nextLockedUntil ?? 0);
+      setShake(true);
+      setTimeout(() => { setShake(false); setPin(''); }, 500);
+
+      if (nextLockedUntil) {
+        setErrorMsg('Too many attempts — locked for 5 minutes');
+      } else {
+        setErrorMsg(`Incorrect passcode · ${LOGIN_FAILURE_LIMIT - nextAttempts} attempt${LOGIN_FAILURE_LIMIT - nextAttempts !== 1 ? 's' : ''} left`);
+      }
+      return;
     }
   }
 
@@ -505,7 +569,7 @@ function PasscodeLockScreen({ onUnlock, onSignOut }: { onUnlock: () => void; onS
         <div className="h-5">
           {lockedOut ? (
             <p className="text-orange-400 text-[12px] font-medium">
-              Locked — try again in <span className="font-bold tabular-nums">{countdown}s</span>
+              Locked — try again in <span className="font-bold tabular-nums">{Math.ceil(countdown / 1000)}s</span>
             </p>
           ) : errorMsg ? (
             <p className="text-[#FF6B6B] text-[12px] font-medium">{errorMsg}</p>
@@ -571,7 +635,7 @@ function TwoFactorWarningCard({ onEnable }: { onEnable: () => void }) {
     <div className="mx-3 mt-3">
       <button
         onClick={onEnable}
-        className="w-full flex items-center gap-2.5 text-left bg-[#FFF8E8] border border-[#F3D58B] rounded-xl px-3 py-2"
+        className="w-full flex items-center gap-2.5 text-left bg-[#FFF8E8] rounded-xl px-3 py-2 border-0 outline-none ring-0 shadow-sm focus:outline-none focus:ring-0"
       >
         <div className="w-8 h-8 rounded-full bg-[#FDE7A9] flex items-center justify-center shrink-0">
           <TriangleAlert className="w-4 h-4 text-[#9A6800]" />
@@ -938,7 +1002,7 @@ type SettingsSection = { heading: string; items: { icon: React.ReactNode; label:
 function SettingsPage() {
   const [, navigate] = useLocation();
   const { user, loading, signOut, profilePhoto } = useAuth();
-  const { themeMode, setThemeMode } = useThemeMode();
+  const { themeMode, resolvedThemeMode, setThemeMode } = useThemeMode();
   const {
     state: securityState,
     busy: securityBusy,
@@ -1042,16 +1106,20 @@ function SettingsPage() {
           <p className="theme-text-secondary text-[11px] font-semibold uppercase tracking-wide mb-2 px-1">Appearance</p>
           <div className="theme-surface theme-border rounded-2xl border px-4 py-4">
             <div className="flex items-center gap-3">
-              <span className="theme-icon flex h-10 w-10 items-center justify-center rounded-xl bg-[#EAF2FF] text-[#1769C2]">
-                {themeMode === 'dark' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+               <span className="theme-icon flex h-10 w-10 items-center justify-center rounded-xl bg-[#EAF2FF] text-[#1769C2]">
+                {themeMode === 'system'
+                  ? <Smartphone className="h-5 w-5" />
+                  : resolvedThemeMode === 'dark' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
               </span>
               <div className="min-w-0 flex-1">
                 <p className="theme-text-primary text-[14px] font-semibold">App theme</p>
                 <p className="theme-text-secondary mt-0.5 text-[11px]">Choose how Vexa looks on this device</p>
               </div>
-              <span className="theme-text-secondary text-[11px] font-semibold">{themeMode === 'dark' ? 'Dark' : 'Light'}</span>
+              <span className="theme-text-secondary text-[11px] font-semibold">
+                {themeMode === 'system' ? 'Phone default' : resolvedThemeMode === 'dark' ? 'Dark' : 'Light'}
+              </span>
             </div>
-            <div className="theme-control mt-4 grid grid-cols-2 gap-1 rounded-xl p-1">
+            <div className="theme-control mt-4 grid grid-cols-3 gap-1 rounded-xl p-1">
               <button
                 type="button"
                 onClick={() => setThemeMode('light')}
@@ -1069,6 +1137,15 @@ function SettingsPage() {
               >
                 <Moon className="h-4 w-4" />
                 Dark mode
+              </button>
+              <button
+                type="button"
+                onClick={() => setThemeMode('system')}
+                aria-pressed={themeMode === 'system'}
+                className={`flex items-center justify-center gap-2 rounded-lg py-2.5 text-[12px] font-semibold transition-colors ${themeMode === 'system' ? 'theme-control-active shadow-sm' : 'theme-text-secondary'}`}
+              >
+                <Smartphone className="h-4 w-4" />
+                Phone default
               </button>
             </div>
           </div>
@@ -1936,7 +2013,7 @@ function NotificationsPage() {
                 </div>
                 <p className="text-[12px] text-[#555] leading-relaxed">{n.body}</p>
               </div>
-              <span className="w-2 h-2 rounded-full bg-[#162353] shrink-0 mt-1.5" />
+              <span className="w-2 h-2 rounded-full bg-red-500 shrink-0 mt-1.5" />
             </button>
           );
         })}
@@ -5015,68 +5092,53 @@ function AppShell() {
   const prevPathRef = React.useRef('');
 
   // ── Passcode-on-return lock ──────────────────────────────────────────
-  // Initialise locked state: if a lock timestamp is already in localStorage
-  // AND it's ≥ 5 min old AND the pref is on, lock immediately on mount.
-  const [locked, setLocked] = useState(() => {
-    const pref = localStorage.getItem(PASSCODE_RETURN_KEY) === 'true';
-    return pref && shouldLockNow();
-  });
+  const [locked, setLocked] = useState(false);
+  const lockInitializedRef = useRef(false);
 
-  // Write the "hidden at" timestamp whenever the page is hidden / unloaded.
-  // Read it back whenever the page becomes visible again.
   useEffect(() => {
-    function onHide() {
-      if (localStorage.getItem(PASSCODE_RETURN_KEY) === 'true') {
-        writeLockTimestamp();
+    function onShow() {
+      const pref = localStorage.getItem(PASSCODE_RETURN_KEY) === 'true';
+      if (pref && isAuthenticated && splashDone && !loading) {
+        setLocked(true);
       }
     }
 
-    function onShow() {
-      const pref = localStorage.getItem(PASSCODE_RETURN_KEY) === 'true';
-      if (pref && isAuthenticated && splashDone && shouldLockNow()) {
+    // A fresh reload is also an app return when the setting is enabled.
+    if (splashDone && !loading && isAuthenticated && !lockInitializedRef.current) {
+      lockInitializedRef.current = true;
+      if (localStorage.getItem(PASSCODE_RETURN_KEY) === 'true') {
         setLocked(true);
       }
-      // Whether we lock or not, clear the stored timestamp so a quick
-      // background → foreground within the same page cycle doesn't re-fire.
-      clearLockTimestamp();
+    }
+    if (!isAuthenticated) {
+      lockInitializedRef.current = false;
     }
 
     // visibilitychange: tab switch, minimise, screen-off on mobile
     function handleVisibility() {
-      if (document.hidden) onHide(); else onShow();
+      if (!document.hidden) onShow();
     }
 
     // pagehide / pageshow: full page unload / back-forward cache restore
     // (iOS Safari & some Android browsers fire these instead of visibilitychange)
-    function handlePageHide()  { onHide(); }
     function handlePageShow(e: PageTransitionEvent) {
       // persisted == came from BFCache (page was fully frozen)
       if (e.persisted) onShow();
     }
 
-    // beforeunload: user closes the tab entirely
-    function handleBeforeUnload() { onHide(); }
-
     // focus / blur on the window itself (desktop tab switch fallback)
-    function handleBlur()  { onHide(); }
     function handleFocus() { onShow(); }
 
     document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('pagehide',     handlePageHide);
     window.addEventListener('pageshow',     handlePageShow as EventListener);
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    window.addEventListener('blur',         handleBlur);
     window.addEventListener('focus',        handleFocus);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('pagehide',     handlePageHide);
       window.removeEventListener('pageshow',     handlePageShow as EventListener);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      window.removeEventListener('blur',         handleBlur);
       window.removeEventListener('focus',        handleFocus);
     };
-  }, [isAuthenticated, splashDone]);
+  }, [isAuthenticated, loading, splashDone]);
 
   useEffect(() => {
     if (splashDone && !loading && !session && !isAuthenticated) {
@@ -5110,8 +5172,8 @@ function AppShell() {
       {twoFactorPending && <TwoFactorChallenge />}
       {locked && (
         <PasscodeLockScreen
-          onUnlock={() => { clearLockTimestamp(); setLocked(false); }}
-          onSignOut={() => { clearLockTimestamp(); setLocked(false); signOut(); navigate('/signin'); }}
+          onUnlock={() => setLocked(false)}
+          onSignOut={() => { setLocked(false); signOut(); navigate('/signin'); }}
         />
       )}
     </>
