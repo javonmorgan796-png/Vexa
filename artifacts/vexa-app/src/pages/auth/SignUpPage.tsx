@@ -65,7 +65,7 @@ function PinBoxes({
           disabled={disabled}
           onChange={e => handleDigit(idx, e.target.value)}
           onKeyDown={e => handleKeyDown(idx, e)}
-          className="w-full h-[52px] rounded-xl bg-[#F8F9FB] text-center text-[20px] font-bold text-[#111] focus:outline-none focus:ring-0 focus:bg-white transition-colors caret-transparent disabled:opacity-50"
+          className="w-full h-[52px] rounded-xl bg-[#EEF2F7] text-center text-[20px] font-bold text-[#111] focus:outline-none focus:ring-0 focus:bg-[#E8F4EF] transition-colors caret-transparent disabled:opacity-50"
           style={{ maxWidth: 52 }}
         />
       ))}
@@ -316,7 +316,7 @@ export default function SignUpPage() {
             <label className="text-[12px] font-semibold text-[#444] mb-1.5 block">Full Name</label>
             <input type="text" autoComplete="name" placeholder="e.g. Chidi Emmanuel Obi"
               value={name} onChange={e => { setName(e.target.value); setError(''); }}
-              className="w-full h-[50px] rounded-xl bg-[#F8F9FB] px-4 text-[14px] text-[#111] placeholder-[#C0C8D4] focus:outline-none focus:ring-0 focus:bg-white transition-colors" />
+              className="w-full h-[50px] rounded-xl bg-[#EEF2F7] px-4 text-[14px] text-[#111] placeholder-[#8994A5] focus:outline-none focus:ring-0 focus:bg-[#E8F4EF] transition-colors" />
           </div>
 
           {/* Phone Number with country picker */}
@@ -326,7 +326,7 @@ export default function SignUpPage() {
               <button
                 type="button"
                 onClick={() => setShowPicker(p => !p)}
-                className="h-[50px] px-3 rounded-xl bg-[#F8F9FB] flex items-center gap-1.5 shrink-0 hover:bg-[#F0F4F8] focus:outline-none transition-colors"
+                className="h-[50px] px-3 rounded-xl bg-[#EEF2F7] flex items-center gap-1.5 shrink-0 hover:bg-[#E8EDF3] focus:outline-none focus:bg-[#E8F4EF] transition-colors"
               >
                 <span className="text-[18px]">{countryCode.flag}</span>
                 <span className="text-[13px] font-bold text-[#162353]">{countryCode.code}</span>
@@ -339,7 +339,7 @@ export default function SignUpPage() {
                       key={c.code}
                       type="button"
                       onClick={() => { setCountryCode(c); setShowPicker(false); }}
-                      className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#F8F9FB] transition-colors ${c.code === countryCode.code ? 'bg-[#F0F4FF]' : ''}`}
+                      className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#EEF2F7] transition-colors ${c.code === countryCode.code ? 'bg-[#F0F4FF]' : ''}`}
                     >
                       <span className="text-[18px]">{c.flag}</span>
                       <span className="text-[13px] font-semibold text-[#111]">{c.name}</span>
@@ -350,7 +350,7 @@ export default function SignUpPage() {
               )}
               <input type="tel" inputMode="numeric" autoComplete="tel" placeholder="Phone Number"
                 value={phone} onChange={e => { setPhone(e.target.value); setError(''); }}
-                className="flex-1 h-[50px] rounded-xl bg-[#F8F9FB] px-4 text-[14px] text-[#111] placeholder-[#C0C8D4] focus:outline-none focus:ring-0 focus:bg-white transition-colors" />
+                className="flex-1 h-[50px] rounded-xl bg-[#EEF2F7] px-4 text-[14px] text-[#111] placeholder-[#8994A5] focus:outline-none focus:ring-0 focus:bg-[#E8F4EF] transition-colors" />
             </div>
           </div>
 
