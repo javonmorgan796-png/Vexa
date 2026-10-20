@@ -31,7 +31,7 @@ function formatFiat(valueInNaira: number, currency: FiatCurrency, nairaPerUsd = 
   return `${symbol}${value.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function useCountUp(targetValue: number, durationMs = 850) {
+function useCountUp(targetValue: number, durationMs = 2000) {
   const [animatedValue, setAnimatedValue] = useState(0);
   const currentValue = useRef(0);
 
@@ -51,7 +51,9 @@ function useCountUp(targetValue: number, durationMs = 850) {
     const animate = (timestamp: number) => {
       startTime ??= timestamp;
       const progress = Math.min((timestamp - startTime) / durationMs, 1);
-      const easedProgress = 1 - Math.pow(1 - progress, 3);
+      const easedProgress = progress < 0.5
+        ? 4 * Math.pow(progress, 3)
+        : 1 - Math.pow(-2 * progress + 2, 3) / 2;
       const nextValue = start + (target - start) * easedProgress;
       currentValue.current = nextValue;
       setAnimatedValue(nextValue);
