@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDownToLine, ArrowLeftRight, ArrowUpRight, Check, Copy, RefreshCw, Send, WalletCards, X } from 'lucide-react';
 import { FaBitcoin, FaEthereum } from 'react-icons/fa6';
 import { SiTether } from 'react-icons/si';
@@ -29,6 +29,59 @@ function formatFiat(valueInNaira: number, currency: FiatCurrency, nairaPerUsd = 
   const symbol = currency === 'USD' ? '$' : '₦';
   const locale = currency === 'USD' ? 'en-US' : 'en-NG';
   return `${symbol}${value.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function useCountUp(targetValue: number, durationMs = 850) {
+  const [animatedValue, setAnimatedValue] = useState(0);
+  const currentValue = useRef(0);
+
+  useEffect(() => {
+    const target = Number.isFinite(targetValue) ? targetValue : 0;
+    const start = currentValue.current;
+    if (target === start) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      currentValue.current = target;
+      setAnimatedValue(target);
+      return;
+    }
+
+    let frameId = 0;
+    let startTime: number | null = null;
+
+    const animate = (timestamp: number) => {
+      startTime ??= timestamp;
+      const progress = Math.min((timestamp - startTime) / durationMs, 1);
+      const easedProgress = 1 - Math.pow(1 - progress, 3);
+      const nextValue = start + (target - start) * easedProgress;
+      currentValue.current = nextValue;
+      setAnimatedValue(nextValue);
+
+      if (progress < 1) {
+        frameId = window.requestAnimationFrame(animate);
+      } else {
+        currentValue.current = target;
+        setAnimatedValue(target);
+      }
+    };
+
+    frameId = window.requestAnimationFrame(animate);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [targetValue, durationMs]);
+
+  return animatedValue;
+}
+
+function AnimatedFiatAmount({
+  valueInNaira,
+  currency,
+  nairaPerUsd,
+}: {
+  valueInNaira: number;
+  currency: FiatCurrency;
+  nairaPerUsd: number;
+}) {
+  const animatedValue = useCountUp(valueInNaira);
+  return <>{formatFiat(animatedValue, currency, nairaPerUsd)}</>;
 }
 
 function money(value: number) {
@@ -370,7 +423,7 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
                 <div className="min-w-0">
                   <p className="text-[10px] font-medium text-white/55">Available balance</p>
                   <p className="mt-0.5 truncate text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums">
-                    {displayFiat(exchangeNaira)}
+                    <AnimatedFiatAmount valueInNaira={exchangeNaira} currency={fiatCurrency} nairaPerUsd={nairaPerUsd} />
                   </p>
                 </div>
                 <p className="mb-0.5 shrink-0 rounded-full bg-white/[0.08] px-2.5 py-1 text-[9px] font-medium text-white/65">
@@ -385,7 +438,9 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
                 <span className="shrink-0">{lastUpdatedAt ? `Synced ${timeSince(lastUpdatedAt)}` : 'Syncing now'}</span>
                 <span className="mx-1 h-0.5 w-0.5 shrink-0 rounded-full bg-white/35" />
                 <span className="truncate">Crypto holdings</span>
-                <b className="ml-auto shrink-0 text-[12px] font-bold text-white tabular-nums">{displayFiat(portfolioValue)}</b>
+                <b className="ml-auto shrink-0 text-[12px] font-bold text-white tabular-nums">
+                  <AnimatedFiatAmount valueInNaira={portfolioValue} currency={fiatCurrency} nairaPerUsd={nairaPerUsd} />
+                </b>
               </div>
 
               <div className="mt-3 grid grid-cols-3 overflow-hidden rounded-2xl border border-white/[0.09] bg-white/[0.055]">
