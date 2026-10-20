@@ -443,7 +443,7 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
             { label: 'Receive', path: '/crypto/receive', icon: <ArrowDownToLine className="w-5 h-5" /> },
           ].map(action => (
             <button key={action.path} onClick={() => navigate(action.path)}
-              className="flex flex-col items-center justify-center gap-2 rounded-2xl bg-white px-3 py-4 text-[#162353] shadow-sm transition-colors hover:bg-[#F8F9FB] active:scale-[0.98]">
+              className="theme-surface-alt theme-brand-text flex flex-col items-center justify-center gap-2 rounded-2xl px-3 py-4 shadow-sm transition-colors hover:bg-[#F8F9FB] active:scale-[0.98]">
               {action.icon}
               <span className="text-[11px] font-bold">{action.label}</span>
             </button>

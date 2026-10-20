@@ -284,6 +284,10 @@ body {
   background-color: var(--theme-surface) !important;
 }
 
+.theme-surface-alt {
+  background-color: var(--theme-surface-alt) !important;
+}
+
 .theme-border {
   border-color: var(--theme-border) !important;
 }
