@@ -346,55 +346,77 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
         style={{ scrollbarWidth: 'none' }}
       >
         {view === 'overview' ? (
-        <div className="rounded-3xl bg-[#0C193F] text-white p-5 relative overflow-hidden">
-          <div className="absolute -right-10 -top-12 w-40 h-40 rounded-full bg-[#35C6FF]/20 blur-2xl" />
-          <div className="relative">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-white/60 text-[11px] uppercase tracking-[0.18em]">Exchange balance</p>
-                <p className="text-[28px] font-extrabold mt-1">{displayFiat(exchangeNaira)}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setFiatCurrency(current => current === 'NGN' ? 'USD' : 'NGN')}
-                className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center transition-colors hover:bg-white/20 active:scale-95"
-                aria-label={`Switch currency display to ${fiatCurrency === 'NGN' ? 'US dollars' : 'Naira'}`}
-                title={`Switch to ${fiatCurrency === 'NGN' ? 'USD' : 'NGN'}`}
-              >
-                <ArrowLeftRight className="w-5 h-5 text-[#68D9FF]" />
-              </button>
-            </div>
-            <p className="text-white/60 text-[11px] mt-2">Use your Vexa balance to buy, sell, and send supported assets.</p>
-            <p className="text-white/50 text-[10px] mt-1">
-              Live sync · Last updated {lastUpdatedAt ? timeSince(lastUpdatedAt) : 'updating…'}
-            </p>
-            <div className="mt-4 border-t border-white/10 pt-3">
+          <div className="relative overflow-hidden rounded-[26px] bg-gradient-to-br from-[#0C193F] via-[#10234C] to-[#0D3F50] p-[18px] text-white shadow-[0_18px_40px_-22px_rgba(12,25,63,0.75)]">
+            <div className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-[#36D5D0]/15 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-20 left-20 h-32 w-48 rounded-full bg-[#2586B8]/15 blur-3xl" />
+            <div className="relative">
               <div className="flex items-center justify-between">
-                <span className="text-white/60 text-[10px]">Crypto holdings value</span>
-                <b className="text-[13px]">{displayFiat(portfolioValue)}</b>
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-[#72E6B5] shadow-[0_0_0_4px_rgba(114,230,181,0.12)]" />
+                  <span className="text-[10px] font-bold uppercase tracking-[0.17em] text-white/65">Vexa exchange</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFiatCurrency(current => current === 'NGN' ? 'USD' : 'NGN')}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.08] text-[#8DE8F4] transition hover:bg-white/[0.15] active:scale-95"
+                  aria-label={`Switch currency display to ${fiatCurrency === 'NGN' ? 'US dollars' : 'Naira'}`}
+                  title={`Switch to ${fiatCurrency === 'NGN' ? 'USD' : 'NGN'}`}
+                >
+                  <ArrowLeftRight className="h-4 w-4" />
+                </button>
               </div>
-              <div className="grid grid-cols-3 gap-2 mt-3">
-                {(Object.keys(ASSET_META) as CryptoAsset[]).map(item => (
-                  <div key={item} className="rounded-xl bg-white/10 px-2 py-2">
+
+              <div className="mt-3 flex items-end justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-medium text-white/55">Available balance</p>
+                  <p className="mt-0.5 truncate text-[30px] font-extrabold leading-none tracking-[-0.04em] tabular-nums">
+                    {displayFiat(exchangeNaira)}
+                  </p>
+                </div>
+                <p className="mb-0.5 shrink-0 rounded-full bg-white/[0.08] px-2.5 py-1 text-[9px] font-medium text-white/65">
+                  Buy · sell · transfer
+                </p>
+              </div>
+
+              <div className="mt-3 flex items-center gap-1.5 text-[10px] text-white/55">
+                {lastUpdatedAt
+                  ? <Check className="h-3 w-3 shrink-0 text-[#72E6B5]" />
+                  : <RefreshCw className="h-3 w-3 shrink-0 animate-spin text-[#8DE8F4]" />}
+                <span className="shrink-0">{lastUpdatedAt ? `Synced ${timeSince(lastUpdatedAt)}` : 'Syncing now'}</span>
+                <span className="mx-1 h-0.5 w-0.5 shrink-0 rounded-full bg-white/35" />
+                <span className="truncate">Crypto holdings</span>
+                <b className="ml-auto shrink-0 text-[12px] font-bold text-white tabular-nums">{displayFiat(portfolioValue)}</b>
+              </div>
+
+              <div className="mt-3 grid grid-cols-3 overflow-hidden rounded-2xl border border-white/[0.09] bg-white/[0.055]">
+                {(Object.keys(ASSET_META) as CryptoAsset[]).map((item, index) => (
+                  <div
+                    key={item}
+                    className={`min-w-0 px-2.5 py-2.5 ${index > 0 ? 'border-l border-white/[0.09]' : ''}`}
+                  >
                     <div className="flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: ASSET_META[item].color }}>
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: ASSET_META[item].color }}>
                         <CryptoLogo asset={item} size={11} />
                       </span>
-                      <span className="text-[10px] font-bold">{item}</span>
+                      <span className="text-[10px] font-bold tracking-wide">{item}</span>
                     </div>
-                    <p className="text-[10px] font-bold mt-1 truncate">{displayFiat(rates[item])}</p>
-                    <p className={`text-[9px] mt-0.5 ${priceChanges[item] >= 0 ? 'text-[#83F0B7]' : 'text-[#FF9A9A]'}`}>
+                    <p className="mt-1.5 truncate text-[10px] font-semibold tabular-nums">{displayFiat(rates[item])}</p>
+                    <p className={`mt-0.5 text-[9px] font-medium ${priceChanges[item] >= 0 ? 'text-[#8FE8BB]' : 'text-[#FFB6B6]'}`}>
                       {signedPercent(priceChanges[item])}
                     </p>
                   </div>
                 ))}
               </div>
-            </div>
-            <div className="mt-4 inline-flex items-center gap-2 text-[11px] font-semibold text-[#8BE3FF]">
-              <WalletCards className="w-3.5 h-3.5" /> {user?.accountNumber ?? 'Vexa account'}
+
+              <div className="mt-3 flex items-center justify-between border-t border-white/[0.10] pt-2.5">
+                <div className="flex items-center gap-2 text-white/60">
+                  <WalletCards className="h-3.5 w-3.5 text-[#8DE8F4]" />
+                  <span className="text-[10px] font-medium">Vexa account</span>
+                </div>
+                <span className="text-[11px] font-semibold tracking-[0.06em] text-white/90">{user?.accountNumber ?? 'Set up account'}</span>
+              </div>
             </div>
           </div>
-        </div>
         ) : (
           <div className="rounded-2xl bg-[#0C193F] px-4 py-3.5 text-white flex items-center justify-between gap-3">
             <div>
