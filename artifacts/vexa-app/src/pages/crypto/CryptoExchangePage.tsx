@@ -591,7 +591,13 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
               <p className="text-[10px] font-semibold uppercase tracking-wide text-[#858B96]">
                 {side === 'buy' ? 'Estimated crypto to receive' : 'Estimated naira to receive'}
               </p>
-              <p className="mt-1 text-[17px] font-extrabold text-[#111]">
+              <p className={`mt-1 font-extrabold ${
+                !livePricesReady
+                  ? 'text-[17px] text-[#111]'
+                  : !hasExchangeAmount
+                    ? 'text-[14px] text-[#009E60]'
+                    : 'text-[17px] text-[#111]'
+              }`}>
                 {!livePricesReady
                   ? 'Waiting for live rate…'
                   : !hasExchangeAmount
