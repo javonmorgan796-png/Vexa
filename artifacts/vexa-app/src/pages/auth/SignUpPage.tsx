@@ -65,7 +65,7 @@ function PinBoxes({
           disabled={disabled}
           onChange={e => handleDigit(idx, e.target.value)}
           onKeyDown={e => handleKeyDown(idx, e)}
-          className="w-full h-[52px] rounded-xl border-2 border-[#E2E8F0] bg-[#F8F9FB] text-center text-[20px] font-bold text-[#111] focus:outline-none focus:border-[#162353] focus:bg-white transition-colors caret-transparent disabled:opacity-50"
+          className="w-full h-[52px] rounded-xl bg-[#F8F9FB] text-center text-[20px] font-bold text-[#111] focus:outline-none focus:ring-0 focus:bg-white transition-colors caret-transparent disabled:opacity-50"
           style={{ maxWidth: 52 }}
         />
       ))}
@@ -238,13 +238,13 @@ export default function SignUpPage() {
           </p>
           <p className="text-[14px] font-semibold text-[#111] mb-6">{phone}</p>
 
-          <div className="w-full mb-6 bg-[#F0F4FF] border border-[#C7D7FF] rounded-xl px-4 py-3">
+          <div className="w-full mb-6 bg-[#F0F4FF] rounded-xl px-4 py-3">
             <p className="text-[11px] text-[#162353] font-semibold">Verification code sent by SMS</p>
             <p className="text-[10px] text-[#888] mt-1">The code expires shortly. Do not share it with anyone.</p>
           </div>
 
           {otpError && (
-            <div className="mb-5 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-600 font-medium">
+            <div className="mb-5 bg-red-50 rounded-xl px-4 py-3 text-[13px] text-red-600 font-medium">
               {otpError}
             </div>
           )}
@@ -305,7 +305,7 @@ export default function SignUpPage() {
         <p className="text-[13px] text-[#888] mb-7">Fill in your details to get started</p>
 
         {error && (
-          <div className="mb-5 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-600 font-medium">
+          <div className="mb-5 bg-red-50 rounded-xl px-4 py-3 text-[13px] text-red-600 font-medium">
             {error}
           </div>
         )}
@@ -316,7 +316,7 @@ export default function SignUpPage() {
             <label className="text-[12px] font-semibold text-[#444] mb-1.5 block">Full Name</label>
             <input type="text" autoComplete="name" placeholder="e.g. Chidi Emmanuel Obi"
               value={name} onChange={e => { setName(e.target.value); setError(''); }}
-              className="w-full h-[50px] rounded-xl border border-[#E2E8F0] bg-[#F8F9FB] px-4 text-[14px] text-[#111] placeholder-[#C0C8D4] focus:outline-none focus:border-[#162353] focus:bg-white transition-colors" />
+              className="w-full h-[50px] rounded-xl bg-[#F8F9FB] px-4 text-[14px] text-[#111] placeholder-[#C0C8D4] focus:outline-none focus:ring-0 focus:bg-white transition-colors" />
           </div>
 
           {/* Phone Number with country picker */}
@@ -326,14 +326,14 @@ export default function SignUpPage() {
               <button
                 type="button"
                 onClick={() => setShowPicker(p => !p)}
-                className="h-[50px] px-3 rounded-xl border border-[#E2E8F0] bg-[#F8F9FB] flex items-center gap-1.5 shrink-0 hover:border-[#162353] transition-colors"
+                className="h-[50px] px-3 rounded-xl bg-[#F8F9FB] flex items-center gap-1.5 shrink-0 hover:bg-[#F0F4F8] focus:outline-none transition-colors"
               >
                 <span className="text-[18px]">{countryCode.flag}</span>
                 <span className="text-[13px] font-bold text-[#162353]">{countryCode.code}</span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
               </button>
               {showPicker && (
-                <div className="absolute left-0 top-[54px] z-50 bg-white rounded-2xl border border-[#E2E8F0] shadow-xl overflow-hidden w-52">
+                <div className="absolute left-0 top-[54px] z-50 bg-white rounded-2xl shadow-xl overflow-hidden w-52">
                   {COUNTRY_CODES.map(c => (
                     <button
                       key={c.code}
@@ -350,7 +350,7 @@ export default function SignUpPage() {
               )}
               <input type="tel" inputMode="numeric" autoComplete="tel" placeholder="Phone Number"
                 value={phone} onChange={e => { setPhone(e.target.value); setError(''); }}
-                className="flex-1 h-[50px] rounded-xl border border-[#E2E8F0] bg-[#F8F9FB] px-4 text-[14px] text-[#111] placeholder-[#C0C8D4] focus:outline-none focus:border-[#162353] focus:bg-white transition-colors" />
+                className="flex-1 h-[50px] rounded-xl bg-[#F8F9FB] px-4 text-[14px] text-[#111] placeholder-[#C0C8D4] focus:outline-none focus:ring-0 focus:bg-white transition-colors" />
             </div>
           </div>
 

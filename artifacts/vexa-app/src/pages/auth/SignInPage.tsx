@@ -210,7 +210,7 @@ export default function SignInPage() {
 
         {/* Lockout banner */}
         {isLocked && (
-          <div className="mb-5 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 flex items-center gap-2">
+          <div className="mb-5 bg-orange-50 rounded-xl px-4 py-3 flex items-center gap-2">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EA580C" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/><circle cx="12" cy="16" r="1.5" fill="#EA580C"/>
             </svg>
@@ -221,7 +221,7 @@ export default function SignInPage() {
         )}
 
         {error && !isLocked && (
-          <div className="mb-5 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-600 font-medium">
+          <div className="mb-5 bg-red-50 rounded-xl px-4 py-3 text-[13px] text-red-600 font-medium">
             {error}
           </div>
         )}
@@ -232,13 +232,13 @@ export default function SignInPage() {
             <label className="text-[12px] font-semibold text-[#444] mb-1.5 block">Phone Number</label>
             <div className="flex gap-2 relative" ref={pickerRef}>
               <button type="button" onClick={() => setShowPicker(p => !p)}
-                className="h-[50px] px-3 rounded-xl border border-[#E2E8F0] bg-[#F8F9FB] flex items-center gap-1.5 shrink-0 hover:border-[#162353] transition-colors">
+                className="h-[50px] px-3 rounded-xl bg-[#F8F9FB] flex items-center gap-1.5 shrink-0 hover:bg-[#F0F4F8] focus:outline-none transition-colors">
                 <span className="text-[18px]">{countryCode.flag}</span>
                 <span className="text-[13px] font-bold text-[#162353]">{countryCode.code}</span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
               </button>
               {showPicker && (
-                <div className="absolute left-0 top-[54px] z-50 bg-white rounded-2xl border border-[#E2E8F0] shadow-xl overflow-hidden w-52">
+                <div className="absolute left-0 top-[54px] z-50 bg-white rounded-2xl shadow-xl overflow-hidden w-52">
                   {COUNTRY_CODES.map(c => (
                     <button key={c.code} type="button" onClick={() => { setCountryCode(c); setShowPicker(false); }}
                       className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#F8F9FB] transition-colors ${c.code === countryCode.code ? 'bg-[#F0F4FF]' : ''}`}>
@@ -252,7 +252,7 @@ export default function SignInPage() {
               <input type="tel" inputMode="numeric" autoComplete="tel" placeholder="Phone Number" value={phone}
                 onChange={e => { setPhone(e.target.value); setError(''); }}
                 disabled={isLocked}
-                className="flex-1 h-[50px] rounded-xl border border-[#E2E8F0] bg-[#F8F9FB] px-4 text-[14px] text-[#111] placeholder-[#C0C8D4] focus:outline-none focus:border-[#162353] focus:bg-white transition-colors" />
+                className="flex-1 h-[50px] rounded-xl bg-[#F8F9FB] px-4 text-[14px] text-[#111] placeholder-[#C0C8D4] focus:outline-none focus:ring-0 focus:bg-white transition-colors" />
             </div>
           </div>
 
@@ -269,7 +269,7 @@ export default function SignInPage() {
                   onChange={e => handleDigit(idx, e.target.value)}
                   onKeyDown={e => handleKeyDown(idx, e)}
                   disabled={isLocked}
-                  className="passcode-digit w-full h-[52px] rounded-xl border-2 border-[#E2E8F0] bg-[#F8F9FB] text-center text-[20px] font-bold text-[#111] focus:outline-none focus:border-[#162353] focus:bg-white transition-colors caret-transparent disabled:opacity-50"
+                  className="passcode-digit w-full h-[52px] rounded-xl bg-[#F8F9FB] text-center text-[20px] font-bold text-[#111] focus:outline-none focus:ring-0 focus:bg-white transition-colors caret-transparent disabled:opacity-50"
                   style={{ maxWidth: 52 }} />
               ))}
             </div>
@@ -300,7 +300,7 @@ export default function SignInPage() {
         {/* Fingerprint Sign In */}
         <button type="button" onClick={handleFingerprint}
           disabled={fingerprintLoading || fingerprintSuccess || isLocked}
-          className="w-full h-[52px] mt-4 rounded-xl border-2 border-[#162353] flex items-center justify-center gap-3 text-[#162353] text-[14px] font-semibold transition-all active:scale-[0.98] disabled:opacity-70">
+          className="w-full h-[52px] mt-4 rounded-xl bg-[#F3F5FA] hover:bg-[#E9EDF6] flex items-center justify-center gap-3 text-[#162353] text-[14px] font-semibold transition-all active:scale-[0.98] disabled:opacity-70 focus:outline-none">
           {fingerprintLoading ? (
             <span className="flex items-center gap-2">
               <svg className="animate-spin w-5 h-5 text-[#162353]" viewBox="0 0 24 24" fill="none">
