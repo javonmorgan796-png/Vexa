@@ -596,7 +596,7 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
                   ? 'text-[17px] text-[#111]'
                   : !hasExchangeAmount
                     ? 'text-[14px] text-[#009E60]'
-                    : 'text-[17px] text-[#111]'
+                    : 'text-[17px] text-[#009E60]'
               }`}>
                 {!livePricesReady
                   ? 'Waiting for live rate…'
