@@ -230,6 +230,10 @@
   --theme-icon: #555555;
   --theme-control: #EEF2F7;
   --theme-control-active: #FFFFFF;
+  --theme-control-focus: #E8F4EF;
+  --theme-selected-control: #EAF2FF;
+  --theme-selected-text: #1D4ED8;
+  --theme-brand-text: #10535B;
 }
 
 .dark {
@@ -260,6 +264,10 @@
   --theme-icon: #B9C7DB;
   --theme-control: #0F192C;
   --theme-control-active: #2A3B59;
+  --theme-control-focus: #183047;
+  --theme-selected-control: #15364A;
+  --theme-selected-text: #91D8F3;
+  --theme-brand-text: #63DCC4;
 }
 
 html,
@@ -299,6 +307,29 @@ body {
 .theme-control-active {
   background-color: var(--theme-control-active);
   color: var(--theme-primary-text);
+}
+
+.theme-field {
+  background-color: var(--theme-control);
+  color: var(--theme-primary-text);
+}
+
+.theme-field::placeholder {
+  color: var(--theme-secondary-text);
+  opacity: 0.85;
+}
+
+.theme-field:focus {
+  background-color: var(--theme-control-focus);
+}
+
+.theme-selected-control {
+  background-color: var(--theme-selected-control);
+  color: var(--theme-selected-text);
+}
+
+.theme-brand-text {
+  color: var(--theme-brand-text);
 }
 
 /* Keep existing utility-heavy screens readable when the global theme changes. */
@@ -513,6 +544,32 @@ body {
 
 .dark [class~="bg-[#FFF8E8]"] {
   background-color: #2D281A !important;
+}
+
+.dark [class~="bg-red-50"] {
+  background-color: #351D2B !important;
+}
+
+.dark [class~="bg-orange-50"],
+.dark [class~="bg-amber-50"] {
+  background-color: #362918 !important;
+}
+
+.dark [class~="bg-green-50"] {
+  background-color: #15352D !important;
+}
+
+.dark [class~="text-red-600"] {
+  color: #FF9AA8 !important;
+}
+
+.dark [class~="text-orange-700"],
+.dark [class~="text-amber-700"] {
+  color: #FCD38A !important;
+}
+
+.dark [class~="text-green-700"] {
+  color: #86EFAC !important;
 }
 
 .dark [class~="bg-[#FDE7A9]"] {

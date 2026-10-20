@@ -63,7 +63,7 @@ function CryptoLogo({ asset, size = 22 }: { asset: CryptoAsset; size?: number })
 
 function PageHeader({ title, onBack }: { title: string; onBack: () => void }) {
   return (
-    <div className="flex-none flex items-center gap-3 px-4 pb-3 bg-white border-b border-[#E8EBF0]"
+    <div className="theme-surface theme-text-primary flex-none flex items-center gap-3 px-4 pb-3 bg-white border-b border-[#E8EBF0]"
       style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
       <button onClick={onBack} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100" aria-label="Go back">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7-7-7"/></svg>
@@ -336,7 +336,7 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
   };
 
   return (
-    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="theme-page fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
       <PageHeader
         title={view === 'overview' ? 'Vexa Exchange' : view === 'exchange' ? 'Exchange' : view === 'transfer' ? 'Crypto Transfer' : 'Receive Crypto'}
         onBack={() => navigate(view === 'overview' ? '/' : '/crypto')}
@@ -536,7 +536,7 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
                   key={item}
                   type="button"
                   onClick={() => { setSide(item); setExchangeAmount(''); setFormError(''); setMessage(''); }}
-                  className={`py-3 rounded-xl text-[12px] font-bold capitalize transition-colors ${side === item ? 'bg-[#10535B] text-white' : 'bg-white/70 text-[#555]'}`}
+                  className={`py-3 rounded-xl text-[12px] font-bold capitalize transition-colors ${side === item ? 'bg-[#10535B] text-white' : 'theme-control theme-text-secondary'}`}
                 >
                   {item}
                 </button>
@@ -548,7 +548,7 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
                   key={item}
                   type="button"
                   onClick={() => { setAsset(item); setExchangeAmount(''); setFormError(''); setMessage(''); }}
-                  className={`py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 transition-colors ${asset === item ? 'bg-[#EAF2FF] text-[#1D4ED8]' : 'bg-white/70 text-[#555]'}`}
+                  className={`py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 transition-colors ${asset === item ? 'theme-selected-control' : 'theme-control theme-text-secondary'}`}
                 >
                   <span className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: ASSET_META[item].color }}>
                     <CryptoLogo asset={item} size={12} />
@@ -557,7 +557,7 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
                 </button>
               ))}
             </div>
-            <div className="rounded-xl bg-white/70 px-4 py-3 flex justify-between text-[12px]">
+            <div className="theme-surface-alt rounded-xl px-4 py-3 flex justify-between text-[12px]">
               <span className="text-[#777]">Live rate {priceUpdatedAt ? `· ${timeSince(priceUpdatedAt)}` : ''}</span>
               <b>{displayFiat(rates[asset])} / {asset}</b>
             </div>
@@ -565,14 +565,14 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
               <label htmlFor="exchange-amount" className="block text-[11px] font-bold text-[#555] mb-1.5">
                 {side === 'buy' ? `Amount to spend (${fiatLabel})` : `Amount to sell (${asset})`}
               </label>
-              <div className="flex items-center rounded-xl border border-[#B9C9CA] bg-white px-1.5 focus-within:border-[#10535B]">
+              <div className="theme-field flex items-center rounded-xl border border-[#B9C9CA] px-1.5 focus-within:border-[#10535B]">
                 <input
                   id="exchange-amount"
                   value={exchangeAmount}
                   onChange={event => { setExchangeAmount(event.target.value.replace(/[^\d.]/g, '')); setFormError(''); }}
                   inputMode="decimal"
                   placeholder={side === 'buy' ? `Enter ${fiatLabel.toLowerCase()} amount` : `Enter ${asset} amount`}
-                  className="min-w-0 flex-1 bg-transparent px-3 py-3 text-[14px] outline-none"
+                  className="min-w-0 flex-1 bg-transparent px-3 py-3 text-[14px] outline-none placeholder:text-[var(--theme-secondary-text)]"
                 />
                 <button
                   type="button"
@@ -581,14 +581,14 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
                     setExchangeAmount(side === 'buy' ? maxExchangeAmount.toFixed(2) : String(maxExchangeAmount));
                     setFormError('');
                   }}
-                  className="rounded-lg px-3 py-2 text-[11px] font-extrabold text-[#10535B] disabled:opacity-40"
+                  className="theme-brand-text rounded-lg px-3 py-2 text-[11px] font-extrabold disabled:opacity-40"
                 >
                   MAX
                 </button>
               </div>
             </div>
-            <div className="rounded-xl bg-white/70 px-4 py-3.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-[#858B96]">
+            <div className="theme-surface-alt rounded-xl px-4 py-3.5">
+              <p className="theme-text-secondary text-[10px] font-semibold uppercase tracking-wide">
                 {side === 'buy' ? 'Estimated crypto to receive' : 'Estimated naira to receive'}
               </p>
               <p className={`mt-1 font-extrabold ${
@@ -607,7 +607,7 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
                       : formatFiat(exchangeNairaAmount, 'NGN', nairaPerUsd)}
               </p>
               {side === 'buy' && hasExchangeAmount && livePricesReady && (
-                <p className="mt-1 text-[10px] text-[#858B96]">Approximately {formatFiat(exchangeNairaAmount, 'NGN', nairaPerUsd)} at the current rate.</p>
+                <p className="theme-text-secondary mt-1 text-[10px]">Approximately {formatFiat(exchangeNairaAmount, 'NGN', nairaPerUsd)} at the current rate.</p>
               )}
             </div>
           </div>
@@ -625,7 +625,7 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
                   key={item}
                   type="button"
                   onClick={() => { setAsset(item); setTransferAmount(''); setFormError(''); setMessage(''); }}
-                  className={`py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 transition-colors ${asset === item ? 'bg-[#EAF2FF] text-[#1D4ED8]' : 'bg-white/70 text-[#555]'}`}
+                  className={`py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 transition-colors ${asset === item ? 'theme-selected-control' : 'theme-control theme-text-secondary'}`}
                 >
                   <span className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: ASSET_META[item].color }}>
                     <CryptoLogo asset={item} size={12} />
@@ -642,25 +642,25 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
                 onChange={event => { setRecipient(event.target.value.replace(/\D/g, '').slice(0, 10)); setFormError(''); }}
                 inputMode="numeric"
                 placeholder="10-digit Vexa account"
-                className="w-full rounded-xl border border-[#B9C9CA] bg-white px-4 py-3 text-[14px] outline-none focus:border-[#10535B]"
+                className="theme-field w-full rounded-xl border border-[#B9C9CA] px-4 py-3 text-[14px] outline-none focus:border-[#10535B] placeholder:text-[var(--theme-secondary-text)]"
               />
             </div>
             <div>
               <label htmlFor="crypto-transfer-amount" className="block text-[11px] font-bold text-[#555] mb-1.5">Amount ({asset})</label>
-              <div className="flex items-center rounded-xl border border-[#B9C9CA] bg-white px-1.5 focus-within:border-[#10535B]">
+              <div className="theme-field flex items-center rounded-xl border border-[#B9C9CA] px-1.5 focus-within:border-[#10535B]">
                 <input
                   id="crypto-transfer-amount"
                   value={transferAmount}
                   onChange={event => { setTransferAmount(event.target.value.replace(/[^\d.]/g, '')); setFormError(''); }}
                   inputMode="decimal"
                   placeholder={`Available: ${crypto(selectedBalance)} ${asset}`}
-                  className="min-w-0 flex-1 bg-transparent px-3 py-3 text-[14px] outline-none"
+                  className="min-w-0 flex-1 bg-transparent px-3 py-3 text-[14px] outline-none placeholder:text-[var(--theme-secondary-text)]"
                 />
                 <button
                   type="button"
                   disabled={!selectedBalance || busy}
                   onClick={() => { setTransferAmount(String(selectedBalance)); setFormError(''); }}
-                  className="rounded-lg px-3 py-2 text-[11px] font-extrabold text-[#10535B] disabled:opacity-40"
+                  className="theme-brand-text rounded-lg px-3 py-2 text-[11px] font-extrabold disabled:opacity-40"
                 >
                   MAX
                 </button>
