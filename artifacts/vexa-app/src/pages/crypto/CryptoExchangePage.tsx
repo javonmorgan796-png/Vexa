@@ -245,6 +245,19 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
     () => cryptoBalances.find(item => item.asset === asset)?.amount ?? 0,
     [asset, cryptoBalances],
   );
+  const parsedExchangeAmount = Number(exchangeAmount);
+  const hasExchangeAmount = exchangeAmount.trim() !== ''
+    && Number.isFinite(parsedExchangeAmount)
+    && parsedExchangeAmount > 0;
+  const exchangeNairaAmount = side === 'buy'
+    ? toNaira(parsedExchangeAmount)
+    : parsedExchangeAmount * rates[asset];
+  const estimatedCryptoAmount = side === 'buy'
+    ? exchangeNairaAmount / rates[asset]
+    : parsedExchangeAmount;
+  const maxExchangeAmount = side === 'buy'
+    ? (fiatCurrency === 'USD' ? exchangeNaira / nairaPerUsd : exchangeNaira)
+    : selectedBalance;
 
   const loadDepositAddress = useCallback(async () => {
     setAddressLoading(true);
@@ -293,16 +306,20 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
   const submitExchange = async () => {
     if (moneyMovementLocked) return setFormError('Money movement is blocked by account security.');
     const enteredAmount = Number(exchangeAmount.replace(/,/g, ''));
-    const amountInNaira = toNaira(enteredAmount);
-    if (!enteredAmount || enteredAmount <= 0) return setFormError(`Enter a valid ${fiatLabel} amount`);
+    if (!enteredAmount || enteredAmount <= 0) {
+      return setFormError(side === 'buy' ? `Enter a valid ${fiatLabel} amount` : `Enter a valid ${asset} amount`);
+    }
     if (!livePricesReady) return setFormError('Live crypto rates are not available yet. Please try again shortly.');
-    if (side === 'sell' && amountInNaira > selectedBalance * rates[asset]) return setFormError(`Your ${asset} balance is too low`);
+    if (side === 'sell' && enteredAmount > selectedBalance) return setFormError(`Your ${asset} balance is too low`);
+    const amountInNaira = side === 'buy' ? toNaira(enteredAmount) : enteredAmount * rates[asset];
     setBusy(true); setFormError(''); setMessage('');
     const result = await exchangeCrypto(asset, side, amountInNaira, rates[asset]);
     setBusy(false);
     if (!result.success) return setFormError(result.error ?? 'Exchange failed');
     setExchangeAmount('');
-    setMessage(`${side === 'buy' ? 'Bought' : 'Sold'} ${asset} successfully using ${displayFiat(amountInNaira)}.`);
+    setMessage(side === 'buy'
+      ? `Bought ${(amountInNaira / rates[asset]).toLocaleString('en-NG', { maximumFractionDigits: 8 })} ${asset} for ${displayFiat(amountInNaira)}.`
+      : `Sold ${crypto(enteredAmount)} ${asset} for ${formatFiat(amountInNaira, 'NGN', nairaPerUsd)}.`);
   };
 
   const submitTransfer = async () => {
@@ -324,7 +341,10 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
         title={view === 'overview' ? 'Vexa Exchange' : view === 'exchange' ? 'Exchange' : view === 'transfer' ? 'Crypto Transfer' : 'Receive Crypto'}
         onBack={() => navigate(view === 'overview' ? '/' : '/crypto')}
       />
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4" style={{ scrollbarWidth: 'none' }}>
+      <div
+        className={`flex-1 overflow-y-auto px-4 ${view === 'exchange' || view === 'transfer' ? 'py-3 space-y-3' : 'py-4 space-y-4'}`}
+        style={{ scrollbarWidth: 'none' }}
+      >
         {view === 'overview' ? (
         <div className="rounded-3xl bg-[#0C193F] text-white p-5 relative overflow-hidden">
           <div className="absolute -right-10 -top-12 w-40 h-40 rounded-full bg-[#35C6FF]/20 blur-2xl" />
@@ -483,30 +503,141 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
         )}
 
         {view === 'exchange' && (
-          <div className="bg-white rounded-2xl border border-[#F0F0F0] p-5 space-y-4">
-            <div>
+          <div className="space-y-3">
+            <div className="pt-1">
               <p className="text-[16px] font-bold text-[#111]">Exchange Naira</p>
-              <p className="text-[11px] text-[#888] mt-1">Use the current reference rate to buy or sell assets inside Vexa.</p>
+              <p className="text-[11px] text-[#888] mt-1">Buy crypto or sell it back to your exchange balance.</p>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              {(['buy', 'sell'] as const).map(item => <button key={item} onClick={() => setSide(item)} className={`py-3 rounded-xl text-[12px] font-bold capitalize ${side === item ? 'bg-[#162353] text-white' : 'bg-[#F5F6F8] text-[#555]'}`}>{item}</button>)}
+              {(['buy', 'sell'] as const).map(item => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => { setSide(item); setExchangeAmount(''); setFormError(''); setMessage(''); }}
+                  className={`py-3 rounded-xl text-[12px] font-bold capitalize transition-colors ${side === item ? 'bg-[#10535B] text-white' : 'bg-white/70 text-[#555]'}`}
+                >
+                  {item}
+                </button>
+              ))}
             </div>
             <div className="grid grid-cols-3 gap-2">
-              {(Object.keys(ASSET_META) as CryptoAsset[]).map(item => <button key={item} onClick={() => setAsset(item)} className={`py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 ${asset === item ? 'bg-[#EAF2FF] text-[#1D4ED8] border border-[#BFD7FF]' : 'bg-[#F8F9FB] text-[#555]'}`}><span className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: ASSET_META[item].color }}><CryptoLogo asset={item} size={12} /></span>{item}</button>)}
+              {(Object.keys(ASSET_META) as CryptoAsset[]).map(item => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => { setAsset(item); setExchangeAmount(''); setFormError(''); setMessage(''); }}
+                  className={`py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 transition-colors ${asset === item ? 'bg-[#EAF2FF] text-[#1D4ED8]' : 'bg-white/70 text-[#555]'}`}
+                >
+                  <span className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: ASSET_META[item].color }}>
+                    <CryptoLogo asset={item} size={12} />
+                  </span>
+                  {item}
+                </button>
+              ))}
             </div>
-              <div className="rounded-xl bg-[#F8F9FB] px-4 py-3 flex justify-between text-[12px]"><span className="text-[#777]">Live rate {priceUpdatedAt ? `· ${timeSince(priceUpdatedAt)}` : ''}</span><b>{displayFiat(rates[asset])} / {asset}</b></div>
-             <input value={exchangeAmount} onChange={e => setExchangeAmount(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" placeholder={side === 'buy' ? `${fiatLabel} amount` : `${fiatLabel} value to sell (${crypto(selectedBalance)} ${asset} available)`} className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#162353]" />
-             <button disabled={busy || !livePricesReady || moneyMovementLocked} onClick={() => void submitExchange()} className="w-full rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold disabled:opacity-50">{busy ? 'Processing…' : !livePricesReady ? 'Waiting for live rate…' : `${side === 'buy' ? 'Buy' : 'Sell'} ${asset}`}</button>
+            <div className="rounded-xl bg-white/70 px-4 py-3 flex justify-between text-[12px]">
+              <span className="text-[#777]">Live rate {priceUpdatedAt ? `· ${timeSince(priceUpdatedAt)}` : ''}</span>
+              <b>{displayFiat(rates[asset])} / {asset}</b>
+            </div>
+            <div>
+              <label htmlFor="exchange-amount" className="block text-[11px] font-bold text-[#555] mb-1.5">
+                {side === 'buy' ? `Amount to spend (${fiatLabel})` : `Amount to sell (${asset})`}
+              </label>
+              <div className="flex items-center rounded-xl border border-[#B9C9CA] bg-white px-1.5 focus-within:border-[#10535B]">
+                <input
+                  id="exchange-amount"
+                  value={exchangeAmount}
+                  onChange={event => { setExchangeAmount(event.target.value.replace(/[^\d.]/g, '')); setFormError(''); }}
+                  inputMode="decimal"
+                  placeholder={side === 'buy' ? `Enter ${fiatLabel.toLowerCase()} amount` : `Enter ${asset} amount`}
+                  className="min-w-0 flex-1 bg-transparent px-3 py-3 text-[14px] outline-none"
+                />
+                <button
+                  type="button"
+                  disabled={!maxExchangeAmount || busy}
+                  onClick={() => {
+                    setExchangeAmount(side === 'buy' ? maxExchangeAmount.toFixed(2) : String(maxExchangeAmount));
+                    setFormError('');
+                  }}
+                  className="rounded-lg px-3 py-2 text-[11px] font-extrabold text-[#10535B] disabled:opacity-40"
+                >
+                  MAX
+                </button>
+              </div>
+            </div>
+            <div className="rounded-xl bg-white/70 px-4 py-3.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-[#858B96]">
+                {side === 'buy' ? 'Estimated crypto to receive' : 'Estimated naira to receive'}
+              </p>
+              <p className="mt-1 text-[17px] font-extrabold text-[#111]">
+                {!livePricesReady
+                  ? 'Waiting for live rate…'
+                  : !hasExchangeAmount
+                    ? 'Enter an amount to see estimate'
+                    : side === 'buy'
+                      ? `${crypto(estimatedCryptoAmount)} ${asset}`
+                      : formatFiat(exchangeNairaAmount, 'NGN', nairaPerUsd)}
+              </p>
+              {side === 'buy' && hasExchangeAmount && livePricesReady && (
+                <p className="mt-1 text-[10px] text-[#858B96]">Approximately {formatFiat(exchangeNairaAmount, 'NGN', nairaPerUsd)} at the current rate.</p>
+              )}
+            </div>
           </div>
         )}
 
         {view === 'transfer' && (
-          <div className="bg-white rounded-2xl border border-[#F0F0F0] p-5 space-y-4">
-            <div><p className="text-[16px] font-bold text-[#111]">Send crypto to a Vexa user</p><p className="text-[11px] text-[#888] mt-1">Transfers settle instantly to their Vexa exchange balance.</p></div>
-            <div className="grid grid-cols-3 gap-2">{(Object.keys(ASSET_META) as CryptoAsset[]).map(item => <button key={item} onClick={() => setAsset(item)} className={`py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 ${asset === item ? 'bg-[#EAF2FF] text-[#1D4ED8] border border-[#BFD7FF]' : 'bg-[#F8F9FB] text-[#555]'}`}><span className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: ASSET_META[item].color }}><CryptoLogo asset={item} size={12} /></span>{item}</button>)}</div>
-            <div><label className="block text-[11px] font-bold text-[#555] mb-1.5">Recipient account number</label><input value={recipient} onChange={e => setRecipient(e.target.value.replace(/\D/g, '').slice(0, 10))} inputMode="numeric" placeholder="10-digit Vexa account" className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#162353]" /></div>
-            <div><label className="block text-[11px] font-bold text-[#555] mb-1.5">Amount ({asset})</label><input value={transferAmount} onChange={e => setTransferAmount(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" placeholder={`Available: ${crypto(selectedBalance)} ${asset}`} className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#162353]" /></div>
-            <button disabled={busy || moneyMovementLocked} onClick={() => void submitTransfer()} className="w-full rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold disabled:opacity-50"><span className="inline-flex items-center gap-2">{busy ? 'Sending…' : <><Send className="w-4 h-4" /> Send {asset}</>}</span></button>
+          <div className="space-y-3">
+            <div className="pt-1">
+              <p className="text-[16px] font-bold text-[#111]">Send crypto to a Vexa user</p>
+              <p className="text-[11px] text-[#888] mt-1">Transfers settle instantly to their exchange balance.</p>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {(Object.keys(ASSET_META) as CryptoAsset[]).map(item => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => { setAsset(item); setTransferAmount(''); setFormError(''); setMessage(''); }}
+                  className={`py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 transition-colors ${asset === item ? 'bg-[#EAF2FF] text-[#1D4ED8]' : 'bg-white/70 text-[#555]'}`}
+                >
+                  <span className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: ASSET_META[item].color }}>
+                    <CryptoLogo asset={item} size={12} />
+                  </span>
+                  {item}
+                </button>
+              ))}
+            </div>
+            <div>
+              <label htmlFor="crypto-recipient" className="block text-[11px] font-bold text-[#555] mb-1.5">Recipient account number</label>
+              <input
+                id="crypto-recipient"
+                value={recipient}
+                onChange={event => { setRecipient(event.target.value.replace(/\D/g, '').slice(0, 10)); setFormError(''); }}
+                inputMode="numeric"
+                placeholder="10-digit Vexa account"
+                className="w-full rounded-xl border border-[#B9C9CA] bg-white px-4 py-3 text-[14px] outline-none focus:border-[#10535B]"
+              />
+            </div>
+            <div>
+              <label htmlFor="crypto-transfer-amount" className="block text-[11px] font-bold text-[#555] mb-1.5">Amount ({asset})</label>
+              <div className="flex items-center rounded-xl border border-[#B9C9CA] bg-white px-1.5 focus-within:border-[#10535B]">
+                <input
+                  id="crypto-transfer-amount"
+                  value={transferAmount}
+                  onChange={event => { setTransferAmount(event.target.value.replace(/[^\d.]/g, '')); setFormError(''); }}
+                  inputMode="decimal"
+                  placeholder={`Available: ${crypto(selectedBalance)} ${asset}`}
+                  className="min-w-0 flex-1 bg-transparent px-3 py-3 text-[14px] outline-none"
+                />
+                <button
+                  type="button"
+                  disabled={!selectedBalance || busy}
+                  onClick={() => { setTransferAmount(String(selectedBalance)); setFormError(''); }}
+                  className="rounded-lg px-3 py-2 text-[11px] font-extrabold text-[#10535B] disabled:opacity-40"
+                >
+                  MAX
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -539,6 +670,31 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
           </div>
         )}
       </div>
+      {(view === 'exchange' || view === 'transfer') && (
+        <div
+          className="flex-none bg-[#F2F3F5] px-4 pt-2"
+          style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}
+        >
+          <button
+            type="button"
+            disabled={view === 'exchange'
+              ? busy || !livePricesReady || moneyMovementLocked
+              : busy || moneyMovementLocked}
+            onClick={() => { if (view === 'exchange') void submitExchange(); else void submitTransfer(); }}
+            className="w-full h-[52px] rounded-xl bg-[#10535B] text-white text-[13px] font-bold disabled:opacity-50 active:scale-[0.99] transition-transform"
+          >
+            {view === 'exchange'
+              ? busy
+                ? 'Processing…'
+                : !livePricesReady
+                  ? 'Waiting for live rate…'
+                  : `${side === 'buy' ? 'Buy' : 'Sell'} ${asset}`
+              : busy
+                ? 'Sending…'
+                : <span className="inline-flex items-center gap-2"><Send className="w-4 h-4" /> Send {asset}</span>}
+          </button>
+        </div>
+      )}
        {selectedActivity && (
          <CryptoActivityDetails
            transaction={selectedActivity}
