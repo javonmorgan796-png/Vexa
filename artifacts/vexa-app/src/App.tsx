@@ -1104,7 +1104,7 @@ function SettingsPage() {
         {/* Appearance */}
         <div>
           <p className="theme-text-secondary text-[11px] font-semibold uppercase tracking-wide mb-2 px-1">Appearance</p>
-          <div className="theme-surface theme-border rounded-2xl border px-4 py-4">
+          <div className="theme-surface rounded-2xl px-4 py-4">
             <div className="flex items-center gap-3">
                <span className="theme-icon flex h-10 w-10 items-center justify-center rounded-xl bg-[#EAF2FF] text-[#1769C2]">
                 {themeMode === 'system'
@@ -1155,7 +1155,7 @@ function SettingsPage() {
         {sections.map((section, si) => (
           <div key={si}>
             {section.heading && <p className="theme-text-secondary text-[11px] font-semibold uppercase tracking-wide mb-2 px-1">{section.heading}</p>}
-            <div className="theme-surface theme-border rounded-2xl border overflow-hidden">
+            <div className="theme-surface rounded-2xl overflow-hidden">
               {section.items.map((item, ii) => {
                 const isBio  = item.label === 'Biometric Login';
                 const isNot  = item.label === 'Notifications';
@@ -1170,7 +1170,7 @@ function SettingsPage() {
                       else if (isPCR) togglePasscodeOnReturn();
                       else if (item.action) item.action();
                     }}
-                     className={`theme-text-primary w-full flex items-center gap-3.5 px-4 py-4 text-left transition-colors hover:bg-[#F8F9FB] ${ii < section.items.length - 1 ? 'theme-border border-b' : ''}`}
+                      className="theme-text-primary w-full flex items-center gap-3.5 px-4 py-4 text-left transition-colors hover:bg-[#F8F9FB]"
                   >
                      <span className={item.danger ? 'text-red-500' : 'theme-icon'}>{item.icon}</span>
                     <div className="flex-1 min-w-0">
@@ -5008,7 +5008,10 @@ function Router() {
       <Route path="/transfer" component={TransferPage} />
       <Route path="/bank-selection" component={BankSelectionPage} />
       <Route path="/vexa-transfer" component={VexaTransferPage} />
-      <Route path="/crypto" component={CryptoExchangePage} />
+      <Route path="/crypto/exchange"><CryptoExchangePage view="exchange" /></Route>
+      <Route path="/crypto/transfer"><CryptoExchangePage view="transfer" /></Route>
+      <Route path="/crypto/receive"><CryptoExchangePage view="receive" /></Route>
+      <Route path="/crypto"><CryptoExchangePage /></Route>
       <Route path="/crypto/incoming" component={IncomingCryptoPage} />
       <Route path="/crypto/outgoing" component={OutgoingCryptoPage} />
       <Route path="/history" component={HistoryPage} />

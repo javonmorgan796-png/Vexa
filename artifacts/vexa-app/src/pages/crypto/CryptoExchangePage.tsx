@@ -54,6 +54,7 @@ function signedPercent(value: number) {
 }
 
 type DepositAddress = { asset: CryptoAsset; address: string; network: string; createdAt: string };
+type CryptoPageView = 'overview' | 'exchange' | 'transfer' | 'receive';
 
 function CryptoLogo({ asset, size = 22 }: { asset: CryptoAsset; size?: number }) {
   const Logo = ASSET_META[asset].logo;
@@ -164,7 +165,7 @@ function CryptoActivityDetails({
   );
 }
 
-export default function CryptoExchangePage() {
+export default function CryptoExchangePage({ view = 'overview' }: { view?: CryptoPageView }) {
   const [, navigate] = useLocation();
   const { user } = useAuth();
   const { state: securityState } = useAccountSecurity();
@@ -174,7 +175,6 @@ export default function CryptoExchangePage() {
   const [priceUpdatedAt, setPriceUpdatedAt] = useState<string | null>(null);
   const [priceError, setPriceError] = useState('');
   const [priceStale, setPriceStale] = useState(false);
-  const [tab, setTab] = useState<'overview' | 'exchange' | 'transfer' | 'receive'>('overview');
   const [depositAmount, setDepositAmount] = useState('');
   const [asset, setAsset] = useState<CryptoAsset>('BTC');
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
@@ -275,8 +275,8 @@ export default function CryptoExchangePage() {
   }, [asset, moneyMovementLocked, securityState.freezeActive]);
 
   useEffect(() => {
-    if (tab === 'receive') void loadDepositAddress();
-  }, [tab, loadDepositAddress]);
+    if (view === 'receive') void loadDepositAddress();
+  }, [view, loadDepositAddress]);
 
   const submitDeposit = async () => {
     if (moneyMovementLocked) return setFormError('Money movement is blocked by account security.');
@@ -320,8 +320,12 @@ export default function CryptoExchangePage() {
 
   return (
     <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
-      <PageHeader title="Vexa Exchange" onBack={() => navigate('/')} />
+      <PageHeader
+        title={view === 'overview' ? 'Vexa Exchange' : view === 'exchange' ? 'Exchange' : view === 'transfer' ? 'Crypto Transfer' : 'Receive Crypto'}
+        onBack={() => navigate(view === 'overview' ? '/' : '/crypto')}
+      />
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4" style={{ scrollbarWidth: 'none' }}>
+        {view === 'overview' ? (
         <div className="rounded-3xl bg-[#0C193F] text-white p-5 relative overflow-hidden">
           <div className="absolute -right-10 -top-12 w-40 h-40 rounded-full bg-[#35C6FF]/20 blur-2xl" />
           <div className="relative">
@@ -366,20 +370,44 @@ export default function CryptoExchangePage() {
                 ))}
               </div>
             </div>
-            <button onClick={() => setTab('overview')} className="mt-4 inline-flex items-center gap-2 text-[11px] font-semibold text-[#8BE3FF]">
+            <div className="mt-4 inline-flex items-center gap-2 text-[11px] font-semibold text-[#8BE3FF]">
               <WalletCards className="w-3.5 h-3.5" /> {user?.accountNumber ?? 'Vexa account'}
-            </button>
+            </div>
           </div>
         </div>
+        ) : (
+          <div className="rounded-2xl bg-[#0C193F] px-4 py-3.5 text-white flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-white/60">Exchange balance</p>
+              <p className="mt-0.5 text-[18px] font-extrabold">{displayFiat(exchangeNaira)}</p>
+            </div>
+            <div className="flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2">
+              <span className="flex h-7 w-7 items-center justify-center rounded-full" style={{ backgroundColor: ASSET_META[asset].color }}>
+                <CryptoLogo asset={asset} size={14} />
+              </span>
+              <div>
+                <p className="text-[9px] text-white/60">Available</p>
+                <p className="text-[11px] font-bold">{crypto(selectedBalance)} {asset}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
-        <div className="grid grid-cols-4 gap-2 bg-white rounded-2xl p-1 border border-[#ECEEF2]">
-          {(['overview', 'exchange', 'transfer', 'receive'] as const).map(item => (
-            <button key={item} onClick={() => { setTab(item); setMessage(''); setFormError(''); }}
-              className={`rounded-xl py-2.5 text-[11px] font-bold capitalize transition-colors ${tab === item ? 'bg-[#162353] text-white' : 'text-[#777]'}`}>
-               {item === 'receive' ? 'Receive' : item}
+        {view === 'overview' && (
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { label: 'Exchange', path: '/crypto/exchange', icon: <ArrowLeftRight className="w-5 h-5" /> },
+            { label: 'Transfer', path: '/crypto/transfer', icon: <Send className="w-5 h-5" /> },
+            { label: 'Receive', path: '/crypto/receive', icon: <ArrowDownToLine className="w-5 h-5" /> },
+          ].map(action => (
+            <button key={action.path} onClick={() => navigate(action.path)}
+              className="flex flex-col items-center justify-center gap-2 rounded-2xl bg-white px-3 py-4 text-[#162353] shadow-sm transition-colors hover:bg-[#F8F9FB] active:scale-[0.98]">
+              {action.icon}
+              <span className="text-[11px] font-bold">{action.label}</span>
             </button>
           ))}
         </div>
+        )}
 
          {error && <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-[12px] text-amber-700">{error}. Run the latest supabase-schema.sql migration to enable exchange data.</div>}
          {priceError && <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-[12px] text-amber-700">{priceError}</div>}
@@ -391,7 +419,7 @@ export default function CryptoExchangePage() {
          {formError && <div className="rounded-2xl bg-red-50 border border-red-200 px-4 py-3 text-[12px] text-red-600">{formError}</div>}
         {message && <div className="rounded-2xl bg-green-50 border border-green-200 px-4 py-3 text-[12px] text-green-700">{message}</div>}
 
-        {tab === 'overview' && (
+        {view === 'overview' && (
           <>
             <div className="flex items-center justify-between">
               <div>
@@ -454,7 +482,7 @@ export default function CryptoExchangePage() {
           </>
         )}
 
-        {tab === 'exchange' && (
+        {view === 'exchange' && (
           <div className="bg-white rounded-2xl border border-[#F0F0F0] p-5 space-y-4">
             <div>
               <p className="text-[16px] font-bold text-[#111]">Exchange Naira</p>
@@ -472,7 +500,7 @@ export default function CryptoExchangePage() {
           </div>
         )}
 
-        {tab === 'transfer' && (
+        {view === 'transfer' && (
           <div className="bg-white rounded-2xl border border-[#F0F0F0] p-5 space-y-4">
             <div><p className="text-[16px] font-bold text-[#111]">Send crypto to a Vexa user</p><p className="text-[11px] text-[#888] mt-1">Transfers settle instantly to their Vexa exchange balance.</p></div>
             <div className="grid grid-cols-3 gap-2">{(Object.keys(ASSET_META) as CryptoAsset[]).map(item => <button key={item} onClick={() => setAsset(item)} className={`py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 ${asset === item ? 'bg-[#EAF2FF] text-[#1D4ED8] border border-[#BFD7FF]' : 'bg-[#F8F9FB] text-[#555]'}`}><span className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: ASSET_META[item].color }}><CryptoLogo asset={item} size={12} /></span>{item}</button>)}</div>
@@ -482,7 +510,7 @@ export default function CryptoExchangePage() {
           </div>
         )}
 
-        {tab === 'receive' && (
+        {view === 'receive' && (
           <div className="bg-white rounded-2xl border border-[#F0F0F0] p-5 space-y-4">
             <div>
               <p className="text-[16px] font-bold text-[#111]">Receive crypto</p>
