@@ -1,0 +1,40 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+
+:root {
+  --background: 0 0% 96%;
+  --foreground: 0 0% 7%;
+  --border: 0 0% 89%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 7%;
+  --primary: 190 72% 21%;
+  --primary-foreground: 0 0% 100%;
+  --muted: 0 0% 94%;
+  --muted-foreground: 0 0% 40%;
+  --theme-page: #F2F3F5;
+  --theme-surface: #FFFFFF;
+  --theme-surface-alt: #F8F9FB;
+  --theme-primary-text: #111111;
+  --theme-secondary-text: #888888;
+  --theme-border: #E8EBF0;
+  --theme-brand: #0F4F5C;
+  --app-font-sans: "Inter", sans-serif;
+}
+
+.dark {
+  --background: 222 47% 11%;
+  --foreground: 210 40% 96%;
+  --border: 217 33% 27%;
+  --card: 222 39% 16%;
+  --card-foreground: 210 40% 96%;
+  --primary: 187 72% 42%;
+  --primary-foreground: 210 40% 96%;
+  --muted: 217 33% 22%;
+  --muted-foreground: 215 20% 68%;
+  --theme-page: #0B1220;
+  --theme-surface: #141E33;
+  --theme-surface-alt: #1B2942;
+  --theme-primary-text: #F4F7FB;
+  --theme-secondary-text: #A9B6CA;
+  --theme-border: #2B3A55;
+  --theme-brand: #63DCC4;
+}
