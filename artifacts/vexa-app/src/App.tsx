@@ -225,6 +225,7 @@ const services = [
   { label: 'Data',      Icon: Tablet          },
   { label: 'Betting',   Icon: Target          },
   { label: 'Savings',   Icon: PiggyBank       },
+  { label: 'Investments', Icon: TrendingUp    },
   { label: 'Budget',    Icon: WalletCards     },
   { label: 'Education', Icon: BookOpen        },
   { label: 'Statement', Icon: FileText        },
@@ -833,12 +834,13 @@ function MoniepointHome() {
               {services.map(({ label, Icon }) => {
                 const routes: Record<string,string> = {
                   Transfer:'/transfer', Airtime:'/airtime', Data:'/data',
-                  Betting:'/betting', Savings:'/savings', Education:'/education', Crypto:'/crypto',
+                  Betting:'/betting', Savings:'/savings', Investments:'/investments', Education:'/education', Crypto:'/crypto',
                   Budget:'/budget', Statement:'/statement', More:'/more',
                 };
                 return (
                   <button
                     key={label}
+                    data-testid={`button-home-service-${label.toLowerCase()}`}
                     onClick={() => navigate(routes[label] ?? '/')}
                     className="theme-surface theme-border rounded-xl py-3.5 px-1 flex flex-col items-center justify-center gap-2 border active:bg-[#F2F3F5]"
                   >
@@ -4071,6 +4073,60 @@ function SavingsPage() {
   );
 }
 
+function InvestmentsPage() {
+  return (
+    <PageShell title="Investments" back="/">
+      <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6" style={{ scrollbarWidth: 'none' }}>
+        <div className="mx-auto max-w-xl space-y-4">
+          <section className="theme-surface theme-border relative overflow-hidden rounded-[26px] border p-5 sm:p-7">
+            <div className="absolute -right-8 -top-10 h-36 w-36 rounded-full bg-[#E3F2EE] dark:bg-[#183A39]" aria-hidden="true" />
+            <div className="relative">
+              <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#EAF4EF] text-[#175B52] dark:bg-[#18352F] dark:text-[#B8E6D4]">
+                <TrendingUp className="h-6 w-6" strokeWidth={1.8} />
+              </div>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] theme-brand-text">A considered next step</p>
+              <h1 className="theme-text-primary max-w-sm text-[25px] font-extrabold leading-tight tracking-[-0.03em] sm:text-[30px]">
+                Investments are not available on Vexa yet.
+              </h1>
+              <p className="theme-text-secondary mt-3 max-w-md text-[13px] leading-6">
+                We are preparing this service carefully. Vexa will only offer investment products after a licensed provider and approved product terms are in place.
+              </p>
+              <div role="status" data-testid="status-investments-unavailable" className="mt-5 flex items-start gap-3 rounded-2xl border border-[#D6E8E1] bg-[#F1F8F5] px-4 py-3.5 dark:border-[#31594E] dark:bg-[#18352F]">
+                <Shield className="mt-0.5 h-4 w-4 shrink-0 text-[#236B58] dark:text-[#B8E6D4]" strokeWidth={2} />
+                <p className="text-[12px] font-semibold leading-5 text-[#245B4E] dark:text-[#B8E6D4]">
+                  Transactions cannot be made until a licensed provider and approved terms are configured.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section className="theme-surface theme-border rounded-[22px] border p-5 sm:p-6" aria-labelledby="investment-readiness-title">
+            <div className="flex items-start gap-3">
+              <div className="theme-control flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+                <BriefcaseBusiness className="theme-icon h-5 w-5" strokeWidth={1.8} />
+              </div>
+              <div>
+                <h2 id="investment-readiness-title" className="theme-text-primary text-[14px] font-bold">What needs to be in place</h2>
+                <p className="theme-text-secondary mt-1 text-[12px] leading-5">
+                  Before any product can be offered, Vexa must confirm who provides and safeguards it, and make the approved terms clear to you.
+                </p>
+              </div>
+            </div>
+            <div className="theme-border mt-4 border-t pt-4">
+              <div className="flex items-start gap-3">
+                <Info className="theme-brand-text mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} />
+                <p className="theme-text-secondary text-[12px] leading-5">
+                  This page is for information only. It does not represent an offer, account, investment balance, or promise of future availability.
+                </p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </PageShell>
+  );
+}
+
 /* ─── Education Page ─────────────────────────────────────────────────── */
 const EDU_TYPES = ['University','Polytechnic','Secondary School','Primary School','Nursery'];
 function EducationPage() {
@@ -4485,6 +4541,7 @@ const MORE_SERVICES = [
   { label:'Data',      emoji:'📶',  path:'/data'      },
   { label:'Betting',   emoji:'🎯',  path:'/betting'   },
   { label:'Savings',   emoji:'🐷',  path:'/savings'   },
+  { label:'Investments', Icon: TrendingUp, path:'/investments' },
   { label:'Budget',    emoji:'📊',  path:'/budget'    },
   { label:'Education', emoji:'📚',  path:'/education' },
   { label:'Statement', emoji:'📄',  path:'/statement' },
@@ -4502,9 +4559,11 @@ function MorePage() {
       <div className="flex-1 overflow-y-auto px-4 py-5" style={{ scrollbarWidth: 'none' }}>
         <div className="grid grid-cols-4 gap-3">
           {MORE_SERVICES.map(s => (
-            <button key={s.label} onClick={() => navigate(s.path)}
+            <button key={s.label} data-testid={`button-more-service-${s.label.toLowerCase()}`} onClick={() => navigate(s.path)}
               className="bg-white rounded-xl py-4 px-1 flex flex-col items-center justify-center gap-2 border border-[#F0F0F0] active:bg-[#F2F3F5]">
-              <span className="text-[26px] leading-none">{s.emoji}</span>
+              {'Icon' in s && s.Icon
+                ? <s.Icon className="theme-brand-text h-[26px] w-[26px]" strokeWidth={1.8} />
+                : <span className="text-[26px] leading-none">{'emoji' in s ? s.emoji : ''}</span>}
               <span className="text-[10px] font-medium text-[#333] text-center leading-tight">{s.label}</span>
             </button>
           ))}
@@ -4780,6 +4839,7 @@ const SERVICE_GROUPS = [
   { heading:'Lifestyle', items:[
     { label:'Education', emoji:'📚',  path:'/education' },
     { label:'Savings',   emoji:'🐷',  path:'/savings'   },
+    { label:'Investments', Icon: TrendingUp, path:'/investments' },
     { label:'Budget',    emoji:'📊',  path:'/budget'    },
   ]},
   { heading:'Account', items:[
@@ -4803,9 +4863,11 @@ function ServicesTabPage() {
             <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide mb-2 px-1">{g.heading}</p>
             <div className="grid grid-cols-4 gap-3">
               {g.items.map(s => (
-                <button key={s.label} onClick={() => navigate(s.path)}
+                <button key={s.label} data-testid={`button-services-${s.label.toLowerCase()}`} onClick={() => navigate(s.path)}
                   className="bg-white rounded-xl py-4 flex flex-col items-center gap-2 border border-[#F0F0F0] active:bg-[#F2F3F5]">
-                  <span className="text-[24px] leading-none">{s.emoji}</span>
+                  {'Icon' in s && s.Icon
+                    ? <s.Icon className="theme-brand-text h-6 w-6" strokeWidth={1.8} />
+                    : <span className="text-[24px] leading-none">{'emoji' in s ? s.emoji : ''}</span>}
                   <span className="text-[10px] font-medium text-[#333] text-center leading-tight">{s.label}</span>
                 </button>
               ))}
@@ -5161,6 +5223,7 @@ function Router() {
       <Route path="/data" component={DataPage} />
       <Route path="/betting" component={BettingPage} />
       <Route path="/savings" component={SavingsPage} />
+      <Route path="/investments" component={InvestmentsPage} />
       <Route path="/education" component={EducationPage} />
       <Route path="/statement" component={StatementPage} />
       <Route path="/budget" component={BudgetPage} />
