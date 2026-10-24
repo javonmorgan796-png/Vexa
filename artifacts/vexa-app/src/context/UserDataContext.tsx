@@ -209,7 +209,12 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   const fetchNotifications = useCallback(async () => {
-    if (!user) { setNotifications([]); setNotificationsLoading(false); return; }
+    if (!user) {
+      setNotifications([]);
+      setNotificationsLoading(false);
+      notificationIdsRef.current = null;
+      return;
+    }
     setNotificationsLoading(true);
     const { data } = await supabase
       .from('notifications').select('*').eq('user_id', user.id)

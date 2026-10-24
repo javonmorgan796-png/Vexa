@@ -196,7 +196,7 @@ export default function SignInPage() {
   const isLocked = lockRemaining > 0;
 
   return (
-    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="theme-page fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
       {/* Top navy header */}
       <div className="bg-[#162353] px-6 pt-14 pb-10 flex flex-col items-center">
         <img src="/vexa-logo.png" alt="Vexa" className="h-20 mb-3 object-contain drop-shadow-lg" />
@@ -204,13 +204,13 @@ export default function SignInPage() {
       </div>
 
       {/* Card */}
-      <div className="flex-1 bg-white mx-0 rounded-t-3xl -mt-4 px-6 pt-8 pb-10 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
+      <div className="theme-surface flex-1 bg-white mx-0 rounded-t-3xl -mt-4 px-6 pt-8 pb-10 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
         <h1 className="text-[22px] font-bold text-[#111] mb-1">Welcome back 👋</h1>
         <p className="text-[13px] text-[#888] mb-7">Enter your credentials to continue</p>
 
         {/* Lockout banner */}
         {isLocked && (
-          <div className="mb-5 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 flex items-center gap-2">
+          <div className="mb-5 bg-orange-50 rounded-xl px-4 py-3 flex items-center gap-2">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EA580C" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/><circle cx="12" cy="16" r="1.5" fill="#EA580C"/>
             </svg>
@@ -221,7 +221,7 @@ export default function SignInPage() {
         )}
 
         {error && !isLocked && (
-          <div className="mb-5 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-600 font-medium">
+          <div className="mb-5 bg-red-50 rounded-xl px-4 py-3 text-[13px] text-red-600 font-medium">
             {error}
           </div>
         )}
@@ -232,19 +232,19 @@ export default function SignInPage() {
             <label className="text-[12px] font-semibold text-[#444] mb-1.5 block">Phone Number</label>
             <div className="flex gap-2 relative" ref={pickerRef}>
               <button type="button" onClick={() => setShowPicker(p => !p)}
-                className="h-[50px] px-3 rounded-xl border border-[#E2E8F0] bg-[#F8F9FB] flex items-center gap-1.5 shrink-0 hover:border-[#162353] transition-colors">
+                className="theme-field h-[50px] px-3 rounded-xl flex items-center gap-1.5 shrink-0 hover:bg-[#E8EDF3] focus:outline-none transition-colors">
                 <span className="text-[18px]">{countryCode.flag}</span>
-                <span className="text-[13px] font-bold text-[#162353]">{countryCode.code}</span>
+                <span className="theme-brand-text text-[13px] font-bold">{countryCode.code}</span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
               </button>
               {showPicker && (
-                <div className="absolute left-0 top-[54px] z-50 bg-white rounded-2xl border border-[#E2E8F0] shadow-xl overflow-hidden w-52">
+                <div className="absolute left-0 top-[54px] z-50 bg-white rounded-2xl shadow-xl overflow-hidden w-52">
                   {COUNTRY_CODES.map(c => (
                     <button key={c.code} type="button" onClick={() => { setCountryCode(c); setShowPicker(false); }}
-                      className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#F8F9FB] transition-colors ${c.code === countryCode.code ? 'bg-[#F0F4FF]' : ''}`}>
+                    className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#EEF2F7] transition-colors ${c.code === countryCode.code ? 'theme-selected-control' : ''}`}>
                       <span className="text-[18px]">{c.flag}</span>
                       <span className="text-[13px] font-semibold text-[#111]">{c.name}</span>
-                      <span className="ml-auto text-[12px] font-bold text-[#162353]">{c.code}</span>
+                      <span className="theme-brand-text ml-auto text-[12px] font-bold">{c.code}</span>
                     </button>
                   ))}
                 </div>
@@ -252,7 +252,7 @@ export default function SignInPage() {
               <input type="tel" inputMode="numeric" autoComplete="tel" placeholder="Phone Number" value={phone}
                 onChange={e => { setPhone(e.target.value); setError(''); }}
                 disabled={isLocked}
-                className="flex-1 h-[50px] rounded-xl border border-[#E2E8F0] bg-[#F8F9FB] px-4 text-[14px] text-[#111] placeholder-[#C0C8D4] focus:outline-none focus:border-[#162353] focus:bg-white transition-colors" />
+                className="theme-field flex-1 h-[50px] rounded-xl px-4 text-[14px] placeholder-[#8994A5] focus:outline-none focus:ring-0 transition-colors" />
             </div>
           </div>
 
@@ -260,7 +260,7 @@ export default function SignInPage() {
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-[12px] font-semibold text-[#444]">Passcode</label>
-              <button type="button" className="text-[12px] text-[#162353] font-semibold">Forgot Passcode?</button>
+              <button type="button" className="theme-brand-text text-[12px] font-semibold">Forgot Passcode?</button>
             </div>
             <div className="flex gap-2.5 justify-between" onPaste={handlePaste}>
               {passcode.map((digit, idx) => (
@@ -269,7 +269,7 @@ export default function SignInPage() {
                   onChange={e => handleDigit(idx, e.target.value)}
                   onKeyDown={e => handleKeyDown(idx, e)}
                   disabled={isLocked}
-                  className="passcode-digit w-full h-[52px] rounded-xl border-2 border-[#E2E8F0] bg-[#F8F9FB] text-center text-[20px] font-bold text-[#111] focus:outline-none focus:border-[#162353] focus:bg-white transition-colors caret-transparent disabled:opacity-50"
+                  className="theme-field passcode-digit w-full h-[52px] rounded-xl text-center text-[20px] font-bold focus:outline-none focus:ring-0 transition-colors caret-transparent disabled:opacity-50"
                   style={{ maxWidth: 52 }} />
               ))}
             </div>
@@ -300,11 +300,11 @@ export default function SignInPage() {
         {/* Fingerprint Sign In */}
         <button type="button" onClick={handleFingerprint}
           disabled={fingerprintLoading || fingerprintSuccess || isLocked}
-          className="w-full h-[52px] mt-4 rounded-xl border-2 border-[#162353] flex items-center justify-center gap-3 text-[#162353] text-[14px] font-semibold transition-all active:scale-[0.98] disabled:opacity-70">
+          className="theme-control theme-brand-text w-full h-[52px] mt-4 rounded-xl flex items-center justify-center gap-3 text-[14px] font-semibold transition-all active:scale-[0.98] disabled:opacity-70 focus:outline-none">
           {fingerprintLoading ? (
             <span className="flex items-center gap-2">
-              <svg className="animate-spin w-5 h-5 text-[#162353]" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="#162353" strokeWidth="3" strokeDasharray="40 20" />
+              <svg className="theme-brand-text animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40 20" />
               </svg>
               Scanning…
             </span>
@@ -315,7 +315,7 @@ export default function SignInPage() {
             </span>
           ) : (
             <>
-              <i className="fa-solid fa-fingerprint text-[22px] text-[#162353]" />
+              <i className="fa-solid fa-fingerprint text-[22px]" />
               Sign in with Fingerprint
             </>
           )}
@@ -324,7 +324,7 @@ export default function SignInPage() {
         {/* Sign up link */}
         <p className="text-center text-[13px] text-[#888] mt-6">
           Don't have an account?{' '}
-          <button onClick={() => navigate('/signup')} className="text-[#162353] font-bold">Create Account</button>
+          <button onClick={() => navigate('/signup')} className="theme-brand-text font-bold">Create Account</button>
         </p>
       </div>
     </div>

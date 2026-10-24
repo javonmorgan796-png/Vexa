@@ -65,7 +65,7 @@ function PinBoxes({
           disabled={disabled}
           onChange={e => handleDigit(idx, e.target.value)}
           onKeyDown={e => handleKeyDown(idx, e)}
-          className="w-full h-[52px] rounded-xl border-2 border-[#E2E8F0] bg-[#F8F9FB] text-center text-[20px] font-bold text-[#111] focus:outline-none focus:border-[#162353] focus:bg-white transition-colors caret-transparent disabled:opacity-50"
+          className="theme-field w-full h-[52px] rounded-xl text-center text-[20px] font-bold focus:outline-none focus:ring-0 transition-colors caret-transparent disabled:opacity-50"
           style={{ maxWidth: 52 }}
         />
       ))}
@@ -201,8 +201,8 @@ export default function SignUpPage() {
   /* ── Success screen ── */
   if (step === 'success') {
     return (
-      <div className="fixed inset-0 bg-white flex flex-col items-center justify-center px-6" style={{ fontFamily: "'Inter', sans-serif" }}>
-        <div className="w-20 h-20 rounded-full bg-green-50 flex items-center justify-center mb-5">
+      <div className="theme-page fixed inset-0 flex flex-col items-center justify-center px-6" style={{ fontFamily: "'Inter', sans-serif" }}>
+        <div className="dark:bg-[#13352D] w-20 h-20 rounded-full bg-green-50 flex items-center justify-center mb-5">
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
         </div>
         <p className="text-[22px] font-bold text-[#111] mb-2">Account Created!</p>
@@ -220,7 +220,7 @@ export default function SignUpPage() {
   /* ── OTP verification screen ── */
   if (step === 'otp') {
     return (
-      <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+      <div className="theme-page fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
         {/* Top navy header */}
         <div className="bg-[#162353] px-6 pt-12 pb-10 flex flex-col items-center relative">
           <button onClick={() => setStep('form')}
@@ -231,20 +231,20 @@ export default function SignUpPage() {
           <p className="text-white/70 text-[13px]">Phone Verification</p>
         </div>
 
-        <div className="flex-1 bg-white mx-0 rounded-t-3xl -mt-4 px-6 pt-8 pb-10 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
+        <div className="theme-surface flex-1 bg-white mx-0 rounded-t-3xl -mt-4 px-6 pt-8 pb-10 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
           <h1 className="text-[22px] font-bold text-[#111] mb-1">Verify your number</h1>
           <p className="text-[13px] text-[#888] mb-2">
             We sent a 6-digit code to
           </p>
           <p className="text-[14px] font-semibold text-[#111] mb-6">{phone}</p>
 
-          <div className="w-full mb-6 bg-[#F0F4FF] border border-[#C7D7FF] rounded-xl px-4 py-3">
-            <p className="text-[11px] text-[#162353] font-semibold">Verification code sent by SMS</p>
+          <div className="theme-control w-full mb-6 rounded-xl px-4 py-3">
+            <p className="theme-brand-text text-[11px] font-semibold">Verification code sent by SMS</p>
             <p className="text-[10px] text-[#888] mt-1">The code expires shortly. Do not share it with anyone.</p>
           </div>
 
           {otpError && (
-            <div className="mb-5 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-600 font-medium">
+            <div className="mb-5 bg-red-50 rounded-xl px-4 py-3 text-[13px] text-red-600 font-medium">
               {otpError}
             </div>
           )}
@@ -270,12 +270,12 @@ export default function SignUpPage() {
 
           <div className="mt-5 text-center">
             {resendTimer > 0 ? (
-              <p className="text-[12px] text-[#888]">Resend OTP in <span className="font-semibold text-[#162353]">{resendTimer}s</span></p>
+              <p className="text-[12px] text-[#888]">Resend OTP in <span className="theme-brand-text font-semibold">{resendTimer}s</span></p>
             ) : (
               <button
                 onClick={() => { void sendSignupOtp(); }}
                 disabled={otpLoading}
-                className="text-[12px] text-[#162353] font-semibold"
+                className="theme-brand-text text-[12px] font-semibold"
               >
                 Resend OTP
               </button>
@@ -288,7 +288,7 @@ export default function SignUpPage() {
 
   /* ── Registration form ── */
   return (
-    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="theme-page fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
       {/* Top navy header */}
       <div className="bg-[#162353] px-6 pt-12 pb-10 flex flex-col items-center relative">
         <button onClick={() => navigate('/signin')}
@@ -300,12 +300,12 @@ export default function SignUpPage() {
       </div>
 
       {/* Card */}
-      <div className="flex-1 bg-white mx-0 rounded-t-3xl -mt-4 px-6 pt-8 pb-10 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
+      <div className="theme-surface flex-1 bg-white mx-0 rounded-t-3xl -mt-4 px-6 pt-8 pb-10 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
         <h1 className="text-[22px] font-bold text-[#111] mb-1">Join Vexa ✨</h1>
         <p className="text-[13px] text-[#888] mb-7">Fill in your details to get started</p>
 
         {error && (
-          <div className="mb-5 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-600 font-medium">
+          <div className="mb-5 bg-red-50 rounded-xl px-4 py-3 text-[13px] text-red-600 font-medium">
             {error}
           </div>
         )}
@@ -316,7 +316,7 @@ export default function SignUpPage() {
             <label className="text-[12px] font-semibold text-[#444] mb-1.5 block">Full Name</label>
             <input type="text" autoComplete="name" placeholder="e.g. Chidi Emmanuel Obi"
               value={name} onChange={e => { setName(e.target.value); setError(''); }}
-              className="w-full h-[50px] rounded-xl border border-[#E2E8F0] bg-[#F8F9FB] px-4 text-[14px] text-[#111] placeholder-[#C0C8D4] focus:outline-none focus:border-[#162353] focus:bg-white transition-colors" />
+              className="theme-field w-full h-[50px] rounded-xl px-4 text-[14px] placeholder-[#8994A5] focus:outline-none focus:ring-0 transition-colors" />
           </div>
 
           {/* Phone Number with country picker */}
@@ -326,31 +326,31 @@ export default function SignUpPage() {
               <button
                 type="button"
                 onClick={() => setShowPicker(p => !p)}
-                className="h-[50px] px-3 rounded-xl border border-[#E2E8F0] bg-[#F8F9FB] flex items-center gap-1.5 shrink-0 hover:border-[#162353] transition-colors"
+                className="theme-field h-[50px] px-3 rounded-xl flex items-center gap-1.5 shrink-0 hover:bg-[#E8EDF3] focus:outline-none transition-colors"
               >
                 <span className="text-[18px]">{countryCode.flag}</span>
-                <span className="text-[13px] font-bold text-[#162353]">{countryCode.code}</span>
+                <span className="theme-brand-text text-[13px] font-bold">{countryCode.code}</span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
               </button>
               {showPicker && (
-                <div className="absolute left-0 top-[54px] z-50 bg-white rounded-2xl border border-[#E2E8F0] shadow-xl overflow-hidden w-52">
+                <div className="absolute left-0 top-[54px] z-50 bg-white rounded-2xl shadow-xl overflow-hidden w-52">
                   {COUNTRY_CODES.map(c => (
                     <button
                       key={c.code}
                       type="button"
                       onClick={() => { setCountryCode(c); setShowPicker(false); }}
-                      className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#F8F9FB] transition-colors ${c.code === countryCode.code ? 'bg-[#F0F4FF]' : ''}`}
+                      className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#EEF2F7] transition-colors ${c.code === countryCode.code ? 'theme-selected-control' : ''}`}
                     >
                       <span className="text-[18px]">{c.flag}</span>
                       <span className="text-[13px] font-semibold text-[#111]">{c.name}</span>
-                      <span className="ml-auto text-[12px] font-bold text-[#162353]">{c.code}</span>
+                      <span className="theme-brand-text ml-auto text-[12px] font-bold">{c.code}</span>
                     </button>
                   ))}
                 </div>
               )}
               <input type="tel" inputMode="numeric" autoComplete="tel" placeholder="Phone Number"
                 value={phone} onChange={e => { setPhone(e.target.value); setError(''); }}
-                className="flex-1 h-[50px] rounded-xl border border-[#E2E8F0] bg-[#F8F9FB] px-4 text-[14px] text-[#111] placeholder-[#C0C8D4] focus:outline-none focus:border-[#162353] focus:bg-white transition-colors" />
+                className="theme-field flex-1 h-[50px] rounded-xl px-4 text-[14px] placeholder-[#8994A5] focus:outline-none focus:ring-0 transition-colors" />
             </div>
           </div>
 
@@ -369,8 +369,8 @@ export default function SignUpPage() {
           {/* T&C note */}
           <p className="text-[11px] text-[#999] leading-relaxed">
             By creating an account you agree to Vexa's{' '}
-            <span className="text-[#162353] font-semibold">Terms of Service</span> and{' '}
-            <span className="text-[#162353] font-semibold">Privacy Policy</span>.
+            <span className="theme-brand-text font-semibold">Terms of Service</span> and{' '}
+            <span className="theme-brand-text font-semibold">Privacy Policy</span>.
           </p>
 
           {/* CTA */}
@@ -389,7 +389,7 @@ export default function SignUpPage() {
 
         <p className="text-center text-[13px] text-[#888] mt-6">
           Already have an account?{' '}
-          <button onClick={() => navigate('/signin')} className="text-[#162353] font-bold">Sign In</button>
+          <button onClick={() => navigate('/signin')} className="theme-brand-text font-bold">Sign In</button>
         </p>
       </div>
     </div>

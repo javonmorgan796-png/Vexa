@@ -11,6 +11,7 @@ import {
   Send, X, Bot, CheckCheck, Wifi, Paperclip, ImagePlus, FileUp, FileText as FileIcon,
   Gift, Users, Share2, Percent, TrendingUp, BadgeCheck, ChevronUp,
   WalletCards, Plus, Trash2, Check, Coins,
+  Sun, Moon, Smartphone,
 } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
@@ -47,8 +48,64 @@ import { AccountSecurityProvider, useAccountSecurity } from '@/context/AccountSe
 import { unlockNotificationSound } from '@/lib/notificationSound';
 import type { AppTransaction } from '@/context/UserDataContext';
 import BusinessSecurityScreen from '@/pages/business/BusinessSecurityScreen';
+import {
+  LOGIN_FAILURE_LIMIT,
+  LOGIN_LOCKOUT_MS,
+  normalizeLoginPhone,
+} from '@/lib/authSecurity';
 
 const queryClient = new QueryClient();
+
+type ThemeMode = 'light' | 'dark' | 'system';
+const THEME_MODE_KEY = 'vexa_theme_mode';
+const ThemeModeContext = React.createContext<{
+  themeMode: ThemeMode;
+  resolvedThemeMode: 'light' | 'dark';
+  setThemeMode: (mode: ThemeMode) => void;
+} | null>(null);
+
+function ThemeModeProvider({ children }: { children: React.ReactNode }) {
+  const [themeMode, setThemeModeState] = useState<ThemeMode>(() => {
+    const stored = localStorage.getItem(THEME_MODE_KEY);
+    return stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system';
+  });
+  const [systemTheme, setSystemTheme] = useState<'light' | 'dark'>(() => (
+    window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  ));
+  const resolvedThemeMode = themeMode === 'system' ? systemTheme : themeMode;
+
+  const setThemeMode = useCallback((mode: ThemeMode) => {
+    setThemeModeState(mode);
+    localStorage.setItem(THEME_MODE_KEY, mode);
+  }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleSystemThemeChange = (event: MediaQueryListEvent) => {
+      setSystemTheme(event.matches ? 'dark' : 'light');
+    };
+    setSystemTheme(mediaQuery.matches ? 'dark' : 'light');
+    mediaQuery.addEventListener('change', handleSystemThemeChange);
+    return () => mediaQuery.removeEventListener('change', handleSystemThemeChange);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', resolvedThemeMode === 'dark');
+    document.documentElement.style.colorScheme = resolvedThemeMode;
+  }, [resolvedThemeMode]);
+
+  return (
+    <ThemeModeContext.Provider value={{ themeMode, resolvedThemeMode, setThemeMode }}>
+      {children}
+    </ThemeModeContext.Provider>
+  );
+}
+
+function useThemeMode() {
+  const context = React.useContext(ThemeModeContext);
+  if (!context) throw new Error('useThemeMode must be used inside ThemeModeProvider');
+  return context;
+}
 
 function timeSince(iso: string): string {
   const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
@@ -118,7 +175,7 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
         <img
           src="/vexa-logo.png"
           alt="Vexa"
-          className="vexa-logo w-[220px] sm:w-[260px] max-w-[72vw]"
+          className="vexa-logo w-[140px] sm:w-[160px] max-w-[45vw]"
         />
       </div>
     </div>
@@ -180,6 +237,7 @@ const PROMO_BANNERS = [
   {
     id: 'moneyworld',
     bg: '#F0EFFF',
+    darkBg: '#211F3B',
     accent: '#7C3AED',
     badge: '🌍 MoneyWorld',
     title: 'Earn big with MonieWorld',
@@ -209,6 +267,7 @@ const PROMO_BANNERS = [
   {
     id: 'cashback',
     bg: '#FFF4E6',
+    darkBg: '#382719',
     accent: '#EA580C',
     badge: '🔥 Limited Offer',
     title: '5% Cashback on Transfers',
@@ -234,6 +293,7 @@ const PROMO_BANNERS = [
   {
     id: 'savings',
     bg: '#E8F5F0',
+    darkBg: '#12372E',
     accent: '#059669',
     badge: '📈 Up to 15% p.a.',
     title: 'Grow Your Savings Faster',
@@ -256,6 +316,7 @@ const PROMO_BANNERS = [
 ];
 
 function PromoBannerCarousel() {
+  const { resolvedThemeMode } = useThemeMode();
   const [current, setCurrent] = useState(0);
   const [animDir, setAnimDir] = useState<'left'|'right'>('left');
   const [isAnimating, setIsAnimating] = useState(false);
@@ -282,6 +343,7 @@ function PromoBannerCarousel() {
   }, [current, isAnimating]);
 
   const b = PROMO_BANNERS[current];
+  const isDark = resolvedThemeMode === 'dark';
 
   const handleTouchStart = (e: React.TouchEvent) => { touchStart.current = e.touches[0].clientX; };
   const handleTouchEnd = (e: React.TouchEvent) => {
@@ -300,7 +362,7 @@ function PromoBannerCarousel() {
       <div
         className="rounded-xl p-4 flex items-center justify-between overflow-hidden relative select-none"
         style={{
-          background: b.bg,
+          background: isDark ? b.darkBg : b.bg,
           opacity: isAnimating ? 0 : 1,
           transform: isAnimating ? (animDir === 'left' ? 'translateX(-8px)' : 'translateX(8px)') : 'translateX(0)',
           transition: 'opacity 0.28s ease, transform 0.28s ease, background 0.3s ease',
@@ -311,11 +373,11 @@ function PromoBannerCarousel() {
         <div className="flex-1 pr-3">
           {/* Badge */}
           <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full mb-1.5"
-            style={{ background: `${b.accent}18`, color: b.accent }}>
+            style={{ background: `${b.accent}${isDark ? '35' : '18'}`, color: b.accent }}>
             {b.badge}
           </span>
-          <div className="text-[14px] font-bold text-[#111] mb-1 leading-snug">{b.title}</div>
-          <div className="text-[11px] text-[#555] leading-relaxed mb-2">{b.body}</div>
+          <div className="theme-text-primary text-[14px] font-bold mb-1 leading-snug">{b.title}</div>
+          <div className="theme-text-secondary text-[11px] leading-relaxed mb-2">{b.body}</div>
           <button className="text-[11px] font-bold px-3 py-1 rounded-lg text-white"
             style={{ background: b.accent }}>
             {b.cta} →
@@ -333,7 +395,7 @@ function PromoBannerCarousel() {
             style={{
               width: i === current ? 18 : 6,
               height: 6,
-              background: i === current ? PROMO_BANNERS[current].accent : '#D1D5DB',
+              background: i === current ? PROMO_BANNERS[current].accent : isDark ? 'var(--theme-border)' : '#D1D5DB',
             }} />
         ))}
       </div>
@@ -343,48 +405,67 @@ function PromoBannerCarousel() {
 
 /* ─── Passcode Lock Screen (shown on app-return if setting is ON) ──── */
 const PASSCODE_RETURN_KEY = 'vexa_passcode_on_return';
+const RETURN_LOCKOUT_KEY = 'vexa_passcode_return_lockout';
 
-/* ── Lock-timestamp helpers (localStorage so full-reload is covered) ── */
-const LOCK_HIDDEN_AT_KEY  = 'vexa_lock_hidden_at';   // ms timestamp written on hide
-const LOCK_TIMEOUT_MS     = 5 * 60 * 1000;           // 5 minutes
+type ReturnLockoutRecord = {
+  attempts: number;
+  lockedUntil: number | null;
+};
 
-function writeLockTimestamp() {
-  localStorage.setItem(LOCK_HIDDEN_AT_KEY, String(Date.now()));
+function returnLockoutKey(phone: string | undefined) {
+  return phone ? `${RETURN_LOCKOUT_KEY}_${normalizeLoginPhone(phone)}` : RETURN_LOCKOUT_KEY;
 }
-function clearLockTimestamp() {
-  localStorage.removeItem(LOCK_HIDDEN_AT_KEY);
+
+function loadReturnLockout(phone: string | undefined): ReturnLockoutRecord {
+  try {
+    const raw = localStorage.getItem(returnLockoutKey(phone));
+    if (!raw) return { attempts: 0, lockedUntil: null };
+    const parsed = JSON.parse(raw) as Partial<ReturnLockoutRecord>;
+    return {
+      attempts: typeof parsed.attempts === 'number' ? parsed.attempts : 0,
+      lockedUntil: typeof parsed.lockedUntil === 'number' ? parsed.lockedUntil : null,
+    };
+  } catch {
+    return { attempts: 0, lockedUntil: null };
+  }
 }
-/** Returns true when the stored timestamp is ≥ 5 min old (or missing). */
-function shouldLockNow(): boolean {
-  const raw = localStorage.getItem(LOCK_HIDDEN_AT_KEY);
-  if (!raw) return false;
-  return Date.now() - Number(raw) >= LOCK_TIMEOUT_MS;
+
+function saveReturnLockout(phone: string | undefined, record: ReturnLockoutRecord) {
+  localStorage.setItem(returnLockoutKey(phone), JSON.stringify(record));
+}
+
+function clearReturnLockout(phone: string | undefined) {
+  localStorage.removeItem(returnLockoutKey(phone));
 }
 
 /* ── Passcode Lock Screen ─────────────────────────────────────────────── */
-const MAX_LOCK_ATTEMPTS = 5;
-
 function PasscodeLockScreen({ onUnlock, onSignOut }: { onUnlock: () => void; onSignOut: () => void }) {
-  const { user, profilePhoto, verifyPasscode } = useAuth();
+  const { user, profilePhoto, verifyPasscodeForAppReturn } = useAuth();
   const [pin, setPin]           = useState('');
   const [shake, setShake]       = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [attempts, setAttempts] = useState(0);
-  const [lockedOut, setLockedOut] = useState(false);
-  const [countdown, setCountdown] = useState(0);
+  const [attempts, setAttempts] = useState(() => loadReturnLockout(user?.phone).attempts);
+  const [lockedUntil, setLockedUntil] = useState(() => loadReturnLockout(user?.phone).lockedUntil ?? 0);
+  const [now, setNow] = useState(() => Date.now());
+  const lockedOut = lockedUntil > now;
+  const countdown = Math.max(0, lockedUntil - now);
 
-  // Progressive lockout: 30 s after MAX_LOCK_ATTEMPTS wrong tries
+  // Keep the local countdown refresh-safe even if the optional security
+  // migration has not been installed yet. The RPC is still checked below
+  // whenever it is available, so another device cannot bypass the delay.
   useEffect(() => {
-    if (!lockedOut) return;
-    setCountdown(30);
-    const id = setInterval(() => {
-      setCountdown(c => {
-        if (c <= 1) { clearInterval(id); setLockedOut(false); setAttempts(0); return 0; }
-        return c - 1;
-      });
-    }, 1000);
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [lockedOut]);
+  }, []);
+
+  useEffect(() => {
+    if (lockedUntil > 0 && lockedUntil <= now) {
+      clearReturnLockout(user?.phone);
+      setLockedUntil(0);
+      setAttempts(0);
+      setErrorMsg('');
+    }
+  }, [lockedUntil, now, user?.phone]);
 
   function addDigit(d: string) {
     if (lockedOut || pin.length >= 6) return;
@@ -401,21 +482,40 @@ function PasscodeLockScreen({ onUnlock, onSignOut }: { onUnlock: () => void; onS
   }
 
   async function verify(code: string) {
-    if (user && await verifyPasscode(code)) {
-      clearLockTimestamp();
-      onUnlock();
+    if (lockedOut) {
+      setErrorMsg('Too many failed attempts. Please wait for the security delay to finish.');
       return;
     }
-    const newAttempts = attempts + 1;
-    setAttempts(newAttempts);
-    setShake(true);
-    setTimeout(() => { setShake(false); setPin(''); }, 500);
 
-    if (newAttempts >= MAX_LOCK_ATTEMPTS) {
-      setLockedOut(true);
-      setErrorMsg('Too many attempts — locked for 30 s');
-    } else {
-      setErrorMsg(`Incorrect passcode · ${MAX_LOCK_ATTEMPTS - newAttempts} attempt${MAX_LOCK_ATTEMPTS - newAttempts !== 1 ? 's' : ''} left`);
+    if (user) {
+      const result = await verifyPasscodeForAppReturn(code);
+      if (result.success) {
+        clearReturnLockout(user.phone);
+        setAttempts(0);
+        setLockedUntil(0);
+        onUnlock();
+        return;
+      }
+
+      const previous = loadReturnLockout(user.phone);
+      const nextAttempts = result.lockedUntil ? LOGIN_FAILURE_LIMIT : previous.attempts + 1;
+      const nextLockedUntil = result.lockedUntil && result.lockedUntil > Date.now()
+        ? result.lockedUntil
+        : nextAttempts >= LOGIN_FAILURE_LIMIT
+          ? Date.now() + LOGIN_LOCKOUT_MS
+          : null;
+      saveReturnLockout(user.phone, { attempts: nextAttempts, lockedUntil: nextLockedUntil });
+      setAttempts(nextAttempts);
+      setLockedUntil(nextLockedUntil ?? 0);
+      setShake(true);
+      setTimeout(() => { setShake(false); setPin(''); }, 500);
+
+      if (nextLockedUntil) {
+        setErrorMsg('Too many attempts — locked for 5 minutes');
+      } else {
+        setErrorMsg(`Incorrect passcode · ${LOGIN_FAILURE_LIMIT - nextAttempts} attempt${LOGIN_FAILURE_LIMIT - nextAttempts !== 1 ? 's' : ''} left`);
+      }
+      return;
     }
   }
 
@@ -470,7 +570,7 @@ function PasscodeLockScreen({ onUnlock, onSignOut }: { onUnlock: () => void; onS
         <div className="h-5">
           {lockedOut ? (
             <p className="text-orange-400 text-[12px] font-medium">
-              Locked — try again in <span className="font-bold tabular-nums">{countdown}s</span>
+              Locked — try again in <span className="font-bold tabular-nums">{Math.ceil(countdown / 1000)}s</span>
             </p>
           ) : errorMsg ? (
             <p className="text-[#FF6B6B] text-[12px] font-medium">{errorMsg}</p>
@@ -536,7 +636,7 @@ function TwoFactorWarningCard({ onEnable }: { onEnable: () => void }) {
     <div className="mx-3 mt-3">
       <button
         onClick={onEnable}
-        className="w-full flex items-center gap-2.5 text-left bg-[#FFF8E8] border border-[#F3D58B] rounded-xl px-3 py-2"
+        className="w-full flex items-center gap-2.5 text-left bg-[#FFF8E8] rounded-xl px-3 py-2 border-0 outline-none ring-0 shadow-sm focus:outline-none focus:ring-0"
       >
         <div className="w-8 h-8 rounded-full bg-[#FDE7A9] flex items-center justify-center shrink-0">
           <TriangleAlert className="w-4 h-4 text-[#9A6800]" />
@@ -659,7 +759,7 @@ function MoniepointHome() {
           {/* mt 16px, px 16px */}
           <div className="px-4 mt-4">
             <div className="flex justify-between items-center mb-2.5">
-              <span className="text-[12px] font-semibold text-[#111]">Services</span>
+              <span className="theme-text-primary text-[12px] font-semibold">Services</span>
               <button className="text-[#2563EB] text-[11px] font-semibold">Edit</button>
             </div>
 
@@ -675,10 +775,10 @@ function MoniepointHome() {
                   <button
                     key={label}
                     onClick={() => navigate(routes[label] ?? '/')}
-                    className="bg-white rounded-xl py-3.5 px-1 flex flex-col items-center justify-center gap-2 border border-[#F0F0F0] active:bg-[#F2F3F5]"
+                    className="theme-surface theme-border rounded-xl py-3.5 px-1 flex flex-col items-center justify-center gap-2 border active:bg-[#F2F3F5]"
                   >
-                    <Icon className="text-[#1a1a1a]" size={22} strokeWidth={1.75} />
-                    <span className="text-[11px] font-medium text-[#333] text-center leading-tight">{label}</span>
+                    <Icon className="theme-icon" size={22} strokeWidth={1.75} />
+                    <span className="theme-text-primary text-[11px] font-medium text-center leading-tight">{label}</span>
                   </button>
                 );
               })}
@@ -903,6 +1003,7 @@ type SettingsSection = { heading: string; items: { icon: React.ReactNode; label:
 function SettingsPage() {
   const [, navigate] = useLocation();
   const { user, loading, signOut, profilePhoto } = useAuth();
+  const { themeMode, resolvedThemeMode, setThemeMode } = useThemeMode();
   const {
     state: securityState,
     busy: securityBusy,
@@ -988,14 +1089,14 @@ function SettingsPage() {
   ];
 
   return (
-    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="theme-page fixed inset-0 flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
       {/* Header */}
-      <div className="flex-none flex items-center gap-3 px-4 pb-3 bg-white border-b border-[#E8EBF0]"
+      <div className="theme-surface theme-border flex-none flex items-center gap-3 px-4 pb-3 border-b"
         style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
-        <button onClick={() => navigate('/')} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
+        <button onClick={() => navigate('/')} className="theme-icon w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         </button>
-        <span className="text-[16px] font-bold text-[#111]">Settings</span>
+        <span className="theme-text-primary text-[16px] font-bold">Settings</span>
       </div>
 
       <div className="flex-1 overflow-y-auto py-4 px-4 space-y-4" style={{ scrollbarWidth: 'none' }}>
@@ -1012,11 +1113,61 @@ function SettingsPage() {
           </div>
         </div>
 
+        {/* Appearance */}
+        <div>
+          <p className="theme-text-secondary text-[11px] font-semibold uppercase tracking-wide mb-2 px-1">Appearance</p>
+          <div className="theme-surface rounded-2xl px-4 py-4">
+            <div className="flex items-center gap-3">
+               <span className="theme-icon flex h-10 w-10 items-center justify-center rounded-xl bg-[#EAF2FF] text-[#1769C2]">
+                {themeMode === 'system'
+                  ? <Smartphone className="h-5 w-5" />
+                  : resolvedThemeMode === 'dark' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="theme-text-primary text-[14px] font-semibold">App theme</p>
+                <p className="theme-text-secondary mt-0.5 text-[11px]">Choose how Vexa looks on this device</p>
+              </div>
+              <span className="theme-text-secondary text-[11px] font-semibold">
+                {themeMode === 'system' ? 'Phone default' : resolvedThemeMode === 'dark' ? 'Dark' : 'Light'}
+              </span>
+            </div>
+            <div className="theme-control mt-4 grid grid-cols-3 gap-1 rounded-xl p-1">
+              <button
+                type="button"
+                onClick={() => setThemeMode('light')}
+                aria-pressed={themeMode === 'light'}
+                className={`flex items-center justify-center gap-2 rounded-lg py-2.5 text-[12px] font-semibold transition-colors ${themeMode === 'light' ? 'theme-control-active shadow-sm' : 'theme-text-secondary'}`}
+              >
+                <Sun className="h-4 w-4" />
+                Light mode
+              </button>
+              <button
+                type="button"
+                onClick={() => setThemeMode('dark')}
+                aria-pressed={themeMode === 'dark'}
+                className={`flex items-center justify-center gap-2 rounded-lg py-2.5 text-[12px] font-semibold transition-colors ${themeMode === 'dark' ? 'theme-control-active shadow-sm' : 'theme-text-secondary'}`}
+              >
+                <Moon className="h-4 w-4" />
+                Dark mode
+              </button>
+              <button
+                type="button"
+                onClick={() => setThemeMode('system')}
+                aria-pressed={themeMode === 'system'}
+                className={`flex items-center justify-center gap-2 rounded-lg py-2.5 text-[12px] font-semibold transition-colors ${themeMode === 'system' ? 'theme-control-active shadow-sm' : 'theme-text-secondary'}`}
+              >
+                <Smartphone className="h-4 w-4" />
+                Phone default
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* Settings sections */}
         {sections.map((section, si) => (
           <div key={si}>
-            {section.heading && <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide mb-2 px-1">{section.heading}</p>}
-            <div className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
+            {section.heading && <p className="theme-text-secondary text-[11px] font-semibold uppercase tracking-wide mb-2 px-1">{section.heading}</p>}
+            <div className="theme-surface rounded-2xl overflow-hidden">
               {section.items.map((item, ii) => {
                 const isBio  = item.label === 'Biometric Login';
                 const isNot  = item.label === 'Notifications';
@@ -1033,12 +1184,12 @@ function SettingsPage() {
                       else if (isSound) toggleNotificationSound();
                       else if (item.action) item.action();
                     }}
-                    className={`w-full flex items-center gap-3.5 px-4 py-4 text-left transition-colors hover:bg-[#F8F9FB] ${ii < section.items.length - 1 ? 'border-b border-[#F5F5F5]' : ''}`}
+                      className="theme-text-primary w-full flex items-center gap-3.5 px-4 py-4 text-left transition-colors hover:bg-[#F8F9FB]"
                   >
-                    <span className={item.danger ? 'text-red-500' : 'text-[#555]'}>{item.icon}</span>
+                     <span className={item.danger ? 'text-red-500' : 'theme-icon'}>{item.icon}</span>
                     <div className="flex-1 min-w-0">
-                      <p className={`text-[14px] font-semibold ${item.danger ? 'text-red-500' : 'text-[#111]'}`}>{item.label}</p>
-                      {item.sub && <p className="text-[11px] text-[#888] mt-0.5 truncate">{item.sub}</p>}
+                       <p className={`text-[14px] font-semibold ${item.danger ? 'text-red-500' : 'theme-text-primary'}`}>{item.label}</p>
+                       {item.sub && <p className="theme-text-secondary text-[11px] mt-0.5 truncate">{item.sub}</p>}
                     </div>
                     {isToggle ? (
                       <div className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${toggleState ? 'bg-[#162353]' : 'bg-[#D1D5DB]'}`}>
@@ -1054,7 +1205,7 @@ function SettingsPage() {
           </div>
         ))}
 
-        <p className="text-center text-[11px] text-[#CCC] pb-2">Vexa Bank · v1.0.0</p>
+         <p className="theme-text-secondary text-center text-[11px] opacity-60 pb-2">Vexa Bank · v1.0.0</p>
       </div>
       {securityAction && (
         <div className="fixed inset-0 z-[70] flex items-end justify-center bg-[#07122B]/55 px-4 pb-4 sm:items-center">
@@ -1344,7 +1495,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col bg-[#F2F3F5]"
+      className="theme-page fixed inset-0 z-50 flex flex-col"
       style={{ fontFamily: "'Inter', sans-serif" }}
     >
       {/* ── Header ── */}
@@ -1441,7 +1592,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
 
               <div className={`flex flex-col max-w-[78%] ${isUser ? 'items-end' : 'items-start'}`}>
                 {!isUser && (
-                  <p className="text-[10px] font-semibold text-[#64748B] mb-1 px-1">
+                  <p className="theme-text-secondary text-[10px] font-semibold mb-1 px-1">
                     {isBot ? 'Vexa AI' : AGENT.name}
                   </p>
                 )}
@@ -1458,12 +1609,12 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
                         style={{ maxHeight: 200 }}
                       />
                     ) : (
-                      <div className={`flex items-center gap-3 px-4 py-3 ${isUser ? 'bg-[#162353]' : 'bg-white border border-[#F0F0F0]'}`}>
+                      <div className={`flex items-center gap-3 px-4 py-3 ${isUser ? 'bg-[#162353]' : 'theme-surface theme-border border'}`}>
                         <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${isUser ? 'bg-white/15' : 'bg-[#EFF6FF]'}`}>
                           <FileIcon className={`w-4 h-4 ${isUser ? 'text-white' : 'text-[#2563EB]'}`} />
                         </div>
                         <div className="min-w-0">
-                          <p className={`text-[12px] font-semibold truncate ${isUser ? 'text-white' : 'text-[#1E293B]'}`}>{msg.attachment.name}</p>
+                          <p className={`text-[12px] font-semibold truncate ${isUser ? 'text-white' : 'theme-text-primary'}`}>{msg.attachment.name}</p>
                           <p className={`text-[11px] mt-0.5 ${isUser ? 'text-white/60' : 'text-[#94A3B8]'}`}>{msg.attachment.size}</p>
                         </div>
                       </div>
@@ -1477,7 +1628,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
                     className={`px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${
                       isUser
                         ? 'bg-[#162353] text-white rounded-br-sm'
-                        : 'bg-white text-[#1E293B] rounded-bl-sm border border-[#F0F0F0]'
+                        : 'theme-surface theme-text-primary rounded-bl-sm theme-border border'
                     }`}
                     style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}
                   >
@@ -1524,7 +1675,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
                 </div>
               )}
             </div>
-            <div className="bg-white border border-[#F0F0F0] rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1.5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            <div className="theme-surface theme-border border rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1.5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
               {[0, 1, 2].map(i => (
                 <span
                   key={i}
@@ -1542,7 +1693,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
             <button
               onClick={handleTransferToAgent}
               disabled={transferring}
-              className="flex items-center gap-2 bg-white border border-[#E2E8F0] rounded-full px-5 py-2.5 text-[12px] font-semibold text-[#162353] active:bg-[#F1F5F9] transition-colors disabled:opacity-60"
+              className="theme-surface theme-border border flex items-center gap-2 rounded-full px-5 py-2.5 text-[12px] font-semibold theme-text-primary active:bg-[#F1F5F9] transition-colors disabled:opacity-60"
               style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}
             >
               <Wifi className="w-3.5 h-3.5" />
@@ -1563,7 +1714,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
               <button
                 key={q}
                 onClick={() => handleSend(q)}
-                className="bg-white border border-[#E2E8F0] rounded-full px-3.5 py-1.5 text-[12px] font-medium text-[#334155] active:bg-[#F1F5F9] transition-colors"
+                className="theme-surface theme-border border rounded-full px-3.5 py-1.5 text-[12px] font-medium theme-text-primary active:bg-[#F1F5F9] transition-colors"
                 style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
               >
                 {q}
@@ -1575,27 +1726,27 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
 
       {/* ── Attach menu popup ── */}
       {showAttachMenu && (
-        <div className="flex-none bg-white border-t border-[#E8EBF0] px-4 pt-3 pb-2">
+        <div className="theme-surface theme-border flex-none border-t px-4 pt-3 pb-2">
           <div className="flex gap-3">
             {/* Camera / Photo */}
             <button
               onClick={() => { setShowAttachMenu(false); cameraInputRef.current?.click(); }}
-              className="flex-1 flex flex-col items-center gap-2 bg-[#F8F9FB] rounded-2xl py-4 active:bg-[#EEF2F7] transition-colors border border-[#E8EBF0]"
+              className="theme-surface theme-border flex-1 flex flex-col items-center gap-2 rounded-2xl py-4 active:bg-[#EEF2F7] transition-colors border"
             >
               <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#00C6FF] to-[#0072FF] flex items-center justify-center">
                 <ImagePlus className="w-5 h-5 text-white" />
               </div>
-              <span className="text-[12px] font-semibold text-[#334155]">Photo / Camera</span>
+              <span className="theme-text-primary text-[12px] font-semibold">Photo / Camera</span>
             </button>
             {/* File */}
             <button
               onClick={() => { setShowAttachMenu(false); fileInputRef.current?.click(); }}
-              className="flex-1 flex flex-col items-center gap-2 bg-[#F8F9FB] rounded-2xl py-4 active:bg-[#EEF2F7] transition-colors border border-[#E8EBF0]"
+              className="theme-surface theme-border flex-1 flex flex-col items-center gap-2 rounded-2xl py-4 active:bg-[#EEF2F7] transition-colors border"
             >
               <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#7C3AED] to-[#4F46E5] flex items-center justify-center">
                 <FileUp className="w-5 h-5 text-white" />
               </div>
-              <span className="text-[12px] font-semibold text-[#334155]">Document / File</span>
+              <span className="theme-text-primary text-[12px] font-semibold">Document / File</span>
             </button>
           </div>
           <button
@@ -1609,7 +1760,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
 
       {/* ── Input bar ── */}
       <div
-        className="flex-none bg-white border-t border-[#E8EBF0] px-4 py-3 flex items-end gap-2"
+        className="theme-surface theme-border flex-none border-t px-4 py-3 flex items-end gap-2"
         style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 12px)' }}
       >
         {/* Attachment button */}
@@ -1625,7 +1776,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
         </button>
 
         {/* Text input */}
-        <div className="flex-1 bg-[#F8F9FB] rounded-2xl border border-[#E8EBF0] flex items-end px-4 py-2.5">
+        <div className="theme-control theme-border flex-1 rounded-2xl border flex items-end px-4 py-2.5">
           <input
             ref={inputRef}
             type="text"
@@ -1633,7 +1784,7 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
             onChange={e => setInputText(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSend()}
             placeholder={isAiMode ? 'Ask Vexa AI anything…' : `Message ${AGENT.name.split(' ')[0]}…`}
-            className="flex-1 bg-transparent text-[13px] text-[#1E293B] placeholder-[#94A3B8] outline-none resize-none"
+            className="theme-text-primary flex-1 bg-transparent text-[13px] placeholder-[#94A3B8] outline-none resize-none"
           />
         </div>
 
@@ -1876,7 +2027,7 @@ function NotificationsPage() {
                 </div>
                 <p className="text-[12px] text-[#555] leading-relaxed">{n.body}</p>
               </div>
-              <span className="w-2 h-2 rounded-full bg-[#162353] shrink-0 mt-1.5" />
+              <span className="w-2 h-2 rounded-full bg-red-500 shrink-0 mt-1.5" />
             </button>
           );
         })}
@@ -2160,6 +2311,8 @@ interface TransferReceiptData {
   accountNumber: string;
   senderName: string;
   senderAccountNumber: string;
+  balanceBefore?: number;
+  balanceAfter?: number;
 }
 
 function formatAmt(raw: string) {
@@ -2167,6 +2320,41 @@ function formatAmt(raw: string) {
   const [intP, ...rest] = clean.split('.');
   const dec = rest.length ? '.' + rest.join('') : '';
   return intP.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + dec;
+}
+
+function ordinalDay(day: number) {
+  const suffix = day % 100 >= 11 && day % 100 <= 13
+    ? 'th'
+    : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[day % 10] ?? 'th';
+  return `${day}${suffix}`;
+}
+
+function formatReceiptDate(transaction: AppTransaction) {
+  if (!transaction.createdAt) return transaction.date;
+  const date = new Date(transaction.createdAt);
+  if (Number.isNaN(date.getTime())) return transaction.date;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).formatToParts(date);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find(part => part.type === type)?.value ?? '';
+  return `${get('weekday')}, ${get('month')} ${ordinalDay(Number(get('day')))}, ${get('year')} | ${get('hour')}:${get('minute')} ${get('dayPeriod')}`;
+}
+
+function formatReceiptTime(transaction: AppTransaction) {
+  if (!transaction.createdAt) return transaction.date;
+  const date = new Date(transaction.createdAt);
+  if (Number.isNaN(date.getTime())) return transaction.date;
+  return new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date);
 }
 
 function drawReceiptWrappedText(
@@ -2216,60 +2404,72 @@ async function createTransferReceiptImage(receipt: TransferReceiptData, referenc
   const teal = '#145D67';
   const cardX = 26;
   const cardWidth = width - cardX * 2;
-
-  context.fillStyle = '#D9FBE9';
-  context.beginPath();
-  context.arc(width / 2, 97, 57, 0, Math.PI * 2);
-  context.fill();
-  context.strokeStyle = '#159447';
-  context.lineWidth = 7;
-  context.lineCap = 'round';
-  context.lineJoin = 'round';
-  context.beginPath();
-  context.moveTo(width / 2 - 21, 97);
-  context.lineTo(width / 2 - 6, 111);
-  context.lineTo(width / 2 + 24, 80);
-  context.stroke();
+  const receiptLogo = await new Promise<HTMLImageElement | null>(resolve => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = '/vexa-share-logo.png';
+  });
+  const receiptTopOffset = 0;
+  if (receiptLogo) {
+    context.globalAlpha = 0.95;
+    context.drawImage(receiptLogo, width / 2 - 150, 8, 300, 150);
+    context.globalAlpha = 1;
+  }
 
   context.fillStyle = ink;
   context.textAlign = 'center';
   context.font = '800 34px Inter, Arial, sans-serif';
-  context.fillText('Transfer Successful', width / 2, 187);
+  context.fillText('Transfer Successful', width / 2, 187 + receiptTopOffset);
   context.fillStyle = muted;
   context.font = '400 21px Inter, Arial, sans-serif';
-  context.fillText('Your money has been sent securely', width / 2, 241);
+  context.fillText('Your money has been sent securely', width / 2, 241 + receiptTopOffset);
 
   context.textAlign = 'left';
   const amountX = 26;
-  const amountY = 296;
+  const amountY = 296 + receiptTopOffset;
   const amountWidth = cardWidth;
   const amountHeight = 239;
   context.fillStyle = teal;
   context.beginPath();
   context.roundRect(amountX, amountY, amountWidth, amountHeight, 26);
   context.fill();
+  if (receiptLogo) {
+    context.save();
+    context.beginPath();
+    context.roundRect(amountX, amountY, amountWidth, amountHeight, 26);
+    context.clip();
+    context.globalAlpha = 0.16;
+    const watermarkPositions = [
+      [50, 318], [182, 315], [335, 321], [488, 316],
+      [8, 390], [145, 402], [292, 392], [446, 401],
+      [66, 477], [214, 470], [375, 478], [520, 468],
+    ];
+    watermarkPositions.forEach(([x, y]) => context.drawImage(receiptLogo, x, y + receiptTopOffset, 94, 47));
+    context.restore();
+  }
 
   context.textAlign = 'center';
   context.fillStyle = '#A9BCC1';
   context.font = '400 17px Inter, Arial, sans-serif';
-  context.fillText('AMOUNT SENT', width / 2, 340);
+  context.fillText('AMOUNT SENT', width / 2, 340 + receiptTopOffset);
   context.fillStyle = '#FFFFFF';
   context.font = '800 52px Inter, Arial, sans-serif';
-  context.fillText(`₦${receipt.transaction.amount}`, width / 2, 383);
+  context.fillText(`₦${receipt.transaction.amount}`, width / 2, 383 + receiptTopOffset);
   context.fillStyle = '#0B766F';
   context.beginPath();
-  context.roundRect(width / 2 - 73, 460, 146, 38, 19);
+  context.roundRect(width / 2 - 73, 460 + receiptTopOffset, 146, 38, 19);
   context.fill();
   context.fillStyle = '#FFFFFF';
   context.fillStyle = '#9FF2BB';
   context.beginPath();
-  context.arc(width / 2 - 50, 479, 4, 0, Math.PI * 2);
+  context.arc(width / 2 - 50, 479 + receiptTopOffset, 4, 0, Math.PI * 2);
   context.fill();
   context.fillStyle = '#A5F0C2';
   context.font = '700 17px Inter, Arial, sans-serif';
-  context.fillText('Completed', width / 2 + 10, 470);
+  context.fillText('Completed', width / 2 + 10, 470 + receiptTopOffset);
 
-  const infoY = 562;
+  const infoY = 562 + receiptTopOffset;
   const infoHeight = 432;
   context.textAlign = 'left';
   context.fillStyle = '#FFFFFF';
@@ -2282,30 +2482,30 @@ async function createTransferReceiptImage(receipt: TransferReceiptData, referenc
 
   context.fillStyle = muted;
   context.font = '700 16px Inter, Arial, sans-serif';
-  context.fillText('RECIPIENT', 57, 593);
+  context.fillText('RECIPIENT', 57, 593 + receiptTopOffset);
 
   context.fillStyle = '#EEF2FF';
   context.beginPath();
-  context.arc(92, 668, 35, 0, Math.PI * 2);
+  context.arc(92, 668 + receiptTopOffset, 35, 0, Math.PI * 2);
   context.fill();
   context.fillStyle = '#1B7282';
   context.textAlign = 'center';
   context.font = '700 27px Inter, Arial, sans-serif';
-  context.fillText((receipt.recipientName.trim()[0] || 'D').toUpperCase(), 92, 656);
+  context.fillText((receipt.recipientName.trim()[0] || 'D').toUpperCase(), 92, 656 + receiptTopOffset);
 
   context.textAlign = 'left';
   context.fillStyle = ink;
   context.font = '700 22px Inter, Arial, sans-serif';
-  drawReceiptWrappedText(context, receipt.recipientName, 145, 641, 440, 27);
+  drawReceiptWrappedText(context, receipt.recipientName, 145, 641 + receiptTopOffset, 440, 27);
   context.fillStyle = muted;
   context.font = '400 20px Inter, Arial, sans-serif';
-  context.fillText(`Vexa · ${receipt.accountNumber}`, 145, 676);
+  context.fillText(`Vexa · ${receipt.accountNumber}`, 145, 676 + receiptTopOffset);
 
   context.strokeStyle = '#E6E8EA';
   context.lineWidth = 1;
   context.beginPath();
-  context.moveTo(cardX, 726);
-  context.lineTo(cardX + cardWidth, 726);
+  context.moveTo(cardX, 726 + receiptTopOffset);
+  context.lineTo(cardX + cardWidth, 726 + receiptTopOffset);
   context.stroke();
 
   const detailX = 57;
@@ -2321,25 +2521,25 @@ async function createTransferReceiptImage(receipt: TransferReceiptData, referenc
     drawReceiptWrappedText(context, value, valueX, y, maxWidth, 27);
   };
 
-  drawDetail('From', `${receipt.senderName} · ${receipt.senderAccountNumber}`, 758, 315);
-  drawDetail('Date', receipt.transaction.date, 834, 300);
-  drawDetail('Narration', receipt.transaction.note || 'Transfer', 882, 300);
+  drawDetail('From', `${receipt.senderName} · ${receipt.senderAccountNumber}`, 758 + receiptTopOffset, 315);
+  drawDetail('Date', receipt.transaction.date, 834 + receiptTopOffset, 300);
+  drawDetail('Narration', receipt.transaction.note || 'Transfer', 882 + receiptTopOffset, 300);
 
   context.strokeStyle = '#E6E8EA';
   context.beginPath();
-  context.moveTo(detailX, 921);
-  context.lineTo(valueX, 921);
+  context.moveTo(detailX, 921 + receiptTopOffset);
+  context.lineTo(valueX, 921 + receiptTopOffset);
   context.stroke();
 
-  drawDetail('Reference', reference, 947, 300, '#1B7282');
+  drawDetail('Reference', reference, 947 + receiptTopOffset, 300, '#1B7282');
   context.strokeStyle = '#1B7282';
   context.lineWidth = 2;
   context.beginPath();
-  context.roundRect(570, 948, 15, 17, 3);
-  context.moveTo(574, 948);
-  context.lineTo(574, 945);
-  context.lineTo(581, 945);
-  context.lineTo(585, 949);
+  context.roundRect(570, 948 + receiptTopOffset, 15, 17, 3);
+  context.moveTo(574, 948 + receiptTopOffset);
+  context.lineTo(574, 945 + receiptTopOffset);
+  context.lineTo(581, 945 + receiptTopOffset);
+  context.lineTo(585, 949 + receiptTopOffset);
   context.stroke();
 
   const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
@@ -2359,7 +2559,7 @@ function storedSelectedBank(): PaystackBank | null {
 function TransferPage() {
   const [, navigate] = useLocation();
   const { user, setInitialTransferPin } = useAuth();
-  const { completeBankTransfer } = useUserData();
+  const { balance, completeBankTransfer } = useUserData();
   const [step, setStep]           = useState<TxStep>('details');
   const initialBank = storedSelectedBank();
   const [bank, setBank]           = useState(initialBank?.name ?? '');
@@ -2436,6 +2636,7 @@ function TransferPage() {
     setProcessing(true);
     setSubmitError('');
     const amtValue = parseFloat(amount.replace(/,/g, '') || '0');
+    const balanceBeforeTransfer = balance;
     const result = await completeBankTransfer({
       amount: amtValue,
       pin,
@@ -2459,6 +2660,8 @@ function TransferPage() {
       accountNumber: acctNo,
       senderName: user?.name ?? 'Vexa account',
       senderAccountNumber: user?.accountNumber ?? '—',
+      balanceBefore: balanceBeforeTransfer,
+      balanceAfter: Math.max(0, balanceBeforeTransfer - amtValue),
     });
     setStep('success');
   }
@@ -2825,10 +3028,14 @@ function TransferReceipt({
   onTransferAgain: () => void;
 }) {
   const [copied, setCopied] = useState(false);
-  const [receiptAction, setReceiptAction] = useState<'share' | null>(null);
+  const [receiptAction, setReceiptAction] = useState<'share' | 'download' | null>(null);
   const [receiptActionMessage, setReceiptActionMessage] = useState('');
   const { transaction, recipientName, bank, accountNumber, senderName, senderAccountNumber } = receipt;
   const reference = `VX${transaction.id.replace(/-/g, '').slice(0, 10).toUpperCase()}`;
+  const amountValue = Number(transaction.raw_amount) || Number(transaction.amount.replace(/,/g, '')) || 0;
+  const balanceAfter = receipt.balanceAfter ?? 0;
+  const balanceBefore = receipt.balanceBefore ?? balanceAfter + amountValue;
+  const formatReceiptAmount = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   async function shareReceipt() {
     setReceiptAction('share');
@@ -2863,14 +3070,39 @@ function TransferReceipt({
     }
   }
 
+  async function downloadReceipt() {
+    setReceiptAction('download');
+    setReceiptActionMessage('');
+    try {
+      const image = await createTransferReceiptImage(receipt, reference);
+      const downloadUrl = URL.createObjectURL(image);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = image.name;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+      setReceiptActionMessage('Receipt image saved to your device');
+    } catch {
+      setReceiptActionMessage('Could not download the receipt. Please try again.');
+    } finally {
+      setReceiptAction(null);
+    }
+  }
+
   async function copyReference() {
     await navigator.clipboard?.writeText(reference).catch(() => {});
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2000);
   }
 
+  const progressSteps = [
+    { title: 'Request started', subtitle: 'Transfer accepted' },
+    { title: 'Transfer processed', subtitle: 'Funds debited' },
+    { title: 'Recipient notified', subtitle: `Sent to ${recipientName}` },
+  ];
+
   return (
-    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="fixed inset-0 flex flex-col bg-[#F6F6F6]" style={{ fontFamily: "'Inter', sans-serif" }}>
       <style>{`
         @media print {
           body * { visibility: hidden !important; }
@@ -2880,102 +3112,169 @@ function TransferReceipt({
         }
       `}</style>
 
-      <div className="receipt-header-action flex-none flex items-center justify-between px-4 pb-3 bg-white border-b border-[#E8EBF0]"
-        style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
-        <button onClick={onHome} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100" aria-label="Back to home">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5M12 5l-7 7 7 7"/>
+      <div
+        className="receipt-header-action flex-none flex items-center justify-between px-5 pb-3 bg-[#F6F6F6]"
+        style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)' }}
+      >
+        <button onClick={onHome} className="w-8 h-8 flex items-center justify-center" aria-label="Back to home">
+          <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#1266C4" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 5l-7 7 7 7" />
           </svg>
         </button>
         <span className="text-[16px] font-bold text-[#111]">Transfer Receipt</span>
-        <button onClick={() => window.print()} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100" aria-label="Print receipt">
-          <FileText className="w-[18px] h-[18px] text-[#162353]" />
+        <button onClick={() => window.print()} className="w-8 h-8 flex items-center justify-center" aria-label="Print receipt">
+          <FileText className="w-[17px] h-[17px] text-transparent" />
         </button>
       </div>
 
-      <div className="vexa-receipt flex-1 overflow-y-auto px-4 py-6" style={{ scrollbarWidth: 'none' }}>
+      <div className="vexa-receipt flex-1 overflow-y-auto px-5 pt-6 pb-8" style={{ scrollbarWidth: 'none' }}>
         <div className="max-w-md mx-auto">
-          <div className="flex flex-col items-center text-center mb-5">
-            <div className="w-[72px] h-[72px] rounded-full bg-green-100 flex items-center justify-center mb-4">
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-            </div>
-            <p className="text-[21px] font-extrabold text-[#111]">Transfer Successful</p>
-            <p className="text-[13px] text-[#888] mt-1">Your money has been sent securely</p>
-          </div>
-
-          <div className="bg-[#162353] rounded-2xl px-5 py-6 text-center text-white shadow-sm">
-            <p className="text-[11px] text-white/60 uppercase tracking-wider">Amount sent</p>
-            <p className="text-[32px] font-extrabold mt-1">₦{transaction.amount}</p>
-            <div className="inline-flex items-center gap-1.5 bg-green-400/15 rounded-full px-3 py-1 mt-3">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-300" />
-              <span className="text-[11px] font-semibold text-green-200">Completed</span>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-[#E8EBF0] mt-4 overflow-hidden">
-            <div className="px-5 py-4 border-b border-[#F0F0F0]">
-              <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide">Recipient</p>
-              <div className="flex items-center gap-3 mt-3">
-                <div className="w-11 h-11 rounded-full bg-[#EEF2FF] flex items-center justify-center text-[#2563EB] text-[16px] font-bold">
-                  {recipientName.charAt(0).toUpperCase()}
+          <section className="relative overflow-hidden rounded-[24px] bg-[#162353] px-5 py-6 text-white shadow-[0_12px_30px_rgba(22,35,83,0.18)]">
+            <div className="absolute -right-10 -top-12 h-36 w-36 rounded-full border-[18px] border-white/5" />
+            <div className="absolute -bottom-20 -left-12 h-40 w-40 rounded-full border-[20px] border-[#3AA7B8]/10" />
+            <div className="relative">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#3AA7B8]/20">
+                    <ArrowUp className="h-4 w-4 text-[#87E1E5]" strokeWidth={2.5} />
+                  </span>
+                  <span className="text-[12px] font-semibold text-white/70">Bank transfer</span>
                 </div>
-                <div className="min-w-0">
-                  <p className="text-[14px] font-bold text-[#111] truncate">{recipientName}</p>
-                  <p className="text-[12px] text-[#888] mt-0.5">{bank} · {accountNumber}</p>
-                </div>
+                <span className="rounded-full bg-[#B6F2C3] px-2.5 py-1 text-[10px] font-bold text-[#167231]">COMPLETED</span>
               </div>
-            </div>
-
-            <div className="px-5 py-4 space-y-3 text-[12px]">
-              {[
-                ['From', `${senderName} · ${senderAccountNumber}`],
-                ['Date', transaction.date],
-                ['Narration', transaction.note || 'Transfer'],
-              ].map(([label, value]) => (
-                <div key={label} className="flex items-start justify-between gap-4">
-                  <span className="text-[#888]">{label}</span>
-                  <span className="font-semibold text-[#222] text-right max-w-[68%] break-words">{value}</span>
+              <p className="mt-6 text-[12px] font-medium uppercase tracking-[0.16em] text-white/50">Amount sent</p>
+              <p className="mt-1 text-[36px] font-extrabold tracking-tight">₦{transaction.amount}</p>
+              <div className="mt-5 flex items-end justify-between gap-4 text-[11px]">
+                <div>
+                  <p className="text-white/45">Completed on</p>
+                  <p className="mt-1 font-medium text-white/85">{formatReceiptDate(transaction)}</p>
                 </div>
-              ))}
-              <div className="flex items-center justify-between gap-4 pt-3 border-t border-[#F0F0F0]">
-                <span className="text-[#888]">Reference</span>
-                <button onClick={copyReference} className="flex items-center gap-1.5 font-semibold text-[#2563EB]" title="Copy reference">
-                  <span>{reference}</span>
-                  <Copy className="w-3.5 h-3.5" />
+                <button onClick={copyReference} className="text-right" title="Copy reference">
+                  <p className="text-white/45">Reference</p>
+                  <p className="mt-1 inline-flex items-center gap-1 font-semibold text-[#87E1E5]">
+                    {reference}
+                    <Copy className="h-3 w-3" />
+                  </p>
                 </button>
               </div>
             </div>
+          </section>
+
+          <section className="mt-4 rounded-[22px] border border-[#E7EAF2] bg-white px-5 py-5 shadow-[0_4px_18px_rgba(22,35,83,0.04)]">
+            <div className="mb-5 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[14px] font-bold text-[#171717]">Transfer journey</p>
+                <p className="mt-1 text-[11px] text-[#929292]">Every step completed successfully</p>
+              </div>
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#EAF8EE] px-2.5 py-1 text-[10px] font-bold text-[#218640]">
+                <BadgeCheck className="h-3.5 w-3.5" />
+                DONE
+              </span>
+            </div>
+            <div className="flex items-center gap-0">
+              {progressSteps.map((step, index) => (
+                <React.Fragment key={step.title}>
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-[3px] border-[#BCEFC6] bg-[#149B37] shadow-sm">
+                    <Check className="h-4 w-4 text-white" strokeWidth={3} />
+                  </div>
+                  {index < progressSteps.length - 1 && <div className="h-1 flex-1 bg-[#2FAA48]" />}
+                </React.Fragment>
+              ))}
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              {progressSteps.map((step, index) => (
+                <div key={step.title} className={`${index === 1 ? 'text-center' : index === 2 ? 'text-right' : 'text-left'} min-w-0`}>
+                  <p className="text-[11px] font-bold leading-tight text-[#171717]">{step.title}</p>
+                  <p className="mt-1 break-words text-[10px] leading-relaxed text-[#888]">{step.subtitle}</p>
+                </div>
+              ))}
+            </div>
+            <p className="mt-4 border-t border-[#F0F1F4] pt-3 text-[12px] text-[#929292]">Last updated {formatReceiptTime(transaction)}</p>
+          </section>
+
+          <section className="mt-4 flex items-center gap-3 rounded-[20px] border border-[#E7EAF2] bg-white px-4 py-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#EAF2FF] text-[18px] font-bold text-[#1769C2]">
+              {recipientName.charAt(0).toUpperCase() || 'R'}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-[#929292]">Recipient</p>
+              <p className="mt-1 truncate text-[15px] font-bold text-[#151515]">{recipientName}</p>
+              <p className="mt-0.5 truncate text-[12px] text-[#858585]">{bank} · {accountNumber}</p>
+            </div>
+            <ChevronRight className="h-4 w-4 shrink-0 text-[#A5A9B2]" />
+          </section>
+
+          <button className="mt-4 flex w-full items-center gap-3 rounded-[18px] bg-white px-4 py-3.5 text-left">
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#F0F6FF]">
+              <Info className="h-4 w-4 text-[#1469C7]" strokeWidth={2.5} />
+            </span>
+            <span className="text-[14px] font-medium text-[#1769C2]">Beneficiary Not Credited?</span>
+          </button>
+
+          {copied && <p className="text-center text-[11px] font-semibold text-green-600 mt-3">Copied to clipboard</p>}
+          {receiptActionMessage && <p className="text-center text-[11px] font-semibold text-[#1769C2] mt-3">{receiptActionMessage}</p>}
+
+          <div className="receipt-actions mt-4 grid grid-cols-3 gap-2">
+            <button onClick={shareReceipt} disabled={receiptAction !== null} className="flex h-[90px] flex-col items-center justify-center rounded-[15px] bg-white text-[12px] text-[#111] disabled:opacity-60">
+              <span className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-[#F0F6FF]">
+                <Share2 className="h-5 w-5 text-[#1469C7]" />
+              </span>
+              {receiptAction === 'share' ? 'Preparing…' : 'Share'}
+            </button>
+            <button onClick={downloadReceipt} disabled={receiptAction !== null} className="flex h-[90px] flex-col items-center justify-center rounded-[15px] bg-white text-[12px] text-[#111] disabled:opacity-60">
+              <span className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-[#F0F6FF]">
+                <ArrowDown className="h-5 w-5 text-[#1469C7]" strokeWidth={2.5} />
+              </span>
+              {receiptAction === 'download' ? 'Preparing…' : 'Download'}
+            </button>
+            <button onClick={onTransferAgain} className="flex h-[90px] flex-col items-center justify-center rounded-[15px] bg-white text-[12px] text-[#111]">
+              <span className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-[#F0F6FF]">
+                <ArrowUp className="h-5 w-5 rotate-45 text-[#1469C7]" strokeWidth={2.5} />
+              </span>
+              Send Again
+            </button>
           </div>
 
-          {copied && (
-            <p className="text-center text-[11px] text-green-600 font-semibold mt-3">Copied to clipboard</p>
-          )}
-          {receiptActionMessage && (
-            <p className="text-center text-[11px] text-[#2563EB] font-semibold mt-3">{receiptActionMessage}</p>
-          )}
+          <section className="mt-4 rounded-[20px] bg-white px-4 py-5">
+            <div className="rounded-xl border border-dashed border-[#E4E5E7] px-4 py-4">
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center">
+                <div>
+                  <p className="text-[12px] text-[#969696]">Balance Before</p>
+                  <p className="mt-1 text-[16px] font-bold text-[#252525]">{formatReceiptAmount(balanceBefore)}</p>
+                </div>
+                <div className="mx-4 h-8 w-px bg-[#D3D5D7]" />
+                <div>
+                  <p className="text-[12px] text-[#969696]">Balance After</p>
+                  <p className="mt-1 text-[16px] font-bold text-[#252525]">{formatReceiptAmount(balanceAfter)}</p>
+                </div>
+              </div>
+            </div>
 
-          <div className="receipt-actions grid grid-cols-2 gap-3 mt-5">
-            <button
-              onClick={shareReceipt}
-              disabled={receiptAction === 'share'}
-              className="h-[48px] rounded-xl border border-[#D9E0EF] bg-white text-[#162353] text-[13px] font-semibold flex items-center justify-center gap-2 active:bg-[#F8F9FB] disabled:opacity-60"
-            >
-              <Share2 className="w-4 h-4" />
-              {receiptAction === 'share' ? 'Preparing image…' : 'Share Receipt'}
-            </button>
-            <button onClick={() => window.print()} className="h-[48px] rounded-xl border border-[#D9E0EF] bg-white text-[#162353] text-[13px] font-semibold flex items-center justify-center gap-2 active:bg-[#F8F9FB]">
-              <FileText className="w-4 h-4" />
-              Save / Print
-            </button>
-          </div>
-          <button onClick={onTransferAgain} className="receipt-actions w-full h-[50px] rounded-xl bg-[#162353] text-white text-[14px] font-semibold mt-3 active:opacity-80">
-            Make Another Transfer
+            <div className="mt-5 space-y-4 text-[13px]">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-[#858585]">Amount</span>
+                <span className="font-medium text-[#777]">₦{transaction.amount.replace(/\.00$/, '')}</span>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <span className="flex items-center gap-2 text-[#858585]">
+                  Our fee
+                  <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#858585] text-[9px] font-bold text-white">i</span>
+                </span>
+                <span className="font-medium text-[#777]">₦0</span>
+              </div>
+              <div className="border-t border-[#E8E8E8] pt-4 flex items-center justify-between gap-4 text-[15px] font-bold text-[#202020]">
+                <span>Total Debit</span>
+                <span>₦{transaction.amount.replace(/\.00$/, '')}</span>
+              </div>
+            </div>
+          </section>
+
+          <button className="receipt-actions mt-5 flex w-full items-center justify-between px-1 text-left text-[13px] text-[#666]">
+            <span>Other Details</span>
+            <ChevronUp className="h-4 w-4 text-[#1469C7]" />
           </button>
-          <button onClick={onHome} className="receipt-actions w-full h-[46px] text-[#2563EB] text-[13px] font-semibold mt-1">
-            Back to Home
-          </button>
+
+          <div className="receipt-actions mt-5 h-4 rounded-t-2xl bg-white" />
         </div>
       </div>
     </div>
@@ -2986,7 +3285,7 @@ function TransactionReceiptPage() {
   const [, navigate] = useLocation();
   const [, params] = useRoute('/receipt/:transactionId');
   const { user } = useAuth();
-  const { transactions, transactionsLoading } = useUserData();
+  const { balance, transactions, transactionsLoading } = useUserData();
   const transaction = transactions.find(tx => tx.id === params?.transactionId);
 
   if (transactionsLoading) {
@@ -3021,6 +3320,8 @@ function TransactionReceiptPage() {
     accountNumber: transaction.recipient_account ?? 'Not recorded',
     senderName: transaction.sender_name ?? user?.name ?? 'Vexa account',
     senderAccountNumber: transaction.sender_account ?? user?.accountNumber ?? '—',
+    balanceAfter: balance,
+    balanceBefore: balance + transaction.raw_amount,
   };
 
   return (
@@ -3354,26 +3655,21 @@ const INIT_GOALS: SavingsGoal[] = [
 ];
 
 function SavingsPage() {
-  const [, navigate] = useLocation();
   const [goals, setGoals] = useState<SavingsGoal[]>(INIT_GOALS);
   const [activeTab, setActiveTab] = useState<'goals' | 'plans'>('goals');
   const [showCreate, setShowCreate] = useState(false);
-  const [goalName, setGoalName]     = useState('');
-  const [goalAmt, setGoalAmt]       = useState('');
-  const [frequency, setFreq]        = useState('Monthly');
-  const [dueDate, setDueDate]       = useState('');
-  const [autoSave, setAutoSave]     = useState(false);
+  const [goalName, setGoalName] = useState('');
+  const [goalAmt, setGoalAmt] = useState('');
+  const [frequency, setFreq] = useState('Monthly');
+  const [dueDate, setDueDate] = useState('');
+  const [autoSave, setAutoSave] = useState(false);
   const [topUpGoalId, setTopUpGoalId] = useState<string | null>(null);
-  const [topUpAmt, setTopUpAmt]     = useState('');
-  const [created, setCreated]       = useState(false);
-  const [topUpDone, setTopUpDone]   = useState(false);
+  const [topUpAmt, setTopUpAmt] = useState('');
+  const [notice, setNotice] = useState('');
 
   const totalSaved = goals.reduce((s,g) => s + g.saved, 0);
   const totalTarget = goals.reduce((s,g) => s + g.target, 0);
-  const overallPct = Math.round((totalSaved / totalTarget) * 100);
-
-  if (created) return <SuccessBanner title="Savings Goal Created!" sub={`You're saving ₦${goalAmt} towards "${goalName}"`} onHome={() => { setCreated(false); }} />;
-  if (topUpDone) return <SuccessBanner title="Top-up Successful!" sub={`₦${topUpAmt} added to your goal`} onHome={() => { setTopUpDone(false); setTopUpGoalId(null); setTopUpAmt(''); }} />;
+  const overallPct = totalTarget ? Math.min(100, Math.round((totalSaved / totalTarget) * 100)) : 0;
 
   const SAVINGS_PLANS = [
     { name:'Flexi Save',    rate:'8% p.a.',  min:'₦1,000',   lock:'None',      tag:'Popular',  color:'#162353', desc:'Save anytime, withdraw anytime.' },
@@ -3383,166 +3679,186 @@ function SavingsPage() {
 
   return (
     <PageShell title="Savings" back="/">
-      <div className="flex-1 overflow-y-auto pb-6" style={{ scrollbarWidth: 'none' }}>
-
-        {/* Summary Hero */}
-        <div className="mx-4 mt-4 rounded-2xl overflow-hidden relative"
-          style={{ background: 'linear-gradient(135deg, #0f4f5c 0%, #0e7490 50%, #083d49 100%)' }}>
-          {/* Decorative arc */}
-          <svg className="absolute right-0 top-0 opacity-10" width="160" height="120" viewBox="0 0 160 120">
-            <circle cx="140" cy="20" r="90" fill="white"/>
-          </svg>
-          <div className="px-5 py-5 relative z-10">
-            <p className="text-white/60 text-[11px] font-semibold uppercase tracking-wider mb-1">Total Savings</p>
-            <p className="text-white text-[30px] font-extrabold tracking-tight">₦{totalSaved.toLocaleString('en-NG')}.00</p>
-            <p className="text-white/50 text-[11px] mt-0.5">Target: ₦{totalTarget.toLocaleString('en-NG')} across {goals.length} goals</p>
-
-            {/* Overall progress */}
-            <div className="mt-3">
-              <div className="flex justify-between items-center mb-1">
-                <p className="text-white/60 text-[10px]">Overall progress</p>
-                <p className="text-white text-[11px] font-bold">{overallPct}%</p>
+      <div className="theme-page flex-1 overflow-y-auto pb-8" style={{ scrollbarWidth: 'none' }}>
+        <div className="mx-4 mt-5 rounded-[26px] overflow-hidden relative"
+          style={{ background: 'linear-gradient(145deg, #0f4f5c 0%, #126b70 58%, #17443f 100%)' }}>
+          <div className="absolute -right-12 -top-16 h-52 w-52 rounded-full border border-white/10" />
+          <div className="absolute right-6 -top-8 h-36 w-36 rounded-full border border-white/10" />
+          <div className="relative z-10 px-5 pt-5 pb-4 sm:px-6">
+            <div className="flex justify-between items-start gap-3">
+              <div>
+                <p className="text-white/65 text-[10px] font-bold uppercase tracking-[0.18em]">Your savings, in focus</p>
+                <p className="mt-3 text-white text-[12px] font-medium">Tracked across {goals.length} {goals.length === 1 ? 'goal' : 'goals'}</p>
+                <p data-testid="text-total-saved" className="mt-0.5 text-white text-[clamp(1.8rem,8vw,2.35rem)] leading-tight font-bold tracking-tight">
+                  ₦{totalSaved.toLocaleString('en-NG')}
+                </p>
               </div>
-              <div className="h-2 bg-white/15 rounded-full overflow-hidden">
-                <div className="h-full bg-white rounded-full transition-all" style={{ width: `${overallPct}%` }} />
+              <div className="shrink-0 w-11 h-11 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center text-white">
+                <svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 19V5m0 14h16M7 15l4-4 3 2 5-6"/><path d="M16 7h3v3"/>
+                </svg>
               </div>
             </div>
-
-            {/* Stats row */}
-            <div className="flex gap-3 mt-4">
-              <div className="flex-1 bg-white/10 rounded-xl px-3 py-2.5">
-                <p className="text-white/50 text-[9px] font-semibold uppercase tracking-wider">Earned Interest</p>
-                <p className="text-white text-[13px] font-bold mt-0.5">₦4,320.00</p>
+            <div className="mt-5">
+              <div className="flex items-end justify-between mb-2">
+                <div>
+                  <p className="text-white/65 text-[10px] font-medium">Combined goal progress</p>
+                  <p className="text-white/90 text-[11px] mt-0.5">₦{totalSaved.toLocaleString('en-NG')} <span className="text-white/50">of ₦{totalTarget.toLocaleString('en-NG')}</span></p>
+                </div>
+                <span data-testid="text-overall-progress" className="text-white text-[15px] font-bold tabular-nums">{overallPct}%</span>
               </div>
-              <div className="flex-1 bg-white/10 rounded-xl px-3 py-2.5">
-                <p className="text-white/50 text-[9px] font-semibold uppercase tracking-wider">This Month</p>
-                <p className="text-white text-[13px] font-bold mt-0.5">+₦18,500</p>
+              <div className="h-2 bg-white/15 rounded-full overflow-hidden" role="progressbar" aria-label="Combined savings goal progress" aria-valuenow={overallPct} aria-valuemin={0} aria-valuemax={100}>
+                <div className="h-full bg-[#C5E7D8] rounded-full transition-[width] duration-500" style={{ width: `${overallPct}%` }} />
               </div>
-              <div className="flex-1 bg-white/10 rounded-xl px-3 py-2.5">
-                <p className="text-white/50 text-[9px] font-semibold uppercase tracking-wider">Active Goals</p>
-                <p className="text-white text-[13px] font-bold mt-0.5">{goals.length}</p>
-              </div>
+            </div>
+            <div className="mt-4 pt-3 border-t border-white/15 flex justify-between items-center">
+              <span className="text-white/65 text-[10px]">Goal target total</span>
+              <span className="text-white text-[12px] font-semibold tabular-nums">₦{totalTarget.toLocaleString('en-NG')}</span>
             </div>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex mx-4 mt-4 bg-[#F0F0F0] rounded-xl p-1">
+        <div className="mx-4 mt-5 flex items-end justify-between">
+          <div>
+            <p className="theme-text-primary text-[19px] font-bold tracking-tight">Build at your pace</p>
+            <p className="theme-text-secondary text-[11px] mt-1">A clear view of what you are working toward.</p>
+          </div>
+          <span className="theme-text-secondary text-[10px] font-semibold tracking-wide uppercase">Local tracker</span>
+        </div>
+
+        {notice && (
+          <div role="status" data-testid="status-savings-update" className="mx-4 mt-3 px-4 py-3 rounded-2xl border border-[#B9D7CD] bg-[#EAF4EF] text-[#205B4B] text-[12px] font-medium dark:bg-[#18352F] dark:border-[#31594E] dark:text-[#B8E6D4]">
+            {notice}
+            <button type="button" aria-label="Dismiss message" onClick={() => setNotice('')} className="float-right font-bold ml-3">Dismiss</button>
+          </div>
+        )}
+
+        <div className="theme-control mx-4 mt-4 rounded-2xl p-1 flex gap-1">
           {(['goals','plans'] as const).map(t => (
-            <button key={t} onClick={() => setActiveTab(t)}
-              className={`flex-1 py-2 rounded-lg text-[13px] font-bold transition-all capitalize ${activeTab===t ? 'bg-white text-[#162353] shadow-sm' : 'text-[#888]'}`}>
-              {t === 'goals' ? '🎯 My Goals' : '📈 Savings Plans'}
+            <button key={t} type="button" data-testid={`tab-savings-${t}`} onClick={() => setActiveTab(t)}
+              className={`flex-1 py-2.5 rounded-xl text-[12px] font-bold transition-colors ${activeTab===t ? 'theme-control-active shadow-sm' : 'theme-text-secondary'}`}>
+              {t === 'goals' ? 'My goals' : 'Savings plans'}
             </button>
           ))}
         </div>
 
-        {/* Goals Tab */}
         {activeTab === 'goals' && (
-          <div className="px-4 mt-4 space-y-3">
+          <div className="px-4 mt-4 space-y-3.5">
             {goals.map(g => {
-              const pct = Math.round((g.saved / g.target) * 100);
-              const remaining = g.target - g.saved;
+              const pct = g.target > 0 ? Math.min(100, Math.round((g.saved / g.target) * 100)) : 0;
+              const remaining = Math.max(0, g.target - g.saved);
               return (
-                <div key={g.id} className="bg-white rounded-2xl overflow-hidden border border-[#F0F0F0]">
-                  {/* Color header strip */}
-                  <div className="px-4 py-3 flex items-center gap-3" style={{ background: g.color }}>
-                    <span className="text-[22px]">{g.emoji}</span>
-                    <div className="flex-1">
-                      <p className="text-white font-bold text-[14px]">{g.name}</p>
-                      <p className="text-white/60 text-[11px]">Due {g.dueDate} · {g.frequency}</p>
+                <article key={g.id} data-testid={`card-savings-goal-${g.id}`} className="theme-surface theme-border rounded-[22px] overflow-hidden border shadow-sm">
+                  <div className="px-4 pt-4 pb-3 flex items-start gap-3">
+                    <div className="w-10 h-10 shrink-0 rounded-[14px] flex items-center justify-center text-white text-[12px] font-bold tracking-wide" style={{ backgroundColor: g.color }}>
+                      {g.name.trim().slice(0, 2).toUpperCase()}
                     </div>
-                    <div className="text-right">
-                      <p className="text-white font-extrabold text-[18px]">{pct}%</p>
-                      <p className="text-white/60 text-[10px]">complete</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="theme-text-primary text-[14px] font-bold truncate">{g.name}</p>
+                      <p className="theme-text-secondary text-[10px] mt-1">{g.dueDate === 'TBD' ? 'No target date' : `Target ${g.dueDate}`} <span className="mx-1">·</span>{g.frequency} preference</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="theme-text-primary text-[17px] font-bold leading-none tabular-nums">{pct}<span className="text-[11px]">%</span></p>
+                      <p className="theme-text-secondary text-[9px] mt-1 uppercase tracking-wide">complete</p>
                     </div>
                   </div>
-                  <div className="px-4 pt-3 pb-4">
-                    {/* Progress bar */}
-                    <div className="h-2.5 bg-[#F0F0F0] rounded-full overflow-hidden mb-3">
+                  <div className="px-4 pb-4">
+                    <div className="theme-control h-2 rounded-full overflow-hidden mb-3">
                       <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: g.color }} />
                     </div>
-                    {/* Amounts */}
-                    <div className="flex justify-between mb-3">
+                    <div className="grid grid-cols-3 gap-2 mb-3.5">
                       <div>
-                        <p className="text-[10px] text-[#888]">Saved</p>
-                        <p className="text-[13px] font-bold text-[#111]">₦{g.saved.toLocaleString('en-NG')}</p>
+                        <p className="theme-text-secondary text-[9px] uppercase tracking-wide">Saved</p>
+                        <p className="theme-text-primary text-[12px] font-bold mt-1 tabular-nums">₦{g.saved.toLocaleString('en-NG')}</p>
                       </div>
                       <div className="text-center">
-                        <p className="text-[10px] text-[#888]">Remaining</p>
-                        <p className="text-[13px] font-bold text-[#555]">₦{remaining.toLocaleString('en-NG')}</p>
+                        <p className="theme-text-secondary text-[9px] uppercase tracking-wide">To go</p>
+                        <p className="theme-text-primary text-[12px] font-bold mt-1 tabular-nums">₦{remaining.toLocaleString('en-NG')}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-[10px] text-[#888]">Target</p>
-                        <p className="text-[13px] font-bold text-[#111]">₦{g.target.toLocaleString('en-NG')}</p>
+                        <p className="theme-text-secondary text-[9px] uppercase tracking-wide">Target</p>
+                        <p className="theme-text-primary text-[12px] font-bold mt-1 tabular-nums">₦{g.target.toLocaleString('en-NG')}</p>
                       </div>
                     </div>
-                    {/* Auto-save badge + top-up */}
-                    <div className="flex items-center justify-between">
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${g.autoSave ? 'bg-green-100 text-green-700' : 'bg-[#F5F5F5] text-[#888]'}`}>
-                        {g.autoSave ? '⚡ Auto-save on' : '⚡ Auto-save off'}
+                    <div className="flex items-center justify-between gap-2 pt-3 border-t theme-border">
+                      <span className="theme-text-secondary text-[10px] font-medium">
+                        Schedule preference: <span className="theme-text-primary font-semibold">{g.autoSave ? 'On' : 'Off'}</span>
                       </span>
-                      <button onClick={() => { setTopUpGoalId(g.id); setTopUpAmt(''); }}
-                        className="text-[11px] font-bold px-3 py-1.5 rounded-lg text-white transition-all active:scale-95"
+                      <button type="button" data-testid={`button-top-up-${g.id}`} onClick={() => { setTopUpGoalId(g.id); setTopUpAmt(''); }}
+                        className="text-[11px] font-bold px-3.5 py-2 rounded-xl text-white transition-transform active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
                         style={{ background: g.color }}>
-                        + Top Up
+                        Record top-up
                       </button>
                     </div>
                   </div>
-                </div>
+                </article>
               );
             })}
 
-            {/* Create new goal form */}
             {showCreate && (
-              <div className="bg-white rounded-2xl p-5 border-2 border-[#162353] space-y-3">
-                <p className="text-[14px] font-bold text-[#111]">New Savings Goal</p>
-                <input type="text" placeholder="Goal name (e.g. MacBook Pro)" value={goalName} onChange={e => setGoalName(e.target.value)}
-                  className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#162353] placeholder:text-[#CCC]" />
-                <div className="flex items-center gap-2 border border-[#E0E0E0] rounded-xl px-4 py-3 focus-within:border-[#162353]">
-                  <span className="text-[16px] font-bold text-[#444]">₦</span>
-                  <input type="text" inputMode="numeric" placeholder="Target amount" value={goalAmt} onChange={e => setGoalAmt(formatAmt(e.target.value))}
-                    className="flex-1 text-[16px] font-semibold text-[#111] outline-none bg-transparent placeholder:text-[#CCC] placeholder:font-normal" />
-                </div>
+              <div className="theme-surface theme-border rounded-[22px] p-4 sm:p-5 border shadow-sm space-y-4">
                 <div>
-                  <p className="text-[11px] font-semibold text-[#444] mb-1.5">Auto-save frequency</p>
+                  <p className="theme-text-primary text-[15px] font-bold">Create a goal</p>
+                  <p className="theme-text-secondary text-[11px] mt-1">Keep a personal record of what you are saving toward.</p>
+                </div>
+                <label className="block">
+                  <span className="theme-text-secondary block text-[10px] font-semibold mb-1.5">Goal name</span>
+                  <input type="text" data-testid="input-goal-name" placeholder="For example, a new laptop" value={goalName} onChange={e => setGoalName(e.target.value)}
+                    className="theme-field theme-border w-full border rounded-xl px-3.5 py-3 text-[13px] outline-none focus:ring-2 focus:ring-[#0f766e]/30 placeholder:opacity-60" />
+                </label>
+                <label className="block">
+                  <span className="theme-text-secondary block text-[10px] font-semibold mb-1.5">Target amount</span>
+                  <div className="theme-field theme-border flex items-center gap-2 border rounded-xl px-3.5 py-3 focus-within:ring-2 focus-within:ring-[#0f766e]/30">
+                    <span className="theme-text-secondary text-[14px] font-semibold">₦</span>
+                    <input type="text" inputMode="numeric" data-testid="input-goal-target" placeholder="0" value={goalAmt} onChange={e => setGoalAmt(formatAmt(e.target.value))}
+                      className="theme-text-primary flex-1 text-[14px] font-semibold outline-none bg-transparent placeholder:opacity-50" />
+                  </div>
+                </label>
+                <div>
+                  <p className="theme-text-secondary text-[10px] font-semibold mb-1.5">Saving frequency preference</p>
                   <div className="flex gap-2">
                     {['Daily','Weekly','Monthly'].map(f => (
-                      <button key={f} onClick={() => setFreq(f)}
-                        className={`flex-1 py-2 rounded-xl text-[12px] font-semibold border-2 transition-all ${frequency===f ? 'bg-[#162353] text-white border-[#162353]' : 'border-[#E0E0E0] text-[#444]'}`}>
+                      <button key={f} type="button" onClick={() => setFreq(f)}
+                        className={`flex-1 py-2.5 rounded-xl text-[11px] font-semibold border transition-colors ${frequency===f ? 'bg-[#0f4f5c] text-white border-[#0f4f5c]' : 'theme-border theme-text-secondary'}`}>
                         {f}
                       </button>
                     ))}
                   </div>
                 </div>
-                <div className="flex items-center justify-between bg-[#F8F9FB] rounded-xl px-4 py-3">
+                <div className="theme-control rounded-xl px-3.5 py-3 flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-[13px] font-semibold text-[#111]">Enable Auto-save</p>
-                    <p className="text-[11px] text-[#888]">Automatically deduct on schedule</p>
+                    <p className="theme-text-primary text-[12px] font-semibold">Schedule reminder preference</p>
+                    <p className="theme-text-secondary text-[10px] mt-1">This tracker does not move money automatically.</p>
                   </div>
-                  <button onClick={() => setAutoSave(v=>!v)}
-                    className={`w-11 h-6 rounded-full transition-colors relative ${autoSave ? 'bg-[#162353]' : 'bg-[#D1D5DB]'}`}>
+                  <button type="button" data-testid="toggle-goal-auto-save" role="switch" aria-checked={autoSave} aria-label="Schedule reminder preference"
+                    onClick={() => setAutoSave(v=>!v)}
+                    className={`w-11 h-6 shrink-0 rounded-full transition-colors relative ${autoSave ? 'bg-[#0f766e]' : 'bg-[#87939A]'}`}>
                     <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${autoSave ? 'left-5' : 'left-0.5'}`} />
                   </button>
                 </div>
-                <input type="text" placeholder="Target date (e.g. Dec 2026)" value={dueDate} onChange={e => setDueDate(e.target.value)}
-                  className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#162353] placeholder:text-[#CCC]" />
+                <label className="block">
+                  <span className="theme-text-secondary block text-[10px] font-semibold mb-1.5">Target date <span className="font-normal">(optional)</span></span>
+                  <input type="text" data-testid="input-goal-date" placeholder="For example, Dec 2026" value={dueDate} onChange={e => setDueDate(e.target.value)}
+                    className="theme-field theme-border w-full border rounded-xl px-3.5 py-3 text-[13px] outline-none focus:ring-2 focus:ring-[#0f766e]/30 placeholder:opacity-60" />
+                </label>
                 <div className="flex gap-2">
-                  <button onClick={() => setShowCreate(false)}
-                    className="flex-1 h-[44px] rounded-xl border-2 border-[#E0E0E0] text-[13px] font-semibold text-[#555]">
+                  <button type="button" onClick={() => { setShowCreate(false); setGoalName(''); setGoalAmt(''); }}
+                    className="theme-border theme-text-secondary flex-1 h-11 rounded-xl border text-[12px] font-semibold">
                     Cancel
                   </button>
-                  <button onClick={() => {
-                    if (!goalName || !goalAmt) return;
+                  <button type="button" data-testid="button-create-goal" disabled={!goalName.trim() || !goalAmt}
+                    onClick={() => {
                     const num = parseFloat(goalAmt.replace(/,/g,''));
-                    if (isNaN(num) || num <= 0) return;
+                    if (!goalName.trim() || isNaN(num) || num <= 0) return;
                     setGoals(prev => [...prev, {
-                      id: String(Date.now()), name: goalName, emoji: '🎯',
+                      id: String(Date.now()), name: goalName.trim(), emoji: '',
                       target: num, saved: 0, frequency, dueDate: dueDate || 'TBD',
-                      autoSave, color: '#162353'
+                      autoSave, color: '#0f4f5c'
                     }]);
                     setShowCreate(false);
-                    setCreated(true);
-                  }} className="flex-1 h-[44px] bg-[#162353] rounded-xl text-[13px] font-semibold text-white">
+                    setNotice(`“${goalName.trim()}” was added to your local savings tracker.`);
+                    setGoalName(''); setGoalAmt(''); setDueDate(''); setAutoSave(false); setFreq('Monthly');
+                  }} className="flex-1 h-11 rounded-xl bg-[#0f4f5c] disabled:opacity-45 text-[12px] font-semibold text-white">
                     Create Goal
                   </button>
                 </div>
@@ -3550,92 +3866,96 @@ function SavingsPage() {
             )}
 
             {!showCreate && (
-              <button onClick={() => setShowCreate(true)}
-                className="w-full h-[50px] rounded-xl border-2 border-dashed border-[#162353]/30 text-[13px] font-semibold text-[#162353] flex items-center justify-center gap-2">
-                <span className="text-[18px]">+</span> Create New Goal
+              <button type="button" data-testid="button-open-create-goal" onClick={() => setShowCreate(true)}
+                className="theme-border theme-brand-text w-full min-h-[52px] rounded-2xl border border-dashed text-[12px] font-semibold flex items-center justify-center gap-2 hover:bg-[#EAF4EF] dark:hover:bg-[#18352F]">
+                <span aria-hidden="true" className="text-[18px] leading-none">+</span> Create a savings goal
               </button>
             )}
           </div>
         )}
 
-        {/* Plans Tab */}
         {activeTab === 'plans' && (
-          <div className="px-4 mt-4 space-y-3">
-            <p className="text-[12px] text-[#888]">Choose a savings plan that suits your lifestyle</p>
+          <div className="px-4 mt-4 space-y-3.5">
+            <div className="theme-surface theme-border rounded-2xl border px-4 py-3">
+              <p className="theme-text-primary text-[12px] font-semibold">Explore available plan terms</p>
+              <p className="theme-text-secondary text-[10px] leading-relaxed mt-1">Plan information is shown for reference. Opening or funding a plan is not available here.</p>
+            </div>
             {SAVINGS_PLANS.map(plan => (
-              <div key={plan.name} className="bg-white rounded-2xl overflow-hidden border border-[#F0F0F0]">
-                <div className="px-4 py-3 flex items-center justify-between" style={{ background: plan.color }}>
-                  <p className="text-white font-bold text-[15px]">{plan.name}</p>
-                  <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-white/20 text-white border border-white/30">{plan.tag}</span>
+              <article key={plan.name} className="theme-surface theme-border rounded-[22px] overflow-hidden border shadow-sm">
+                <div className="px-4 pt-4 pb-3 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-1 h-8 rounded-full" style={{ background: plan.color }} />
+                    <p className="theme-text-primary font-bold text-[14px]">{plan.name}</p>
+                  </div>
+                  <span className="theme-selected-control text-[9px] font-bold px-2.5 py-1 rounded-full">{plan.tag}</span>
                 </div>
-                <div className="px-4 py-4">
-                  <p className="text-[12px] text-[#888] mb-3">{plan.desc}</p>
-                  <div className="flex gap-3 mb-4">
-                    <div className="flex-1 bg-[#F8F9FB] rounded-xl px-3 py-2.5 text-center">
-                      <p className="text-[10px] text-[#888] font-medium">Interest Rate</p>
-                      <p className="text-[16px] font-extrabold text-[#162353] mt-0.5">{plan.rate}</p>
+                <div className="px-4 pb-4">
+                  <p className="theme-text-secondary text-[11px] mb-3">{plan.desc}</p>
+                  <div className="theme-control rounded-xl grid grid-cols-3 divide-x divide-[#DCE3E5] dark:divide-[#34445D] mb-3.5">
+                    <div className="px-2 py-2.5 text-center">
+                      <p className="theme-text-secondary text-[9px] font-medium">Rate</p>
+                      <p className="theme-brand-text text-[14px] font-bold mt-1">{plan.rate}</p>
                     </div>
-                    <div className="flex-1 bg-[#F8F9FB] rounded-xl px-3 py-2.5 text-center">
-                      <p className="text-[10px] text-[#888] font-medium">Minimum</p>
-                      <p className="text-[14px] font-bold text-[#111] mt-0.5">{plan.min}</p>
+                    <div className="px-2 py-2.5 text-center">
+                      <p className="theme-text-secondary text-[9px] font-medium">Minimum</p>
+                      <p className="theme-text-primary text-[12px] font-bold mt-1">{plan.min}</p>
                     </div>
-                    <div className="flex-1 bg-[#F8F9FB] rounded-xl px-3 py-2.5 text-center">
-                      <p className="text-[10px] text-[#888] font-medium">Lock Period</p>
-                      <p className="text-[12px] font-bold text-[#111] mt-0.5">{plan.lock}</p>
+                    <div className="px-2 py-2.5 text-center">
+                      <p className="theme-text-secondary text-[9px] font-medium">Lock period</p>
+                      <p className="theme-text-primary text-[12px] font-bold mt-1">{plan.lock}</p>
                     </div>
                   </div>
-                  <button className="w-full h-[40px] rounded-xl text-[13px] font-bold text-white transition-all active:scale-[0.98]"
-                    style={{ background: plan.color }}>
-                    Start This Plan
+                  <button type="button" disabled aria-disabled="true" className="theme-control theme-text-secondary w-full h-10 rounded-xl text-[11px] font-semibold cursor-not-allowed">
+                    Plan opening unavailable
                   </button>
                 </div>
-              </div>
+              </article>
             ))}
-
-            <div className="bg-[#F0F4FF] border border-[#C7D7FF] rounded-2xl px-4 py-4 mt-2">
-              <p className="text-[12px] font-bold text-[#162353] mb-1">💡 Did you know?</p>
-              <p className="text-[11px] text-[#555] leading-relaxed">Consistent savings of ₦5,000/week grows to over ₦1.4M in 5 years with compound interest at 12% p.a.</p>
-            </div>
           </div>
         )}
       </div>
 
-      {/* Top-up modal */}
       {topUpGoalId && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setTopUpGoalId(null)} />
-          <div className="relative bg-white rounded-t-3xl px-6 pt-5 pb-10 z-10">
-            <div className="w-10 h-1 bg-[#E2E8F0] rounded-full mx-auto mb-4" />
-            <p className="text-[16px] font-bold text-[#111] mb-1">
-              Top Up: {goals.find(g=>g.id===topUpGoalId)?.name}
-            </p>
-            <p className="text-[12px] text-[#888] mb-4">How much would you like to add?</p>
-            <div className="flex items-center gap-2 border-2 border-[#E0E0E0] rounded-xl px-4 py-3 focus-within:border-[#162353] mb-3">
-              <span className="text-[20px] font-bold text-[#444]">₦</span>
-              <input type="text" inputMode="numeric" placeholder="0.00" value={topUpAmt}
+        <div className="fixed inset-0 z-50 flex flex-col justify-end sm:justify-center sm:items-center sm:p-5" role="presentation">
+          <button type="button" aria-label="Close top-up form" className="absolute inset-0 bg-[#071923]/55 backdrop-blur-[2px]" onClick={() => setTopUpGoalId(null)} />
+          <div role="dialog" aria-modal="true" aria-labelledby="top-up-title" className="theme-surface relative z-10 w-full sm:max-w-[420px] rounded-t-[28px] sm:rounded-[26px] px-5 pt-5 pb-[max(env(safe-area-inset-bottom),24px)] sm:pb-6 shadow-2xl">
+            <div className="w-9 h-1 rounded-full bg-[#B9C5C7] mx-auto mb-5 sm:hidden" />
+            <div className="flex justify-between items-start gap-3">
+              <div>
+                <p id="top-up-title" className="theme-text-primary text-[17px] font-bold">Record a top-up</p>
+                <p className="theme-text-secondary text-[11px] mt-1">{goals.find(g=>g.id===topUpGoalId)?.name}</p>
+              </div>
+              <button type="button" aria-label="Close" onClick={() => setTopUpGoalId(null)} className="theme-control theme-text-secondary w-8 h-8 rounded-full text-[18px] leading-none">×</button>
+            </div>
+            <p className="theme-text-secondary text-[10px] leading-relaxed mt-4 mb-3">This updates your local goal tracker only. It will not debit a wallet or move money.</p>
+            <div className="theme-field theme-border flex items-center gap-2 border rounded-xl px-4 py-3 focus-within:ring-2 focus-within:ring-[#0f766e]/30 mb-3">
+              <span className="theme-text-secondary text-[20px] font-semibold">₦</span>
+              <input type="text" inputMode="numeric" data-testid="input-top-up-amount" aria-label="Top-up amount" placeholder="0" value={topUpAmt}
                 onChange={e => setTopUpAmt(formatAmt(e.target.value))}
                 autoFocus
-                className="flex-1 text-[22px] font-bold text-[#111] outline-none bg-transparent placeholder:text-[#CCC] placeholder:font-normal" />
+                className="theme-text-primary flex-1 text-[22px] font-bold outline-none bg-transparent placeholder:opacity-50 placeholder:font-normal" />
             </div>
-            <div className="flex gap-2 mb-4">
+            <div className="flex gap-2 mb-5">
               {[1000,2000,5000,10000].map(v => (
-                <button key={v} onClick={() => setTopUpAmt(v.toLocaleString('en-NG'))}
-                  className="flex-1 py-2 bg-[#F8F9FB] border border-[#E0E0E0] rounded-lg text-[11px] font-semibold text-[#555]">
+                <button key={v} type="button" onClick={() => setTopUpAmt(v.toLocaleString('en-NG'))}
+                  className="theme-control theme-border theme-text-secondary flex-1 py-2.5 border rounded-xl text-[10px] font-semibold">
                   ₦{v>=1000?(v/1000)+'k':v}
                 </button>
               ))}
             </div>
             <div className="flex gap-3">
-              <button onClick={() => setTopUpGoalId(null)}
-                className="flex-1 h-[48px] rounded-xl border-2 border-[#E2E8F0] text-[13px] font-semibold text-[#444]">Cancel</button>
-              <button onClick={() => {
+              <button type="button" onClick={() => setTopUpGoalId(null)}
+                className="theme-border theme-text-secondary flex-1 h-12 rounded-xl border text-[12px] font-semibold">Cancel</button>
+              <button type="button" data-testid="button-confirm-top-up" disabled={!topUpAmt}
+                onClick={() => {
                 const num = parseFloat(topUpAmt.replace(/,/g,''));
                 if (!num || num <= 0) return;
                 setGoals(prev => prev.map(g => g.id === topUpGoalId ? { ...g, saved: g.saved + num } : g));
                 setTopUpGoalId(null);
-                setTopUpDone(true);
-              }} className="flex-1 h-[48px] rounded-xl bg-[#162353] text-[13px] font-semibold text-white">
-                Add Funds
+                setNotice(`₦${num.toLocaleString('en-NG')} recorded in your local savings tracker.`);
+                setTopUpAmt('');
+              }} className="flex-1 h-12 rounded-xl bg-[#0f4f5c] disabled:opacity-45 text-[12px] font-semibold text-white">
+                Update tracker
               </button>
             </div>
           </div>
@@ -4721,7 +5041,10 @@ function Router() {
       <Route path="/transfer" component={TransferPage} />
       <Route path="/bank-selection" component={BankSelectionPage} />
       <Route path="/vexa-transfer" component={VexaTransferPage} />
-      <Route path="/crypto" component={CryptoExchangePage} />
+      <Route path="/crypto/exchange"><CryptoExchangePage view="exchange" /></Route>
+      <Route path="/crypto/transfer"><CryptoExchangePage view="transfer" /></Route>
+      <Route path="/crypto/receive"><CryptoExchangePage view="receive" /></Route>
+      <Route path="/crypto"><CryptoExchangePage /></Route>
       <Route path="/crypto/incoming" component={IncomingCryptoPage} />
       <Route path="/crypto/outgoing" component={OutgoingCryptoPage} />
       <Route path="/history" component={HistoryPage} />
@@ -4805,68 +5128,53 @@ function AppShell() {
   const prevPathRef = React.useRef('');
 
   // ── Passcode-on-return lock ──────────────────────────────────────────
-  // Initialise locked state: if a lock timestamp is already in localStorage
-  // AND it's ≥ 5 min old AND the pref is on, lock immediately on mount.
-  const [locked, setLocked] = useState(() => {
-    const pref = localStorage.getItem(PASSCODE_RETURN_KEY) === 'true';
-    return pref && shouldLockNow();
-  });
+  const [locked, setLocked] = useState(false);
+  const lockInitializedRef = useRef(false);
 
-  // Write the "hidden at" timestamp whenever the page is hidden / unloaded.
-  // Read it back whenever the page becomes visible again.
   useEffect(() => {
-    function onHide() {
-      if (localStorage.getItem(PASSCODE_RETURN_KEY) === 'true') {
-        writeLockTimestamp();
+    function onShow() {
+      const pref = localStorage.getItem(PASSCODE_RETURN_KEY) === 'true';
+      if (pref && isAuthenticated && splashDone && !loading) {
+        setLocked(true);
       }
     }
 
-    function onShow() {
-      const pref = localStorage.getItem(PASSCODE_RETURN_KEY) === 'true';
-      if (pref && isAuthenticated && splashDone && shouldLockNow()) {
+    // A fresh reload is also an app return when the setting is enabled.
+    if (splashDone && !loading && isAuthenticated && !lockInitializedRef.current) {
+      lockInitializedRef.current = true;
+      if (localStorage.getItem(PASSCODE_RETURN_KEY) === 'true') {
         setLocked(true);
       }
-      // Whether we lock or not, clear the stored timestamp so a quick
-      // background → foreground within the same page cycle doesn't re-fire.
-      clearLockTimestamp();
+    }
+    if (!isAuthenticated) {
+      lockInitializedRef.current = false;
     }
 
     // visibilitychange: tab switch, minimise, screen-off on mobile
     function handleVisibility() {
-      if (document.hidden) onHide(); else onShow();
+      if (!document.hidden) onShow();
     }
 
     // pagehide / pageshow: full page unload / back-forward cache restore
     // (iOS Safari & some Android browsers fire these instead of visibilitychange)
-    function handlePageHide()  { onHide(); }
     function handlePageShow(e: PageTransitionEvent) {
       // persisted == came from BFCache (page was fully frozen)
       if (e.persisted) onShow();
     }
 
-    // beforeunload: user closes the tab entirely
-    function handleBeforeUnload() { onHide(); }
-
     // focus / blur on the window itself (desktop tab switch fallback)
-    function handleBlur()  { onHide(); }
     function handleFocus() { onShow(); }
 
     document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('pagehide',     handlePageHide);
     window.addEventListener('pageshow',     handlePageShow as EventListener);
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    window.addEventListener('blur',         handleBlur);
     window.addEventListener('focus',        handleFocus);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('pagehide',     handlePageHide);
       window.removeEventListener('pageshow',     handlePageShow as EventListener);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      window.removeEventListener('blur',         handleBlur);
       window.removeEventListener('focus',        handleFocus);
     };
-  }, [isAuthenticated, splashDone]);
+  }, [isAuthenticated, loading, splashDone]);
 
   useEffect(() => {
     if (splashDone && !loading && !session && !isAuthenticated) {
@@ -4900,8 +5208,8 @@ function AppShell() {
       {twoFactorPending && <TwoFactorChallenge />}
       {locked && (
         <PasscodeLockScreen
-          onUnlock={() => { clearLockTimestamp(); setLocked(false); }}
-          onSignOut={() => { clearLockTimestamp(); setLocked(false); signOut(); navigate('/signin'); }}
+          onUnlock={() => setLocked(false)}
+          onSignOut={() => { setLocked(false); signOut(); navigate('/signin'); }}
         />
       )}
     </>
@@ -4910,26 +5218,28 @@ function AppShell() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <AccountSecurityProvider>
-        <UserDataProvider>
-        <VexaFinanceProvider>
-        <BusinessProvider>
-          <BusinessSecurityProvider>
-            <TooltipProvider>
-              <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-                <AppShell />
-              </WouterRouter>
-              <Toaster />
-            </TooltipProvider>
-          </BusinessSecurityProvider>
-        </BusinessProvider>
-        </VexaFinanceProvider>
-        </UserDataProvider>
-        </AccountSecurityProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <ThemeModeProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <AccountSecurityProvider>
+          <UserDataProvider>
+          <VexaFinanceProvider>
+          <BusinessProvider>
+            <BusinessSecurityProvider>
+              <TooltipProvider>
+                <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+                  <AppShell />
+                </WouterRouter>
+                <Toaster />
+              </TooltipProvider>
+            </BusinessSecurityProvider>
+          </BusinessProvider>
+          </VexaFinanceProvider>
+          </UserDataProvider>
+          </AccountSecurityProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </ThemeModeProvider>
   );
 }
 

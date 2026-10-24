@@ -219,6 +219,159 @@
   --shadow-2xl: 0px 24px 48px -10px rgba(0,0,0,0.05);
 }
 
+/* App theme surfaces used by the mobile wallet screens. */
+:root {
+  --theme-page: #F2F3F5;
+  --theme-surface: #FFFFFF;
+  --theme-surface-alt: #F8F9FB;
+  --theme-primary-text: #111111;
+  --theme-secondary-text: #888888;
+  --theme-border: #E8EBF0;
+  --theme-icon: #555555;
+  --theme-control: #EEF2F7;
+  --theme-control-active: #FFFFFF;
+  --theme-control-focus: #E8F4EF;
+  --theme-selected-control: #EAF2FF;
+  --theme-selected-text: #1D4ED8;
+  --theme-brand-text: #10535B;
+}
+
+.dark {
+  --background: 222 47% 11%;
+  --foreground: 210 40% 96%;
+  --border: 217 33% 27%;
+  --card: 222 39% 16%;
+  --card-foreground: 210 40% 96%;
+  --card-border: 217 33% 27%;
+  --popover: 222 39% 16%;
+  --popover-foreground: 210 40% 96%;
+  --popover-border: 217 33% 27%;
+  --secondary: 217 33% 22%;
+  --secondary-foreground: 210 40% 96%;
+  --muted: 217 33% 22%;
+  --muted-foreground: 215 20% 68%;
+  --accent: 217 33% 22%;
+  --accent-foreground: 210 40% 96%;
+  --input: 217 33% 27%;
+  --ring: 187 72% 42%;
+
+  --theme-page: #0B1220;
+  --theme-surface: #141E33;
+  --theme-surface-alt: #1B2942;
+  --theme-primary-text: #F4F7FB;
+  --theme-secondary-text: #A9B6CA;
+  --theme-border: #2B3A55;
+  --theme-icon: #B9C7DB;
+  --theme-control: #0F192C;
+  --theme-control-active: #2A3B59;
+  --theme-control-focus: #183047;
+  --theme-selected-control: #15364A;
+  --theme-selected-text: #91D8F3;
+  --theme-brand-text: #63DCC4;
+}
+
+html,
+body {
+  background-color: var(--theme-page);
+}
+
+.theme-page {
+  background-color: var(--theme-page) !important;
+  color: var(--theme-primary-text);
+}
+
+.theme-surface {
+  background-color: var(--theme-surface) !important;
+}
+
+.theme-surface-alt {
+  background-color: var(--theme-surface-alt) !important;
+}
+
+.theme-border {
+  border-color: var(--theme-border) !important;
+}
+
+.theme-text-primary {
+  color: var(--theme-primary-text) !important;
+}
+
+.theme-text-secondary {
+  color: var(--theme-secondary-text) !important;
+}
+
+.theme-icon {
+  color: var(--theme-icon);
+}
+
+.theme-control {
+  background-color: var(--theme-control);
+}
+
+.theme-control-active {
+  background-color: var(--theme-control-active);
+  color: var(--theme-primary-text);
+}
+
+.theme-field {
+  background-color: var(--theme-control);
+  color: var(--theme-primary-text);
+}
+
+.theme-field::placeholder {
+  color: var(--theme-secondary-text);
+  opacity: 0.85;
+}
+
+.theme-field:focus {
+  background-color: var(--theme-control-focus);
+}
+
+.theme-selected-control {
+  background-color: var(--theme-selected-control);
+  color: var(--theme-selected-text);
+}
+
+.theme-brand-text {
+  color: var(--theme-brand-text);
+}
+
+/* Keep existing utility-heavy screens readable when the global theme changes. */
+.dark [class~="bg-white"] {
+  background-color: var(--theme-surface) !important;
+}
+
+.dark [class~="bg-[#F2F3F5]"],
+.dark [class~="bg-[#F6F6F6]"] {
+  background-color: var(--theme-page) !important;
+}
+
+.dark [class~="text-[#111]"],
+.dark [class~="text-[#222]"],
+.dark [class~="text-[#333]"],
+.dark [class~="text-[#444]"],
+.dark [class~="text-[#1a1a1a]"] {
+  color: var(--theme-primary-text) !important;
+}
+
+.dark [class~="text-[#555]"],
+.dark [class~="text-[#666]"],
+.dark [class~="text-[#777]"],
+.dark [class~="text-[#888]"] {
+  color: var(--theme-secondary-text) !important;
+}
+
+.dark [class~="border-[#E8EBF0]"],
+.dark [class~="border-[#F0F0F0]"],
+.dark [class~="border-[#F5F5F5]"] {
+  border-color: var(--theme-border) !important;
+}
+
+.dark [class~="hover:bg-[#F8F9FB]"]:hover,
+.dark [class~="hover:bg-gray-100"]:hover {
+  background-color: var(--theme-surface-alt) !important;
+}
+
 @layer base {
   * {
     @apply border-border;
@@ -354,4 +507,170 @@
 
 .business-brand-scope [class*="border-[#2563EB]"] {
   border-color: var(--business-brand) !important;
+}
+
+/* Keep legacy utility-heavy screens in sync with the selected app theme. */
+.dark [class~="bg-white"],
+.dark [class~="bg-gray-50"],
+.dark [class~="bg-gray-100"] {
+  background-color: var(--theme-surface) !important;
+}
+
+.dark [class~="bg-[#F2F3F5]"],
+.dark [class~="bg-[#F5F5F5]"],
+.dark [class~="bg-[#F6F6F6]"] {
+  background-color: var(--theme-page) !important;
+}
+
+.dark [class~="bg-[#F8F9FB]"],
+.dark [class~="bg-[#F0F0F0]"],
+.dark [class~="bg-[#F5F6F8]"],
+.dark [class~="bg-[#F7F9FC]"],
+.dark [class~="bg-[#F8F8FA]"],
+.dark [class~="bg-[#EEF1F5]"],
+.dark [class~="bg-[#F1F2F7]"],
+.dark [class~="bg-[#F9F9F9]"] {
+  background-color: var(--theme-surface-alt) !important;
+}
+
+.dark [class~="bg-[#EAF0FF]"],
+.dark [class~="bg-[#EAF2FF]"],
+.dark [class~="bg-[#EEF2FF]"],
+.dark [class~="bg-[#EEF4FF]"],
+.dark [class~="bg-[#EFF6FF]"],
+.dark [class~="bg-[#F0F4FF]"],
+.dark [class~="bg-[#F0F6FF]"],
+.dark [class~="bg-[#E8F0FE]"],
+.dark [class~="bg-[#DCEBFF]"],
+.dark [class~="bg-blue-50"] {
+  background-color: var(--theme-control) !important;
+}
+
+.dark [class~="bg-[#FFF8E8]"] {
+  background-color: #2D281A !important;
+}
+
+.dark [class~="bg-red-50"] {
+  background-color: #351D2B !important;
+}
+
+.dark [class~="bg-orange-50"],
+.dark [class~="bg-amber-50"] {
+  background-color: #362918 !important;
+}
+
+.dark [class~="bg-green-50"] {
+  background-color: #15352D !important;
+}
+
+.dark [class~="text-red-600"] {
+  color: #FF9AA8 !important;
+}
+
+.dark [class~="text-orange-700"],
+.dark [class~="text-amber-700"] {
+  color: #FCD38A !important;
+}
+
+.dark [class~="text-green-700"] {
+  color: #86EFAC !important;
+}
+
+.dark [class~="bg-[#FDE7A9]"] {
+  background-color: #594718 !important;
+}
+
+.dark [class~="text-[#111]"],
+.dark [class~="text-[#151515]"],
+.dark [class~="text-[#171717]"],
+.dark [class~="text-[#202020]"],
+.dark [class~="text-[#222]"],
+.dark [class~="text-[#252525]"],
+.dark [class~="text-[#333]"],
+.dark [class~="text-[#444]"],
+.dark [class~="text-gray-800"],
+.dark [class~="text-gray-900"] {
+  color: var(--theme-primary-text) !important;
+}
+
+.dark [class~="text-[#555]"],
+.dark [class~="text-[#666]"],
+.dark [class~="text-[#777]"],
+.dark [class~="text-[#888]"],
+.dark [class~="text-[#858585]"],
+.dark [class~="text-[#8D929C]"],
+.dark [class~="text-[#929292]"],
+.dark [class~="text-[#969696]"],
+.dark [class~="text-[#999]"],
+.dark [class~="text-[#A0A8B5]"],
+.dark [class~="text-[#A5A9B2]"],
+.dark [class~="text-[#AAA]"],
+.dark [class~="text-[#BBB]"],
+.dark [class~="text-gray-500"],
+.dark [class~="text-gray-600"] {
+  color: var(--theme-secondary-text) !important;
+}
+
+.dark [class~="text-[#6F4A00]"] {
+  color: #F7D989 !important;
+}
+
+.dark [class~="text-[#8A6A2C]"],
+.dark [class~="text-[#9A6800]"] {
+  color: #E0C16D !important;
+}
+
+.dark [class~="border-[#D8E0EA]"],
+.dark [class~="border-[#DCE3EE]"],
+.dark [class~="border-[#E0E0E0]"],
+.dark [class~="border-[#E2E8F0]"],
+.dark [class~="border-[#E4E5E7]"],
+.dark [class~="border-[#E7EAF2]"],
+.dark [class~="border-[#E8E8E8]"],
+.dark [class~="border-[#E8EBF0]"],
+.dark [class~="border-[#E8F0FE]"],
+.dark [class~="border-[#ECEEF2]"],
+.dark [class~="border-[#EDEEF1]"],
+.dark [class~="border-[#F0F0F0]"],
+.dark [class~="border-[#F0F1F4]"],
+.dark [class~="border-[#F0F2F5]"],
+.dark [class~="border-[#F5F5F5]"],
+.dark [class~="border-[#F9F9F9]"],
+.dark [class~="border-gray-200"],
+.dark [class~="border-gray-300"] {
+  border-color: var(--theme-border) !important;
+}
+
+.dark [class~="placeholder-[#C0C8D4]"]::placeholder,
+.dark [class~="placeholder-[#94A3B8]"]::placeholder {
+  color: var(--theme-secondary-text) !important;
+}
+
+.dark [class~="hover:bg-[#F8F9FB]"]:hover,
+.dark [class~="hover:bg-[#F9F9F9]"]:hover,
+.dark [class~="hover:bg-gray-100"]:hover,
+.dark [class~="active:bg-[#F1F5F9]"]:active,
+.dark [class~="active:bg-[#F2F3F5]"]:active,
+.dark [class~="active:bg-[#EEF2F7]"]:active,
+.dark [class~="active:bg-[#F8F9FB]"]:active {
+  background-color: var(--theme-surface-alt) !important;
+}
+
+/* Dark mode uses filled surfaces instead of the light-theme card outlines. */
+.dark [class*="border"] {
+  border-color: transparent !important;
+}
+
+/* The account actions are the only dark-mode controls that keep an outline. */
+.dark [class~="border-white/70"] {
+  border-color: rgba(255, 255, 255, 0.7) !important;
+}
+
+.dark [class*="outline"] {
+  outline-color: transparent !important;
+}
+
+.dark [class*="ring-"] {
+  --tw-ring-color: transparent !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
 }

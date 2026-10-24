@@ -1,4 +1,4 @@
-let audioContext: AudioContext | null = null;
+let notificationAudioContext: AudioContext | null = null;
 
 function soundEnabled() {
   return localStorage.getItem('vexa.notificationSound') !== 'false';
@@ -6,11 +6,12 @@ function soundEnabled() {
 
 function getAudioContext() {
   if (typeof window === 'undefined') return null;
-  const AudioContextClass = window.AudioContext
-    ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!AudioContextClass) return null;
-  audioContext ??= new AudioContextClass();
-  return audioContext;
+  const AudioContextConstructor =
+    window.AudioContext ??
+    (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextConstructor) return null;
+  notificationAudioContext ??= new AudioContextConstructor();
+  return notificationAudioContext;
 }
 
 export function unlockNotificationSound() {
@@ -18,6 +19,7 @@ export function unlockNotificationSound() {
   if (context?.state === 'suspended') void context.resume();
 }
 
+/** Plays a short, unobtrusive two-note alert when the preference is enabled. */
 export function playNotificationSound() {
   if (!soundEnabled()) return;
   const context = getAudioContext();
@@ -25,19 +27,20 @@ export function playNotificationSound() {
 
   const play = () => {
     const now = context.currentTime;
-    const gain = context.createGain();
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.075, now + 0.015);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
-    gain.connect(context.destination);
-
     const oscillator = context.createOscillator();
+    const gain = context.createGain();
+
     oscillator.type = 'sine';
     oscillator.frequency.setValueAtTime(740, now);
-    oscillator.frequency.setValueAtTime(988, now + 0.13);
+    oscillator.frequency.setValueAtTime(988, now + 0.09);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.075, now + 0.025);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+
     oscillator.connect(gain);
+    gain.connect(context.destination);
     oscillator.start(now);
-    oscillator.stop(now + 0.32);
+    oscillator.stop(now + 0.25);
   };
 
   if (context.state === 'suspended') {
@@ -46,3 +49,6 @@ export function playNotificationSound() {
     play();
   }
 }
+
+// Retain the upstream helper name for compatibility with any other callers.
+export const playNotificationAlert = playNotificationSound;
