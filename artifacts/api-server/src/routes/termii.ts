@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Router, type IRouter, type Request } from "express";
 
 const router: IRouter = Router();
@@ -5,6 +6,9 @@ const TERMII_API_KEY = process.env["TERMII_API_KEY"]?.trim();
 const TERMII_SENDER_ID = process.env["TERMII_SENDER_ID"]?.trim() || "N-Alert";
 const TERMII_BASE_URL = "https://v3.api.termii.com/api/sms/otp";
 const CHALLENGE_TTL_MS = 10 * 60 * 1000;
+const DEMO_OTP_ENABLED =
+  process.env["NODE_ENV"] !== "production" && process.env["DEMO_OTP_ENABLED"] === "true";
+const DEMO_OTP_CODE = process.env["DEMO_OTP_CODE"]?.trim() || "246810";
 
 type ChallengePurpose = "signup" | "2fa" | "sleep_mode_deactivate";
 
@@ -161,6 +165,22 @@ router.post("/termii/otp/send", async (req, res) => {
   }
 
   try {
+    if (DEMO_OTP_ENABLED && purpose === "sleep_mode_deactivate") {
+      const pinId = `demo-${randomUUID()}`;
+      pendingChallenges.set(pinId, {
+        pinId,
+        purpose,
+        ...(userId ? { userId } : {}),
+        expiresAt: Date.now() + CHALLENGE_TTL_MS,
+      });
+      res.json({
+        requestId: pinId,
+        expiresInSeconds: CHALLENGE_TTL_MS / 1000,
+        demo: true,
+      });
+      return;
+    }
+
     const phone = userId
       ? await getProfilePhone(userId)
       : typeof req.body?.phone === "string" ? req.body.phone : "";
@@ -217,12 +237,17 @@ router.post("/termii/otp/verify", async (req, res) => {
   }
 
   try {
-    const body = await termiiRequest("verify", { pin_id: pinId, pin });
-    const verified =
+    const demoVerified =
+      DEMO_OTP_ENABLED &&
+      challenge.purpose === "sleep_mode_deactivate" &&
+      pin === DEMO_OTP_CODE;
+    const body = demoVerified ? null : await termiiRequest("verify", { pin_id: pinId, pin });
+    const verified = demoVerified || (
       body?.verified === true ||
       body?.status === true ||
       body?.status === "success" ||
-      body?.message?.toLowerCase().includes("verified");
+      body?.message?.toLowerCase().includes("verified")
+    );
     if (!verified) {
       res.status(422).json({ message: "That verification code is invalid or expired" });
       return;

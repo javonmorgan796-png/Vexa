@@ -48,3 +48,5 @@ packages = ["nano"]
 
 [userenv.shared]
 TATUM_WEBHOOK_URL = "https://login-update-1--wt203777.replit.app/api/crypto/webhooks/tatum"
+DEMO_OTP_CODE = "246810"
+DEMO_OTP_ENABLED = "true"
