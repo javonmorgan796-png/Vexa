@@ -744,12 +744,12 @@ function MoniepointHome() {
 
             {/* action buttons — content-width pills, left-aligned */}
             <div className="flex gap-3">
-              <button onClick={() => navigate('/deposit')} className="bg-transparent border border-white/70 rounded-full h-[30px] px-4 flex items-center gap-1.5 text-[11px] font-semibold text-white hover:bg-white/10 transition-colors">
-                <span className="text-[14px] leading-none font-light">+</span>
+              <button onClick={() => navigate('/deposit')} className="rounded-full h-9 px-4 inline-flex items-center gap-1.5 bg-white text-[#162353] shadow-sm text-[12px] font-bold transition-all hover:bg-[#F2F5FF] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#162353]">
+                <span className="text-[17px] leading-none font-medium">+</span>
                 Deposit
               </button>
-              <button onClick={() => navigate('/history')} className="bg-transparent border border-white/70 rounded-full h-[30px] px-4 flex items-center gap-1.5 text-[11px] font-semibold text-white hover:bg-white/10 transition-colors">
-                <Clock className="w-3 h-3" strokeWidth={2} />
+              <button onClick={() => navigate('/history')} className="rounded-full h-9 px-4 inline-flex items-center gap-1.5 bg-white/12 text-white shadow-sm text-[12px] font-semibold backdrop-blur-sm transition-all hover:bg-white/20 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#162353]">
+                <Clock className="w-3.5 h-3.5" strokeWidth={2} />
                 History
               </button>
             </div>
