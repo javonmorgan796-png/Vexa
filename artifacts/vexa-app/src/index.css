@@ -674,3 +674,15 @@ body {
   --tw-ring-color: transparent !important;
   --tw-ring-shadow: 0 0 #0000 !important;
 }
+
+/* Keep the primary home action legible when the global dark surface overrides are active. */
+.dark .home-deposit-button,
+.dark .home-deposit-button:active {
+  background-color: #FFFFFF !important;
+  color: #162353 !important;
+}
+
+.dark .home-deposit-button:hover {
+  background-color: #F2F5FF !important;
+  color: #162353 !important;
+}
