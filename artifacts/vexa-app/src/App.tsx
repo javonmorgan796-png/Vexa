@@ -705,8 +705,8 @@ function MoniepointHome() {
           <TwoFactorWarningCard onEnable={() => navigate('/two-factor')} />
 
           {/* ── Account card ────────────────────────────────────────── */}
-          {/* mx 12px, mt 12px, rounded-2xl (20px), p-5 */}
-          <div className="mx-3 mt-3 bg-[#162353] rounded-[20px] px-4 py-3 text-white relative overflow-hidden">
+          {/* Account details, balance and actions stay separated on narrow screens. */}
+          <div className="mx-3 mt-3 bg-[#162353] rounded-[20px] px-4 pt-2.5 pb-4 text-white relative overflow-hidden">
 
             {/* Vexa logo — visible top-right */}
             <div className="absolute top-3 right-4 pointer-events-none select-none flex flex-col items-center gap-1">
@@ -719,13 +719,13 @@ function MoniepointHome() {
             </div>
 
             {/* account number row */}
-            <div className="flex items-center gap-1.5 text-[12px] font-normal text-white mb-2">
-              <span>{accountNumber} | {displayName}</span>
+            <div className="relative z-10 flex items-center gap-1.5 pr-24 text-[10px] leading-4 font-normal text-white/90 mb-4">
+              <span className="min-w-0 flex-1 truncate">{accountNumber} | {displayName}</span>
               <Copy className="w-3.5 h-3.5 text-white/60 shrink-0" />
             </div>
 
             {/* balance */}
-            <div className="flex items-center gap-2.5 mb-0.5">
+            <div className="relative z-10 flex items-center gap-2.5 mb-1.5">
               <span className="text-[22px] font-bold tracking-tight leading-none">
                 {balanceHidden ? '* * * * *' : `₦${balance.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
               </span>
@@ -738,12 +738,12 @@ function MoniepointHome() {
             </div>
 
             {/* last updated */}
-            <p className="text-[11px] text-white font-normal mb-3">
+            <p className="relative z-10 text-[11px] text-white/80 font-normal mb-4">
               Last updated {lastBalanceUpdatedAt ? timeSince(lastBalanceUpdatedAt) : 'updating…'}
             </p>
 
             {/* action buttons — content-width pills, left-aligned */}
-            <div className="flex gap-3">
+            <div className="relative z-10 flex gap-3">
               <button onClick={() => navigate('/deposit')} className="rounded-full h-9 px-4 inline-flex items-center gap-1.5 bg-white text-[#162353] shadow-sm text-[12px] font-bold transition-all hover:bg-[#F2F5FF] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#162353]">
                 <span className="text-[17px] leading-none font-medium">+</span>
                 Deposit
