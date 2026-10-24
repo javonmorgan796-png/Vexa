@@ -706,7 +706,7 @@ function MoniepointHome() {
 
           {/* ── Account card ────────────────────────────────────────── */}
           {/* Account details, balance and actions stay separated on narrow screens. */}
-          <div className="mx-3 mt-3 bg-[#162353] rounded-[20px] px-4 pt-2.5 pb-4 text-white relative overflow-hidden">
+          <div className="mx-3 mt-3 bg-[#162353] rounded-[20px] px-4 pt-3 pb-4 text-white relative overflow-hidden">
 
             {/* Vexa logo — visible top-right */}
             <div className="absolute top-3 right-4 pointer-events-none select-none flex flex-col items-center gap-1">
@@ -719,7 +719,7 @@ function MoniepointHome() {
             </div>
 
             {/* account number row */}
-            <div className="relative z-10 flex items-center gap-1.5 pr-24 text-[10px] leading-4 font-normal text-white/90 mb-4">
+            <div className="relative z-10 flex items-center gap-1.5 pr-24 text-[12px] leading-4 font-normal text-white/90 mb-5">
               <span className="min-w-0 flex-1 truncate">{accountNumber} | {displayName}</span>
               <Copy className="w-3.5 h-3.5 text-white/60 shrink-0" />
             </div>
