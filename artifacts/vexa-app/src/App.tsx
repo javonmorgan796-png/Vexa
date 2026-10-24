@@ -653,12 +653,56 @@ function TwoFactorWarningCard({ onEnable }: { onEnable: () => void }) {
 
 function MoniepointHome() {
   const [balanceHidden, setBalanceHidden] = useState(false);
+  const [accountCopyStatus, setAccountCopyStatus] = useState<'idle' | 'copied' | 'error'>('idle');
+  const accountCopyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [, navigate] = useLocation();
   const { user, profilePhoto } = useAuth();
   const { balance, lastBalanceUpdatedAt, cashbackTotal, referralTotalEarned, unreadNotificationsCount, transactions } = useUserData();
   const initials = (user?.name ?? 'C').split(' ').map((p: string) => p[0]).slice(0, 2).join('').toUpperCase();
   const displayName = user?.name ?? 'Your account';
   const accountNumber = user?.accountNumber ?? '—';
+
+  useEffect(() => () => {
+    if (accountCopyTimeout.current) clearTimeout(accountCopyTimeout.current);
+  }, []);
+
+  async function copyAccountNumber() {
+    let copied = false;
+    try {
+      if (accountNumber && accountNumber !== '—' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(accountNumber);
+        copied = true;
+      }
+    } catch {
+      // Fall back to the legacy clipboard API when clipboard permissions are denied.
+    }
+
+    if (!copied && accountNumber && accountNumber !== '—') {
+      let input: HTMLTextAreaElement | null = null;
+      try {
+        input = document.createElement('textarea');
+        input.value = accountNumber;
+        input.setAttribute('readonly', '');
+        input.style.position = 'fixed';
+        input.style.opacity = '0';
+        document.body.appendChild(input);
+        input.select();
+        copied = document.execCommand('copy');
+      } catch {
+        copied = false;
+      } finally {
+        input?.remove();
+      }
+    }
+
+    setAccountCopyStatus(copied ? 'copied' : 'error');
+    if (accountCopyTimeout.current) clearTimeout(accountCopyTimeout.current);
+    accountCopyTimeout.current = setTimeout(() => {
+      setAccountCopyStatus('idle');
+      accountCopyTimeout.current = null;
+    }, 1800);
+  }
+
   return (
     <div className="fixed inset-0 bg-[#F2F3F5]">
       <div
@@ -719,9 +763,30 @@ function MoniepointHome() {
             </div>
 
             {/* account number row */}
-            <div className="relative z-10 flex items-center gap-1.5 pr-24 text-[12px] leading-4 font-normal text-white/90 mb-5">
-              <span className="min-w-0 flex-1 truncate">{accountNumber} | {displayName}</span>
-              <Copy className="w-3.5 h-3.5 text-white/60 shrink-0" />
+            <div className="relative z-10 mb-5 inline-flex max-w-[calc(100%-84px)] items-center gap-1 text-[12px] leading-4 font-normal text-white/90">
+              <span className="min-w-0 truncate">{accountNumber} | {displayName}</span>
+              <button
+                type="button"
+                onClick={() => void copyAccountNumber()}
+                disabled={!accountNumber || accountNumber === '—'}
+                aria-label={accountCopyStatus === 'copied' ? 'Account number copied' : accountCopyStatus === 'error' ? 'Could not copy account number' : 'Copy account number'}
+                title={accountCopyStatus === 'copied' ? 'Copied!' : accountCopyStatus === 'error' ? 'Could not copy' : 'Copy account number'}
+                className="relative shrink-0 rounded p-0.5 text-white/70 transition-colors hover:text-white disabled:opacity-50"
+              >
+                {accountCopyStatus === 'copied'
+                  ? <Check className="h-3.5 w-3.5 text-emerald-300" />
+                  : accountCopyStatus === 'error'
+                    ? <X className="h-3.5 w-3.5 text-red-300" />
+                    : <Copy className="h-3.5 w-3.5" />}
+                {accountCopyStatus !== 'idle' && (
+                  <span className={`absolute left-1/2 top-full z-20 mt-1 -translate-x-1/2 whitespace-nowrap rounded px-1.5 py-0.5 text-[9px] font-semibold ${accountCopyStatus === 'copied' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
+                    {accountCopyStatus === 'copied' ? 'Copied' : 'Copy failed'}
+                  </span>
+                )}
+              </button>
+              <span className="sr-only" aria-live="polite">
+                {accountCopyStatus === 'copied' ? 'Account number copied to clipboard.' : accountCopyStatus === 'error' ? 'Could not copy account number.' : ''}
+              </span>
             </div>
 
             {/* balance */}
@@ -1003,7 +1068,7 @@ type SettingsSection = { heading: string; items: { icon: React.ReactNode; label:
 function SettingsPage() {
   const [, navigate] = useLocation();
   const { user, loading, signOut, profilePhoto } = useAuth();
-  const { themeMode, resolvedThemeMode, setThemeMode } = useThemeMode();
+  const { themeMode, resolvedThemeMode } = useThemeMode();
   const {
     state: securityState,
     busy: securityBusy,
@@ -1116,7 +1181,11 @@ function SettingsPage() {
         {/* Appearance */}
         <div>
           <p className="theme-text-secondary text-[11px] font-semibold uppercase tracking-wide mb-2 px-1">Appearance</p>
-          <div className="theme-surface rounded-2xl px-4 py-4">
+          <button
+            type="button"
+            onClick={() => navigate('/app-theme')}
+            className="theme-surface theme-text-primary w-full rounded-2xl px-4 py-4 text-left transition-colors hover:bg-[#F8F9FB]"
+          >
             <div className="flex items-center gap-3">
                <span className="theme-icon flex h-10 w-10 items-center justify-center rounded-xl bg-[#EAF2FF] text-[#1769C2]">
                 {themeMode === 'system'
@@ -1125,42 +1194,13 @@ function SettingsPage() {
               </span>
               <div className="min-w-0 flex-1">
                 <p className="theme-text-primary text-[14px] font-semibold">App theme</p>
-                <p className="theme-text-secondary mt-0.5 text-[11px]">Choose how Vexa looks on this device</p>
+                <p className="theme-text-secondary mt-0.5 text-[11px]">
+                  {themeMode === 'system' ? 'Phone default' : resolvedThemeMode === 'dark' ? 'Dark mode' : 'Light mode'}
+                </p>
               </div>
-              <span className="theme-text-secondary text-[11px] font-semibold">
-                {themeMode === 'system' ? 'Phone default' : resolvedThemeMode === 'dark' ? 'Dark' : 'Light'}
-              </span>
+              <ChevronRight className="theme-text-secondary h-4 w-4 shrink-0" />
             </div>
-            <div className="theme-control mt-4 grid grid-cols-3 gap-1 rounded-xl p-1">
-              <button
-                type="button"
-                onClick={() => setThemeMode('light')}
-                aria-pressed={themeMode === 'light'}
-                className={`flex items-center justify-center gap-2 rounded-lg py-2.5 text-[12px] font-semibold transition-colors ${themeMode === 'light' ? 'theme-control-active shadow-sm' : 'theme-text-secondary'}`}
-              >
-                <Sun className="h-4 w-4" />
-                Light mode
-              </button>
-              <button
-                type="button"
-                onClick={() => setThemeMode('dark')}
-                aria-pressed={themeMode === 'dark'}
-                className={`flex items-center justify-center gap-2 rounded-lg py-2.5 text-[12px] font-semibold transition-colors ${themeMode === 'dark' ? 'theme-control-active shadow-sm' : 'theme-text-secondary'}`}
-              >
-                <Moon className="h-4 w-4" />
-                Dark mode
-              </button>
-              <button
-                type="button"
-                onClick={() => setThemeMode('system')}
-                aria-pressed={themeMode === 'system'}
-                className={`flex items-center justify-center gap-2 rounded-lg py-2.5 text-[12px] font-semibold transition-colors ${themeMode === 'system' ? 'theme-control-active shadow-sm' : 'theme-text-secondary'}`}
-              >
-                <Smartphone className="h-4 w-4" />
-                Phone default
-              </button>
-            </div>
-          </div>
+          </button>
         </div>
 
         {/* Settings sections */}
@@ -1296,6 +1336,72 @@ function SettingsPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function AppThemePage() {
+  const [, navigate] = useLocation();
+  const { themeMode, resolvedThemeMode, setThemeMode } = useThemeMode();
+  const options: { mode: ThemeMode; label: string; description: string; Icon: typeof Sun }[] = [
+    { mode: 'light', label: 'Light mode', description: 'Use a bright appearance throughout the app.', Icon: Sun },
+    { mode: 'dark', label: 'Dark mode', description: 'Use a darker appearance that is easier on the eyes in low light.', Icon: Moon },
+    { mode: 'system', label: 'Phone default', description: 'Match the appearance setting on your phone.', Icon: Smartphone },
+  ];
+
+  return (
+    <div className="theme-page fixed inset-0 flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+      <div
+        className="theme-surface theme-border flex-none flex items-center gap-3 border-b px-4 pb-3"
+        style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}
+      >
+        <button
+          type="button"
+          onClick={() => navigate('/settings')}
+          aria-label="Back to settings"
+          className="theme-icon flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-100"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        </button>
+        <span className="theme-text-primary text-[16px] font-bold">App theme</span>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-6" style={{ scrollbarWidth: 'none' }}>
+        <div className="mb-5">
+          <h1 className="theme-text-primary text-[20px] font-bold">Choose your appearance</h1>
+          <p className="theme-text-secondary mt-1 text-[13px]">Select how Vexa should look on this device.</p>
+        </div>
+        <div className="space-y-3">
+          {options.map(({ mode, label, description, Icon }) => {
+            const selected = themeMode === mode;
+            return (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setThemeMode(mode)}
+                aria-pressed={selected}
+                className={`theme-border flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition-colors ${selected ? 'theme-selected-control' : 'theme-surface theme-text-primary hover:bg-[#F8F9FB]'}`}
+              >
+                <span className={`theme-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${selected ? 'theme-control-active' : 'theme-control'}`}>
+                  <Icon className="h-5 w-5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="theme-text-primary block text-[14px] font-semibold">{label}</span>
+                  <span className="theme-text-secondary mt-1 block text-[11px] leading-relaxed">{description}</span>
+                  {mode === 'system' && selected && (
+                    <span className="theme-text-secondary mt-1 block text-[10px]">
+                      Your phone is currently using {resolvedThemeMode} mode.
+                    </span>
+                  )}
+                </span>
+                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${selected ? 'border-current' : 'theme-border'}`}>
+                  {selected && <Check className="h-3.5 w-3.5" />}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
@@ -5050,6 +5156,7 @@ function Router() {
       <Route path="/history" component={HistoryPage} />
       <Route path="/receipt/:transactionId" component={TransactionReceiptPage} />
       <Route path="/settings" component={SettingsPage} />
+      <Route path="/app-theme" component={AppThemePage} />
       <Route path="/airtime" component={AirtimePage} />
       <Route path="/data" component={DataPage} />
       <Route path="/betting" component={BettingPage} />
