@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDownToLine, ArrowLeftRight, ArrowUpRight, Check, Copy, RefreshCw, Send, WalletCards, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowLeft, ArrowLeftRight, ArrowUpRight, Check, Copy, RefreshCw, Send, WalletCards, X } from 'lucide-react';
 import { FaBitcoin, FaEthereum } from 'react-icons/fa6';
 import { SiTether } from 'react-icons/si';
 import type { IconType } from 'react-icons';
@@ -120,8 +120,8 @@ function PageHeader({ title, onBack }: { title: string; onBack: () => void }) {
   return (
     <div className="theme-surface theme-text-primary flex-none flex items-center gap-3 px-4 pb-3 bg-white border-b border-[#E8EBF0]"
       style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
-      <button onClick={onBack} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100" aria-label="Go back">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7-7-7"/></svg>
+      <button type="button" onClick={onBack} data-testid="button-go-back" className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100" aria-label="Go back">
+        <ArrowLeft className="h-5 w-5" aria-hidden="true" />
       </button>
       <span className="text-[16px] font-bold text-[#111]">{title}</span>
     </div>
