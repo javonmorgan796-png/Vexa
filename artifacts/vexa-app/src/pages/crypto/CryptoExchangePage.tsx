@@ -94,6 +94,33 @@ function crypto(value: number) {
   return value.toLocaleString('en-NG', { maximumFractionDigits: 8 });
 }
 
+function formatAmountInput(value: string) {
+  const sanitized = value.replace(/,/g, '').replace(/[^\d.]/g, '');
+  const decimalIndex = sanitized.indexOf('.');
+  const integerPart = (decimalIndex === -1 ? sanitized : sanitized.slice(0, decimalIndex))
+    .replace(/^0+(?=\d)/, '');
+  const groupedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  if (decimalIndex === -1) return groupedInteger;
+  const decimalPart = sanitized.slice(decimalIndex + 1).replace(/\./g, '');
+  return `${groupedInteger}.${decimalPart}`;
+}
+
+function formattedAmountCaret(rawValue: string, rawPosition: number, formattedValue: string) {
+  const meaningfulCharactersBefore = rawValue
+    .slice(0, rawPosition)
+    .replace(/,/g, '')
+    .replace(/[^\d.]/g, '')
+    .length;
+  if (meaningfulCharactersBefore === 0) return 0;
+
+  let seenCharacters = 0;
+  for (let index = 0; index < formattedValue.length; index += 1) {
+    if (/[\d.]/.test(formattedValue[index])) seenCharacters += 1;
+    if (seenCharacters >= meaningfulCharactersBefore) return index + 1;
+  }
+  return formattedValue.length;
+}
+
 function timeSince(iso: string): string {
   const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
   if (minutes < 1) return 'just now';
@@ -552,8 +579,8 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
               data-testid="button-open-fund-exchange"
               className="theme-surface theme-text-primary flex w-full items-center gap-3 rounded-2xl border border-black/5 p-4 text-left shadow-sm transition active:scale-[0.99]"
             >
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EAFBF4] text-[#159669]">
-                <ArrowDownToLine className="h-4 w-4" aria-hidden="true" />
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EAFBF4]">
+                <span role="img" aria-label="Nigeria flag" className="text-[21px] leading-none">🇳🇬</span>
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-[13px] font-bold">Fund exchange wallet</span>
@@ -596,8 +623,8 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
 
             <section className="theme-surface theme-text-primary rounded-2xl border border-black/5 p-4 shadow-sm">
               <div className="mb-5 flex items-center gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EAFBF4] text-[#159669]">
-                  <ArrowDownToLine className="h-4 w-4" aria-hidden="true" />
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EAFBF4]">
+                  <span role="img" aria-label="Nigeria flag" className="text-[21px] leading-none">🇳🇬</span>
                 </span>
                 <div>
                   <h2 className="text-[15px] font-bold">Add money to exchange</h2>
@@ -623,7 +650,20 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
                   id="exchange-fund-amount"
                   data-testid="input-exchange-fund-amount"
                   value={depositAmount}
-                  onChange={event => { setDepositAmount(event.target.value.replace(/[^\d.]/g, '')); setFormError(''); }}
+                  onChange={event => {
+                    const input = event.currentTarget;
+                    const rawValue = input.value;
+                    const rawStart = input.selectionStart ?? rawValue.length;
+                    const rawEnd = input.selectionEnd ?? rawStart;
+                    const formattedValue = formatAmountInput(rawValue);
+                    const formattedStart = formattedAmountCaret(rawValue, rawStart, formattedValue);
+                    const formattedEnd = formattedAmountCaret(rawValue, rawEnd, formattedValue);
+                    setDepositAmount(formattedValue);
+                    setFormError('');
+                    window.requestAnimationFrame(() => {
+                      if (document.activeElement === input) input.setSelectionRange(formattedStart, formattedEnd);
+                    });
+                  }}
                   inputMode="decimal"
                   placeholder="0.00"
                   className="min-w-0 flex-1 bg-transparent py-3 text-[14px] outline-none placeholder:text-[var(--theme-secondary-text)]"
