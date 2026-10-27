@@ -5161,6 +5161,7 @@ function Router() {
       <Route path="/transfer" component={TransferPage} />
       <Route path="/bank-selection" component={BankSelectionPage} />
       <Route path="/vexa-transfer" component={VexaTransferPage} />
+      <Route path="/crypto/fund"><CryptoExchangePage view="fund" /></Route>
       <Route path="/crypto/exchange"><CryptoExchangePage view="exchange" /></Route>
       <Route path="/crypto/transfer"><CryptoExchangePage view="transfer" /></Route>
       <Route path="/crypto/receive"><CryptoExchangePage view="receive" /></Route>

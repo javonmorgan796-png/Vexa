@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDownToLine, ArrowLeft, ArrowLeftRight, ArrowUpRight, Check, Copy, RefreshCw, Send, WalletCards, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowLeft, ArrowLeftRight, ArrowUpRight, Check, ChevronRight, Copy, RefreshCw, Send, WalletCards, X } from 'lucide-react';
 import { FaBitcoin, FaEthereum } from 'react-icons/fa6';
 import { SiTether } from 'react-icons/si';
 import type { IconType } from 'react-icons';
@@ -109,7 +109,7 @@ function signedPercent(value: number) {
 }
 
 type DepositAddress = { asset: CryptoAsset; address: string; network: string; createdAt: string };
-type CryptoPageView = 'overview' | 'exchange' | 'transfer' | 'receive';
+type CryptoPageView = 'overview' | 'exchange' | 'transfer' | 'receive' | 'fund';
 
 function CryptoLogo({ asset, size = 22 }: { asset: CryptoAsset; size?: number }) {
   const Logo = ASSET_META[asset].logo;
@@ -393,11 +393,11 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
   return (
     <div className="theme-page fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
       <PageHeader
-        title={view === 'overview' ? 'Vexa Exchange' : view === 'exchange' ? 'Exchange' : view === 'transfer' ? 'Crypto Transfer' : 'Receive Crypto'}
+        title={view === 'overview' ? 'Vexa Exchange' : view === 'exchange' ? 'Exchange' : view === 'transfer' ? 'Crypto Transfer' : view === 'fund' ? 'Fund exchange wallet' : 'Receive Crypto'}
         onBack={() => navigate(view === 'overview' ? '/' : '/crypto')}
       />
       <div
-        className={`flex-1 overflow-y-auto px-4 ${view === 'exchange' || view === 'transfer' ? 'py-3 space-y-3' : 'py-4 space-y-4'}`}
+        className={`flex-1 overflow-y-auto px-4 ${view === 'exchange' || view === 'transfer' ? 'py-3 space-y-3' : view === 'fund' ? 'py-5 space-y-4' : 'py-4 space-y-4'}`}
         style={{ scrollbarWidth: 'none' }}
       >
         {view === 'overview' ? (
@@ -474,7 +474,7 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
               </div>
             </div>
           </div>
-        ) : (
+        ) : view !== 'fund' ? (
           <div className="rounded-2xl bg-[#0C193F] px-4 py-3.5 text-white flex items-center justify-between gap-3">
             <div>
               <p className="text-[10px] uppercase tracking-wide text-white/60">Exchange balance</p>
@@ -490,7 +490,7 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
               </div>
             </div>
           </div>
-        )}
+        ) : null}
 
         {view === 'overview' && (
         <div className="grid grid-cols-3 gap-2">
@@ -546,16 +546,21 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
                 );
               })}
             </div>
-            <div className="bg-white rounded-2xl border border-[#F0F0F0] p-4">
-                 <div className="flex items-center gap-3 mb-3">
-                <div className="w-9 h-9 rounded-xl bg-[#EAFBF4] flex items-center justify-center"><ArrowDownToLine className="w-4 h-4 text-[#159669]" /></div>
-                 <div><p className="text-[13px] font-bold text-[#111]">Fund exchange wallet</p><p className="text-[11px] text-[#888]">Move funds from your Vexa balance</p></div>
-              </div>
-              <div className="flex items-center gap-2">
-                 <input value={depositAmount} onChange={e => setDepositAmount(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" placeholder={`Amount in ${fiatLabel}`} className="flex-1 border border-[#E0E0E0] rounded-xl px-3 py-3 text-[13px] outline-none focus:border-[#162353]" />
-                 <button disabled={busy || loading || moneyMovementLocked} onClick={() => void submitDeposit()} className="rounded-xl bg-[#162353] text-white text-[12px] font-bold px-4 py-3 disabled:opacity-50">{busy ? 'Working…' : 'Deposit'}</button>
-              </div>
-            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/crypto/fund')}
+              data-testid="button-open-fund-exchange"
+              className="theme-surface theme-text-primary flex w-full items-center gap-3 rounded-2xl border border-black/5 p-4 text-left shadow-sm transition active:scale-[0.99]"
+            >
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EAFBF4] text-[#159669]">
+                <ArrowDownToLine className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-bold">Fund exchange wallet</span>
+                <span className="theme-text-secondary mt-0.5 block text-[11px]">Move funds from your Vexa balance</span>
+              </span>
+              <ChevronRight className="h-4 w-4 shrink-0 text-[#8B929D]" aria-hidden="true" />
+            </button>
             <div>
               <div className="mb-2 flex items-center justify-between px-1">
                 <p className="text-[11px] font-bold text-[#888] uppercase tracking-wide">Recent activity</p>
@@ -578,6 +583,54 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
                 ))}
               </div>
             </div>
+          </>
+        )}
+
+        {view === 'fund' && (
+          <>
+            <div className="rounded-2xl bg-gradient-to-br from-[#0C193F] via-[#10234C] to-[#0D3F50] p-5 text-white shadow-[0_16px_32px_-20px_rgba(12,25,63,0.8)]">
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/65">Current exchange balance</p>
+              <p data-testid="text-current-exchange-balance" className="mt-2 text-[28px] font-extrabold leading-tight tracking-[-0.03em] tabular-nums">{displayFiat(exchangeNaira)}</p>
+              <p className="mt-2 text-[11px] text-white/60">{lastUpdatedAt ? `Synced ${timeSince(lastUpdatedAt)}` : 'Syncing your balance'}</p>
+            </div>
+
+            <section className="theme-surface theme-text-primary rounded-2xl border border-black/5 p-4 shadow-sm">
+              <div className="mb-5 flex items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EAFBF4] text-[#159669]">
+                  <ArrowDownToLine className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <div>
+                  <h2 className="text-[15px] font-bold">Add money to exchange</h2>
+                  <p className="theme-text-secondary mt-0.5 text-[11px]">Funds move from your Vexa balance.</p>
+                </div>
+              </div>
+
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <label htmlFor="exchange-fund-amount" className="theme-text-secondary text-[11px] font-bold">Amount in {fiatLabel}</label>
+                <button
+                  type="button"
+                  onClick={() => setFiatCurrency(current => current === 'NGN' ? 'USD' : 'NGN')}
+                  data-testid="button-toggle-fund-currency"
+                  aria-label={`Switch amount to ${fiatCurrency === 'NGN' ? 'US dollars' : 'Naira'}`}
+                  className="theme-brand-text rounded-lg px-2 py-1 text-[10px] font-bold"
+                >
+                  {fiatCurrency === 'NGN' ? '₦ NGN' : '$ USD'}
+                </button>
+              </div>
+              <div className="theme-field flex items-center rounded-xl border border-[#B9C9CA] px-3 focus-within:border-[#10535B]">
+                <span className="theme-text-secondary pr-2 text-[14px] font-semibold">{fiatCurrency === 'NGN' ? '₦' : '$'}</span>
+                <input
+                  id="exchange-fund-amount"
+                  data-testid="input-exchange-fund-amount"
+                  value={depositAmount}
+                  onChange={event => { setDepositAmount(event.target.value.replace(/[^\d.]/g, '')); setFormError(''); }}
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  className="min-w-0 flex-1 bg-transparent py-3 text-[14px] outline-none placeholder:text-[var(--theme-secondary-text)]"
+                />
+              </div>
+              <p className="theme-text-secondary mt-3 text-[10px] leading-relaxed">Your amount will be added to your exchange balance after it is taken from your Vexa balance.</p>
+            </section>
           </>
         )}
 
@@ -755,20 +808,31 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
           </div>
         )}
       </div>
-      {(view === 'exchange' || view === 'transfer') && (
+      {(view === 'exchange' || view === 'transfer' || view === 'fund') && (
         <div
-          className="flex-none bg-[#F2F3F5] px-4 pt-2"
+          className="theme-page flex-none px-4 pt-2"
           style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}
         >
           <button
             type="button"
             disabled={view === 'exchange'
               ? busy || !livePricesReady || moneyMovementLocked
-              : busy || moneyMovementLocked}
-            onClick={() => { if (view === 'exchange') void submitExchange(); else void submitTransfer(); }}
+              : view === 'fund'
+                ? busy || loading || moneyMovementLocked
+                : busy || moneyMovementLocked}
+            onClick={() => {
+              if (view === 'exchange') void submitExchange();
+              else if (view === 'transfer') void submitTransfer();
+              else void submitDeposit();
+            }}
+            data-testid={view === 'fund' ? 'button-submit-exchange-fund' : `button-submit-${view}`}
             className="w-full h-[52px] rounded-xl bg-[#10535B] text-white text-[13px] font-bold disabled:opacity-50 active:scale-[0.99] transition-transform"
           >
-            {view === 'exchange'
+            {view === 'fund'
+              ? busy
+                ? 'Processing…'
+                : 'Deposit to exchange'
+              : view === 'exchange'
               ? busy
                 ? 'Processing…'
                 : !livePricesReady
