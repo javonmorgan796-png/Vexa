@@ -73,6 +73,20 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   }, []);
 
+  // Synchronize document.documentElement class and colorScheme with adminTheme
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', adminTheme === 'dark');
+    document.documentElement.style.colorScheme = adminTheme;
+    return () => {
+      // When leaving admin section, restore user app theme preference
+      const storedUserTheme = localStorage.getItem('vexa_theme_mode');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const shouldBeDark = storedUserTheme === 'dark' || (storedUserTheme === 'system' && prefersDark);
+      document.documentElement.classList.toggle('dark', shouldBeDark);
+      document.documentElement.style.colorScheme = shouldBeDark ? 'dark' : 'light';
+    };
+  }, [adminTheme]);
+
   const fetchAdminApi = useCallback(
     async (path: string, options: RequestInit = {}) => {
       const token = session?.access_token || '';

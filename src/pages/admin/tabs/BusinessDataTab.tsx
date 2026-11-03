@@ -166,13 +166,13 @@ export const BusinessDataTab: React.FC = () => {
       </div>
 
       {/* Business Entities Table */}
-      <div className={`rounded-2xl border overflow-hidden ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-gray-200'}`}>
-        <div className="p-4 border-b border-gray-800/60 flex items-center justify-between">
-          <h2 className="text-sm font-bold text-white flex items-center space-x-2">
+      <div className={`rounded-2xl border overflow-hidden ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-slate-200 shadow-sm'}`}>
+        <div className={`p-4 border-b flex items-center justify-between ${isDark ? 'border-gray-800/60' : 'border-slate-200'}`}>
+          <h2 className={`text-sm font-bold flex items-center space-x-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
             <BriefcaseBusiness className="w-4 h-4 text-[#F0B90B]" />
             <span>Corporate Banking Accounts Directory</span>
           </h2>
-          <span className="text-xs text-gray-400 font-mono">{businesses.length} Businesses</span>
+          <span className={`text-xs font-mono ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{businesses.length} Businesses</span>
         </div>
 
         <div className="overflow-x-auto">
@@ -303,19 +303,19 @@ export const BusinessDataTab: React.FC = () => {
       {/* Inspect Business Drawer / Modal */}
       {selectedBiz && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="w-full max-w-lg bg-[#161A23] border border-gray-800 rounded-2xl p-6 text-white shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-800">
+          <div className={`w-full max-w-lg rounded-2xl p-6 shadow-2xl border ${isDark ? 'bg-[#161A23] border-gray-800 text-white' : 'bg-white border-slate-200 text-slate-900'}`}>
+            <div className={`flex items-center justify-between pb-3 border-b ${isDark ? 'border-gray-800' : 'border-slate-200'}`}>
               <h3 className="text-base font-bold flex items-center space-x-2">
                 <Building2 className="w-5 h-5 text-[#F0B90B]" />
                 <span>Enterprise Profile Audit: {selectedBiz.businessName}</span>
               </h3>
-              <button onClick={() => setSelectedBiz(null)} className="text-gray-400 hover:text-white">
+              <button onClick={() => setSelectedBiz(null)} className={isDark ? 'text-gray-400 hover:text-white' : 'text-slate-400 hover:text-slate-700'}>
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="my-4 space-y-3 text-xs font-mono">
-              <div className="p-3 bg-gray-900 rounded-xl border border-gray-800 space-y-1">
+              <div className={`p-3 rounded-xl border space-y-1 ${isDark ? 'bg-gray-900 border-gray-800 text-gray-300' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
                 <div>Corporate Account: <strong className="text-[#F0B90B]">{selectedBiz.accountNumber}</strong></div>
                 <div>Treasury Balance: <strong>₦{Number(selectedBiz.balance).toLocaleString()}</strong></div>
                 <div>Industry: {selectedBiz.industry}</div>
@@ -324,14 +324,14 @@ export const BusinessDataTab: React.FC = () => {
                 <div>Single Transfer Limit: ₦{Number(selectedBiz.transactionLimit).toLocaleString()}</div>
               </div>
 
-              <div className="p-3 bg-gray-900/60 rounded-xl border border-gray-800 space-y-1">
+              <div className={`p-3 rounded-xl border space-y-1 ${isDark ? 'bg-gray-900/60 border-gray-800 text-gray-300' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
                 <div>Enrolled Employees: {selectedBiz.employeeCount}</div>
                 <div>Payroll Budget: ₦{Number(selectedBiz.monthlyPayroll).toLocaleString()} / month</div>
-                <div>Status: <span className="uppercase text-emerald-400 font-bold">{selectedBiz.status}</span></div>
+                <div>Status: <span className="uppercase text-emerald-500 font-bold">{selectedBiz.status}</span></div>
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-3 border-t border-gray-800">
+            <div className={`flex items-center justify-between pt-3 border-t ${isDark ? 'border-gray-800' : 'border-slate-200'}`}>
               <button
                 disabled={submitting}
                 onClick={() => handleToggleStatus(selectedBiz)}
