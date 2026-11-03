@@ -1,0 +1,207 @@
+import React, { useState, useEffect } from 'react';
+import { useAdmin } from '../AdminContext';
+import {
+  ArrowDownLeft,
+  Search,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  AlertCircle,
+  HelpCircle,
+  X,
+  RefreshCw,
+} from 'lucide-react';
+
+export const DepositsTab: React.FC = () => {
+  const { fetchAdminApi, adminTheme, hasPermission } = useAdmin();
+  const [deposits, setDeposits] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [resolveModalOpen, setResolveModalOpen] = useState(false);
+  const [selectedDeposit, setSelectedDeposit] = useState<any>(null);
+  const [resolveNotes, setResolveNotes] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const isDark = adminTheme === 'dark';
+
+  const loadDeposits = async () => {
+    try {
+      setLoading(true);
+      const res = await fetchAdminApi('/api/admin/deposits');
+      setDeposits(res.deposits || []);
+    } catch (err) {
+      console.error('Failed to load deposits:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDeposits();
+  }, []);
+
+  const handleResolveDeposit = async () => {
+    if (!selectedDeposit) return;
+    try {
+      setSubmitting(true);
+      await fetchAdminApi(`/api/admin/deposits/${selectedDeposit.id}/resolve`, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'credit_wallet', notes: resolveNotes }),
+      });
+      setSelectedDeposit((prev: any) => ({ ...prev, status: 'successful' }));
+      setResolveModalOpen(false);
+      setResolveNotes('');
+      loadDeposits();
+    } catch (err: any) {
+      alert(err.message || 'Resolve failed');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const filtered = deposits.filter((d) => {
+    return (
+      !search ||
+      d.reference.toLowerCase().includes(search.toLowerCase()) ||
+      d.user.toLowerCase().includes(search.toLowerCase()) ||
+      d.phone.includes(search)
+    );
+  });
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            Deposit Rails & Gateway Settlement
+          </h1>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Monitor inbound card authorizations, direct virtual account transfers, and investigate disputed deposits.
+          </p>
+        </div>
+
+        <div className="relative">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search deposit reference or user..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className={`w-64 sm:w-80 pl-9 pr-3 py-2 rounded-xl text-xs border outline-none ${
+              isDark
+                ? 'bg-[#161A23] border-gray-800 text-white placeholder-gray-500 focus:border-[#F0B90B]'
+                : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-[#F0B90B]'
+            }`}
+          />
+        </div>
+      </div>
+
+      <div className={`rounded-2xl border overflow-hidden ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-slate-200 shadow-sm'}`}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className={`border-b ${isDark ? 'border-gray-800 bg-gray-900/30 text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+                <th className="py-3 px-4 font-semibold">Gateway Reference</th>
+                <th className="py-3 px-4 font-semibold">Customer</th>
+                <th className="py-3 px-4 font-semibold">Funding Channel</th>
+                <th className="py-3 px-4 font-semibold">Amount</th>
+                <th className="py-3 px-4 font-semibold">Status</th>
+                <th className="py-3 px-4 font-semibold">Timestamp</th>
+                <th className="py-3 px-4 font-semibold text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className={`divide-y font-mono ${isDark ? 'divide-gray-800/40' : 'divide-slate-200'}`}>
+              {filtered.map((d) => (
+                <tr key={d.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50'} transition-colors`}>
+                  <td className="py-3.5 px-4 font-semibold text-[#F0B90B]">{d.reference}</td>
+                  <td className="py-3.5 px-4 font-sans">
+                    <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{d.user}</div>
+                    <div className="text-[11px] text-gray-400 font-mono">{d.phone}</div>
+                  </td>
+                  <td className={`py-3.5 px-4 font-sans ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>{d.channel}</td>
+                  <td className={`py-3.5 px-4 font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>₦{Number(d.amount).toLocaleString()}</td>
+                  <td className="py-3.5 px-4">
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
+                        d.status === 'successful'
+                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                          : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                      }`}
+                    >
+                      {d.status}
+                    </span>
+                  </td>
+                  <td className="py-3.5 px-4 text-gray-400 font-sans text-[11px]">
+                    {new Date(d.createdAt).toLocaleString()}
+                  </td>
+                  <td className="py-3.5 px-4 text-right font-sans">
+                    {d.status === 'failed' && hasPermission('deposits.manage') ? (
+                      <button
+                        onClick={() => {
+                          setSelectedDeposit(d);
+                          setResolveModalOpen(true);
+                        }}
+                        className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-black font-semibold rounded-lg text-xs transition-colors"
+                      >
+                        Investigate & Credit
+                      </button>
+                    ) : (
+                      <span className="text-gray-500 text-[11px]">Settled</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Investigate Modal */}
+      {resolveModalOpen && selectedDeposit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className={`w-full max-w-md rounded-2xl p-6 shadow-2xl border ${isDark ? 'bg-[#161A23] border-gray-800 text-white' : 'bg-white border-slate-200 text-slate-900'}`}>
+            <h3 className={`text-base font-bold mb-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>Resolve Failed Inbound Deposit</h3>
+            <p className="text-xs text-gray-400 mb-4">
+              If the customer payment cleared on the external bank statement or Paystack dashboard, you can authorize a manual wallet credit with audit trail.
+            </p>
+
+            <div className={`p-3 rounded-xl border text-xs mb-4 font-mono ${isDark ? 'bg-gray-900 border-gray-800 text-gray-300' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
+              <div>Reference: {selectedDeposit.reference}</div>
+              <div>Customer: {selectedDeposit.user} ({selectedDeposit.phone})</div>
+              <div>Amount: ₦{Number(selectedDeposit.amount).toLocaleString()}</div>
+            </div>
+
+            <label className="text-xs text-gray-400 mb-1 block">Resolution Audit Note</label>
+            <textarea
+              rows={3}
+              placeholder="e.g. Verified Paystack transaction ID #8928392 cleared in Zenith Bank merchant account..."
+              value={resolveNotes}
+              onChange={(e) => setResolveNotes(e.target.value)}
+              className={`w-full px-3 py-2 rounded-xl border text-xs focus:border-[#F0B90B] outline-none mb-4 ${
+                isDark ? 'bg-gray-900 border-gray-800 text-white' : 'bg-white border-slate-300 text-slate-900'
+              }`}
+            />
+
+            <div className="flex items-center justify-end space-x-2">
+              <button
+                onClick={() => setResolveModalOpen(false)}
+                className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${
+                  isDark ? 'text-gray-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Cancel
+              </button>
+              <button
+                disabled={submitting}
+                onClick={handleResolveDeposit}
+                className="px-5 py-2 bg-[#F0B90B] hover:bg-[#d9a606] text-black font-semibold rounded-xl text-xs transition-colors"
+              >
+                {submitting ? 'Crediting...' : 'Confirm Credit to Customer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

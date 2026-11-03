@@ -936,3 +936,289 @@ CREATE POLICY "Users can update own sessions"
   ON public.user_sessions FOR UPDATE TO authenticated
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
+
+
+-- ============================================================
+-- ── Vexa Premium Admin Dashboard & Governance Schema ────────
+-- ============================================================
+
+-- Profile extensions for account restriction & KYC tier
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS is_suspended BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS suspension_reason TEXT;
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS kyc_tier INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS kyc_status TEXT NOT NULL DEFAULT 'unverified';
+
+-- ── 1. Admin Roles & RBAC ────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.admin_roles (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  phone         TEXT NOT NULL UNIQUE,
+  name          TEXT NOT NULL DEFAULT 'Administrator',
+  role          TEXT NOT NULL DEFAULT 'admin' CHECK (role IN ('super_admin', 'admin', 'finance_manager', 'support_agent', 'auditor')),
+  permissions   TEXT[] NOT NULL DEFAULT ARRAY['overview.view'],
+  is_active     BOOLEAN NOT NULL DEFAULT true,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.admin_roles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Service role has full access to admin_roles" ON public.admin_roles;
+CREATE POLICY "Service role has full access to admin_roles"
+  ON public.admin_roles FOR ALL
+  USING (true)
+  WITH CHECK (true);
+
+-- ── 2. KYC Verification Requests ──────────────────────────────
+CREATE TABLE IF NOT EXISTS public.kyc_requests (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id          UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  user_name        TEXT NOT NULL,
+  user_phone       TEXT NOT NULL,
+  id_type          TEXT NOT NULL, -- NIN, BVN, Driver License, International Passport, Voter Card
+  id_number        TEXT NOT NULL,
+  document_url     TEXT,
+  selfie_url       TEXT,
+  status           TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  rejection_reason TEXT,
+  reviewed_by      TEXT,
+  reviewed_at      TIMESTAMPTZ,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.kyc_requests ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Service role has full access to kyc_requests" ON public.kyc_requests;
+CREATE POLICY "Service role has full access to kyc_requests"
+  ON public.kyc_requests FOR ALL
+  USING (true)
+  WITH CHECK (true);
+
+-- ── 3. Cards Management ───────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.cards (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  card_number    TEXT NOT NULL,
+  card_holder    TEXT NOT NULL,
+  expiry_month   TEXT NOT NULL DEFAULT '12',
+  expiry_year    TEXT NOT NULL DEFAULT '29',
+  cvv            TEXT NOT NULL DEFAULT '789',
+  card_type      TEXT NOT NULL DEFAULT 'virtual' CHECK (card_type IN ('virtual', 'physical')),
+  card_brand     TEXT NOT NULL DEFAULT 'mastercard' CHECK (card_brand IN ('mastercard', 'visa', 'verve')),
+  status         TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'frozen', 'blocked', 'expired')),
+  spending_limit NUMERIC(15, 2) NOT NULL DEFAULT 500000,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.cards ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Service role has full access to cards" ON public.cards;
+CREATE POLICY "Service role has full access to cards"
+  ON public.cards FOR ALL
+  USING (true)
+  WITH CHECK (true);
+
+-- ── 4. Customer Support Tickets ───────────────────────────────
+CREATE TABLE IF NOT EXISTS public.support_tickets (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticket_number TEXT NOT NULL UNIQUE,
+  user_id       UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  user_name     TEXT NOT NULL,
+  user_phone    TEXT NOT NULL,
+  subject       TEXT NOT NULL,
+  category      TEXT NOT NULL DEFAULT 'general' CHECK (category IN ('transfer', 'deposit', 'card', 'account', 'fraud', 'general')),
+  priority      TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
+  status        TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'in_progress', 'resolved', 'closed')),
+  messages      JSONB NOT NULL DEFAULT '[]'::jsonb,
+  assigned_to   TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.support_tickets ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Service role has full access to support_tickets" ON public.support_tickets;
+CREATE POLICY "Service role has full access to support_tickets"
+  ON public.support_tickets FOR ALL
+  USING (true)
+  WITH CHECK (true);
+
+-- ── 5. Security & Fraud Alerts ────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.fraud_alerts (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  user_name     TEXT NOT NULL,
+  user_phone    TEXT NOT NULL,
+  severity      TEXT NOT NULL DEFAULT 'medium' CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+  alert_type    TEXT NOT NULL,
+  description   TEXT NOT NULL,
+  metadata      JSONB DEFAULT '{}'::jsonb,
+  status        TEXT NOT NULL DEFAULT 'unresolved' CHECK (status IN ('unresolved', 'investigating', 'resolved', 'dismissed')),
+  resolved_by   TEXT,
+  resolved_at   TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.fraud_alerts ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Service role has full access to fraud_alerts" ON public.fraud_alerts;
+CREATE POLICY "Service role has full access to fraud_alerts"
+  ON public.fraud_alerts FOR ALL
+  USING (true)
+  WITH CHECK (true);
+
+-- ── 6. Immutable Administrative Audit Logs ────────────────────
+CREATE TABLE IF NOT EXISTS public.admin_audit_logs (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  admin_id       UUID,
+  admin_phone    TEXT NOT NULL,
+  admin_name     TEXT NOT NULL DEFAULT 'Admin',
+  action         TEXT NOT NULL,
+  target_type    TEXT NOT NULL, -- user, transaction, kyc, withdrawal, card, system, admin
+  target_id      TEXT,
+  details        JSONB DEFAULT '{}'::jsonb,
+  previous_value JSONB,
+  new_value      JSONB,
+  ip_address     TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.admin_audit_logs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Service role has full access to admin_audit_logs" ON public.admin_audit_logs;
+CREATE POLICY "Service role has full access to admin_audit_logs"
+  ON public.admin_audit_logs FOR ALL
+  USING (true)
+  WITH CHECK (true);
+
+-- ── 7. System Settings ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.system_settings (
+  id         TEXT PRIMARY KEY DEFAULT 'global',
+  settings   JSONB NOT NULL,
+  updated_by TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.system_settings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Service role has full access to system_settings" ON public.system_settings;
+CREATE POLICY "Service role has full access to system_settings"
+  ON public.system_settings FOR ALL
+  USING (true)
+  WITH CHECK (true);
+
+-- ── 8. Seed Super Admin 09067212032 & Default System Settings ──
+INSERT INTO public.admin_roles (
+  phone, name, role, permissions, is_active
+) VALUES (
+  '09067212032',
+  'Super Administrator',
+  'super_admin',
+  ARRAY[
+    'overview.view',
+    'users.view', 'users.manage', 'users.adjust_balance', 'users.suspend',
+    'kyc.view', 'kyc.manage',
+    'transactions.view', 'transactions.manage',
+    'deposits.view', 'deposits.manage',
+    'withdrawals.view', 'withdrawals.manage',
+    'cards.view', 'cards.manage',
+    'support.view', 'support.manage',
+    'security.view', 'security.manage',
+    'admins.view', 'admins.manage',
+    'audit.view',
+    'settings.view', 'settings.manage'
+  ],
+  true
+)
+ON CONFLICT (phone) DO UPDATE SET
+  role = 'super_admin',
+  is_active = true,
+  permissions = EXCLUDED.permissions;
+
+INSERT INTO public.system_settings (id, settings, updated_by)
+VALUES (
+  'global',
+  jsonb_build_object(
+    'maintenance_mode', false,
+    'allow_new_signups', true,
+    'allow_transfers', true,
+    'allow_crypto_exchange', true,
+    'allow_bill_payments', true,
+    'tier1_daily_limit', 50000,
+    'tier2_daily_limit', 500000,
+    'tier3_daily_limit', 5000000,
+    'transfer_fee_flat', 10.0,
+    'instant_withdrawal_fee_pct', 0.5,
+    'session_timeout_minutes', 30,
+    'enforce_device_binding', true,
+    'suspicious_amount_threshold', 1000000
+  ),
+  'system'
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- ── 9. Trigger to link auth.users to admin_roles on signup/login ──
+CREATE OR REPLACE FUNCTION public.handle_admin_user_sync()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_phone TEXT;
+BEGIN
+  v_phone := COALESCE(NEW.raw_user_meta_data->>'phone', '');
+  IF v_phone = '' AND NEW.email LIKE '%@vexa.app' THEN
+    v_phone := split_part(NEW.email, '@', 1);
+  END IF;
+
+  -- Normalize phone (handle 09067212032 or +2349067212032)
+  IF v_phone LIKE '+234%' THEN
+    v_phone := '0' || substring(v_phone FROM 5);
+  ELSIF v_phone LIKE '234%' THEN
+    v_phone := '0' || substring(v_phone FROM 4);
+  END IF;
+
+  -- Match admin phone 09067212032
+  IF v_phone = '09067212032' THEN
+    INSERT INTO public.admin_roles (user_id, phone, name, role, permissions, is_active)
+    VALUES (
+      NEW.id,
+      '09067212032',
+      COALESCE(NEW.raw_user_meta_data->>'name', 'Super Administrator'),
+      'super_admin',
+      ARRAY[
+        'overview.view',
+        'users.view', 'users.manage', 'users.adjust_balance', 'users.suspend',
+        'kyc.view', 'kyc.manage',
+        'transactions.view', 'transactions.manage',
+        'deposits.view', 'deposits.manage',
+        'withdrawals.view', 'withdrawals.manage',
+        'cards.view', 'cards.manage',
+        'support.view', 'support.manage',
+        'security.view', 'security.manage',
+        'admins.view', 'admins.manage',
+        'audit.view',
+        'settings.view', 'settings.manage'
+      ],
+      true
+    )
+    ON CONFLICT (phone) DO UPDATE SET
+      user_id = NEW.id,
+      role = 'super_admin',
+      is_active = true;
+  ELSE
+    -- Link existing pre-created admin record by phone if present
+    UPDATE public.admin_roles
+    SET user_id = NEW.id, updated_at = NOW()
+    WHERE phone = v_phone;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_admin_user_sync ON auth.users;
+CREATE TRIGGER on_admin_user_sync
+  AFTER INSERT OR UPDATE ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_admin_user_sync();
