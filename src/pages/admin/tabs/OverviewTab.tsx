@@ -51,26 +51,26 @@ export const OverviewTab: React.FC = () => {
 
   const isDark = adminTheme === 'dark';
   const metrics = data?.metrics || {
-    totalUsers: 1420,
-    activeUsers: 1388,
-    suspendedUsers: 32,
-    totalBalances: 84520930.5,
-    totalDepositsVolume: 124500000,
-    totalWithdrawalsVolume: 48200000,
-    totalTransactions: 8940,
-    pendingKyc: 2,
-    openTickets: 1,
-    unresolvedAlerts: 1,
+    totalUsers: 0,
+    activeUsers: 0,
+    suspendedUsers: 0,
+    totalBalances: 0,
+    totalDepositsVolume: 0,
+    totalWithdrawalsVolume: 0,
+    totalTransactions: 0,
+    pendingKyc: 0,
+    openTickets: 0,
+    unresolvedAlerts: 0,
   };
 
   const chartData = data?.chartData || [
-    { name: 'Mon', deposits: 4200000, withdrawals: 1800000, volume: 6000000 },
-    { name: 'Tue', deposits: 6100000, withdrawals: 2400000, volume: 8500000 },
-    { name: 'Wed', deposits: 5800000, withdrawals: 2900000, volume: 8700000 },
-    { name: 'Thu', deposits: 7900000, withdrawals: 3100000, volume: 11000000 },
-    { name: 'Fri', deposits: 9400000, withdrawals: 4600000, volume: 14000000 },
-    { name: 'Sat', deposits: 8200000, withdrawals: 3800000, volume: 12000000 },
-    { name: 'Sun', deposits: 6900000, withdrawals: 2700000, volume: 9600000 },
+    { name: 'Mon', deposits: 0, withdrawals: 0, volume: 0 },
+    { name: 'Tue', deposits: 0, withdrawals: 0, volume: 0 },
+    { name: 'Wed', deposits: 0, withdrawals: 0, volume: 0 },
+    { name: 'Thu', deposits: 0, withdrawals: 0, volume: 0 },
+    { name: 'Fri', deposits: 0, withdrawals: 0, volume: 0 },
+    { name: 'Sat', deposits: 0, withdrawals: 0, volume: 0 },
+    { name: 'Sun', deposits: 0, withdrawals: 0, volume: 0 },
   ];
 
   const recentTransactions = data?.recentTransactions || [];
@@ -393,33 +393,46 @@ export const OverviewTab: React.FC = () => {
               </tr>
             </thead>
             <tbody className={`divide-y font-mono ${isDark ? 'divide-gray-800/40' : 'divide-slate-100'}`}>
-              {recentTransactions.map((tx: any) => (
-                <tr key={tx.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50/80'} transition-colors`}>
-                  <td className={`py-3 px-2 font-medium ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{tx.reference}</td>
-                  <td className="py-3 px-2 font-sans">
-                    <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{tx.user}</div>
-                    <div className={`text-[11px] ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>{tx.phone}</div>
-                  </td>
-                  <td className={`py-3 px-2 font-sans ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>{tx.type}</td>
-                  <td className={`py-3 px-2 font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>₦{Number(tx.amount).toLocaleString()}</td>
-                  <td className="py-3 px-2">
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
-                        tx.status === 'successful'
-                          ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
-                          : tx.status === 'pending'
-                          ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
-                          : 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
-                      }`}
-                    >
-                      {tx.status}
-                    </span>
-                  </td>
-                  <td className={`py-3 px-2 ${isDark ? 'text-gray-500' : 'text-slate-400'} text-[11px]`}>
-                    {new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              {recentTransactions.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-10 text-center font-sans">
+                    <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
+                      No transactions recorded yet in the core ledger.
+                    </p>
+                    <p className="text-[11px] text-gray-500 mt-1">
+                      Real inbound deposits and customer transfers will stream here automatically.
+                    </p>
                   </td>
                 </tr>
-              ))}
+              ) : (
+                recentTransactions.map((tx: any) => (
+                  <tr key={tx.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50/80'} transition-colors`}>
+                    <td className={`py-3 px-2 font-medium ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{tx.reference}</td>
+                    <td className="py-3 px-2 font-sans">
+                      <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{tx.user}</div>
+                      <div className={`text-[11px] ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>{tx.phone}</div>
+                    </td>
+                    <td className={`py-3 px-2 font-sans ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>{tx.type}</td>
+                    <td className={`py-3 px-2 font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>₦{Number(tx.amount).toLocaleString()}</td>
+                    <td className="py-3 px-2">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
+                          tx.status === 'successful'
+                            ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                            : tx.status === 'pending'
+                            ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                            : 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
+                        }`}
+                      >
+                        {tx.status}
+                      </span>
+                    </td>
+                    <td className={`py-3 px-2 ${isDark ? 'text-gray-500' : 'text-slate-400'} text-[11px]`}>
+                      {new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

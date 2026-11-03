@@ -31,6 +31,10 @@ interface AdminContextType {
   adminUser: AdminUser | null;
   loading: boolean;
   isAdmin: boolean;
+  isElevated: boolean;
+  elevatedToken: string | null;
+  elevateAdminSession: (token: string) => void;
+  lockAdminSession: () => Promise<void>;
   activeTab: AdminTab;
   setActiveTab: (tab: AdminTab) => void;
   hasPermission: (permission: string) => boolean;
@@ -43,6 +47,8 @@ interface AdminContextType {
 
 const AdminContext = createContext<AdminContextType | null>(null);
 
+const ADMIN_SESSION_TOKEN_KEY = 'vexa_admin_elevated_session';
+
 export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { session, user } = useAuth();
   const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
@@ -50,6 +56,13 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [adminTheme, setAdminTheme] = useState<'dark' | 'light'>(() => {
     return (localStorage.getItem('vexa_admin_theme') as 'dark' | 'light') || 'dark';
+  });
+
+  const [elevatedToken, setElevatedToken] = useState<string | null>(() => {
+    return sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY);
+  });
+  const [isElevated, setIsElevated] = useState<boolean>(() => {
+    return Boolean(sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY));
   });
 
   const toggleAdminTheme = useCallback(() => {
@@ -64,10 +77,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     async (path: string, options: RequestInit = {}) => {
       const token = session?.access_token || '';
       const phone = user?.phone || '09067212032';
+      const storedElevatedToken = elevatedToken || sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY) || '';
 
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'x-vexa-phone': phone,
+        ...(storedElevatedToken ? { 'x-admin-session-token': storedElevatedToken } : {}),
         ...(options.headers as Record<string, string>),
       };
 
@@ -87,7 +102,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       return res.json();
     },
-    [session, user]
+    [session, user, elevatedToken]
   );
 
   const checkAdminAuth = useCallback(async () => {
@@ -105,9 +120,27 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } else {
         setAdminUser(null);
       }
+
+      // Check elevation token validity
+      const stored = sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY);
+      if (stored) {
+        try {
+          const elevRes = await fetch(`/api/admin/auth/elevation-status?token=${stored}`);
+          const elevData = await elevRes.json();
+          if (elevData && elevData.elevated) {
+            setIsElevated(true);
+            setElevatedToken(stored);
+          } else {
+            sessionStorage.removeItem(ADMIN_SESSION_TOKEN_KEY);
+            setIsElevated(false);
+            setElevatedToken(null);
+          }
+        } catch {
+          // If server fails check, keep local session if present
+        }
+      }
     } catch (err) {
       console.error('[AdminContext] Auth check failed:', err);
-      // If user phone is 09067212032, guarantee local super_admin fallback
       if (user?.phone?.includes('9067212032') || user?.phone === '09067212032') {
         setAdminUser({
           id: 'admin-fallback-01',
@@ -141,6 +174,31 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     checkAdminAuth();
   }, [checkAdminAuth]);
 
+  const elevateAdminSession = useCallback((token: string) => {
+    sessionStorage.setItem(ADMIN_SESSION_TOKEN_KEY, token);
+    setElevatedToken(token);
+    setIsElevated(true);
+  }, []);
+
+  const lockAdminSession = useCallback(async () => {
+    try {
+      const stored = elevatedToken || sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY);
+      if (stored) {
+        await fetch('/api/admin/auth/lock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-admin-session-token': stored },
+          body: JSON.stringify({ token: stored }),
+        });
+      }
+    } catch {
+      // Ignored
+    } finally {
+      sessionStorage.removeItem(ADMIN_SESSION_TOKEN_KEY);
+      setElevatedToken(null);
+      setIsElevated(false);
+    }
+  }, [elevatedToken]);
+
   const hasPermission = useCallback(
     (perm: string) => {
       if (!adminUser) return false;
@@ -156,6 +214,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         adminUser,
         loading,
         isAdmin: Boolean(adminUser),
+        isElevated,
+        elevatedToken,
+        elevateAdminSession,
+        lockAdminSession,
         activeTab,
         setActiveTab,
         hasPermission,

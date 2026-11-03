@@ -63,10 +63,10 @@ export const BusinessDataTab: React.FC = () => {
   };
 
   const metrics = data?.metrics || {
-    totalBusinesses: 3,
-    totalCorporateBalance: 60070000.5,
-    totalEmployeesManaged: 80,
-    monthlyPayrollVolume: 25900000.0,
+    totalBusinesses: 0,
+    totalCorporateBalance: 0,
+    totalEmployeesManaged: 0,
+    monthlyPayrollVolume: 0,
   };
 
   const businesses = (data?.businesses || []).filter((b: any) => {
@@ -189,54 +189,67 @@ export const BusinessDataTab: React.FC = () => {
               </tr>
             </thead>
             <tbody className={`divide-y font-mono ${isDark ? 'divide-gray-800/40' : 'divide-slate-100'}`}>
-              {businesses.map((biz: any) => (
-                <tr key={biz.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50/80'} transition-colors`}>
-                  <td className="py-3.5 px-4 font-sans">
-                    <div className={`font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>{biz.businessName}</div>
-                    <div className={`text-[11px] font-mono ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
-                      Owner: {biz.ownerName} ({biz.ownerPhone})
-                    </div>
-                  </td>
-                  <td className="py-3.5 px-4 font-sans">
-                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium ${isDark ? 'bg-gray-800 text-gray-300' : 'bg-slate-100 text-slate-700'}`}>
-                      {biz.industry}
-                    </span>
-                  </td>
-                  <td className="py-3.5 px-4 text-[#F0B90B] font-bold">
-                    {biz.accountNumber}
-                  </td>
-                  <td className={`py-3.5 px-4 font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                    ₦{Number(biz.balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="py-3.5 px-4 font-sans">
-                    <div className={`font-medium ${isDark ? 'text-white' : 'text-slate-900'}`}>{biz.employeeCount} Employees</div>
-                    <div className={`text-[11px] font-mono ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
-                      ₦{Number(biz.monthlyPayroll).toLocaleString()}/mo
-                    </div>
-                  </td>
-                  <td className="py-3.5 px-4">
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${
-                        biz.status === 'active'
-                          ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
-                          : 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
-                      }`}
-                    >
-                      {biz.status}
-                    </span>
-                  </td>
-                  <td className="py-3.5 px-4 text-right font-sans">
-                    <button
-                      onClick={() => setSelectedBiz(biz)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                        isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-200 border-gray-700' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
-                      }`}
-                    >
-                      Audit Entity
-                    </button>
+              {businesses.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-10 text-center font-sans">
+                    <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
+                      No business or corporate accounts registered yet.
+                    </p>
+                    <p className="text-[11px] text-gray-500 mt-1">
+                      Enterprise onboarding submissions will appear here for administrative verification.
+                    </p>
                   </td>
                 </tr>
-              ))}
+              ) : (
+                businesses.map((biz: any) => (
+                  <tr key={biz.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50/80'} transition-colors`}>
+                    <td className="py-3.5 px-4 font-sans">
+                      <div className={`font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>{biz.businessName}</div>
+                      <div className={`text-[11px] font-mono ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
+                        Owner: {biz.ownerName} ({biz.ownerPhone})
+                      </div>
+                    </td>
+                    <td className="py-3.5 px-4 font-sans">
+                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium ${isDark ? 'bg-gray-800 text-gray-300' : 'bg-slate-100 text-slate-700'}`}>
+                        {biz.industry}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-[#F0B90B] font-bold">
+                      {biz.accountNumber}
+                    </td>
+                    <td className={`py-3.5 px-4 font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      ₦{Number(biz.balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className="py-3.5 px-4 font-sans">
+                      <div className={`font-medium ${isDark ? 'text-white' : 'text-slate-900'}`}>{biz.employeeCount} Employees</div>
+                      <div className={`text-[11px] font-mono ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
+                        ₦{Number(biz.monthlyPayroll).toLocaleString()}/mo
+                      </div>
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${
+                          biz.status === 'active'
+                            ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                            : 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
+                        }`}
+                      >
+                        {biz.status}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-right font-sans">
+                      <button
+                        onClick={() => setSelectedBiz(biz)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                          isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-200 border-gray-700' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                        }`}
+                      >
+                        Audit Entity
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

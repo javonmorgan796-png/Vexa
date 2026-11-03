@@ -56,7 +56,7 @@ interface NavItem {
 }
 
 export const AdminLayout: React.FC = () => {
-  const { adminUser, activeTab, setActiveTab, adminTheme, toggleAdminTheme, hasPermission } = useAdmin();
+  const { adminUser, activeTab, setActiveTab, adminTheme, toggleAdminTheme, hasPermission, lockAdminSession } = useAdmin();
   const [, navigate] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
@@ -256,11 +256,11 @@ export const AdminLayout: React.FC = () => {
           </div>
 
           {/* Right Header Badges & Actions */}
-          <div className="flex items-center space-x-3">
-            {/* Live Status Pill */}
-            <div className="hidden md:flex items-center space-x-2 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-[11px] font-mono font-semibold">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>TPS: 184 · Core Synced</span>
+          <div className="flex items-center space-x-2.5">
+            {/* 2FA Security Pill */}
+            <div className="hidden sm:flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-mono font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>2FA Verified</span>
             </div>
 
             {/* Role Badge */}
@@ -279,6 +279,20 @@ export const AdminLayout: React.FC = () => {
               title="Toggle Theme"
             >
               {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
+            </button>
+
+            {/* Lock Console Button */}
+            <button
+              onClick={lockAdminSession}
+              className={`py-1.5 px-2.5 rounded-xl border text-xs font-semibold flex items-center space-x-1.5 transition-colors ${
+                isDark
+                  ? 'bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20'
+                  : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100'
+              }`}
+              title="Lock Admin Terminal Immediately"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Lock Console</span>
             </button>
           </div>
         </header>

@@ -37,10 +37,10 @@ export const RewardsDataTab: React.FC = () => {
   }, []);
 
   const metrics = data?.metrics || {
-    totalCashbackDisbursed: 1065.0,
-    totalReferralBonusesPaid: 2000.0,
-    totalReferralsCount: 3,
-    pendingReferralsCount: 1,
+    totalCashbackDisbursed: 0,
+    totalReferralBonusesPaid: 0,
+    totalReferralsCount: 0,
+    pendingReferralsCount: 0,
   };
 
   const cashbackHistory = (data?.cashbackHistory || []).filter((c: any) => {
@@ -198,31 +198,44 @@ export const RewardsDataTab: React.FC = () => {
                 </tr>
               </thead>
               <tbody className={`divide-y font-mono ${isDark ? 'divide-gray-800/40' : 'divide-slate-100'}`}>
-                {cashbackHistory.map((c: any) => (
-                  <tr key={c.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50/80'} transition-colors`}>
-                    <td className="py-3.5 px-4 font-sans">
-                      <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{c.userName}</div>
-                      <div className={`text-[11px] font-mono ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>{c.userPhone}</div>
+                {cashbackHistory.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-10 text-center font-sans">
+                      <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
+                        No cashback rewards disbursed yet.
+                      </p>
+                      <p className="text-[11px] text-gray-500 mt-1">
+                        Cashback credits earned from bill payments and card transactions will appear here.
+                      </p>
                     </td>
-                    <td className={`py-3.5 px-4 font-sans ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>{c.description}</td>
-                    <td className="py-3.5 px-4 text-[#F0B90B] font-bold">{c.rate}</td>
-                    <td className="py-3.5 px-4 font-bold text-emerald-500 text-sm">
-                      +₦{Number(c.earned).toFixed(2)}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${
-                          c.status === 'cleared'
-                            ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
-                            : 'bg-purple-500/10 text-purple-500 border border-purple-500/20'
-                        }`}
-                      >
-                        {c.status}
-                      </span>
-                    </td>
-                    <td className={`py-3.5 px-4 text-[11px] ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>{c.date}</td>
                   </tr>
-                ))}
+                ) : (
+                  cashbackHistory.map((c: any) => (
+                    <tr key={c.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50/80'} transition-colors`}>
+                      <td className="py-3.5 px-4 font-sans">
+                        <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{c.userName}</div>
+                        <div className={`text-[11px] font-mono ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>{c.userPhone}</div>
+                      </td>
+                      <td className={`py-3.5 px-4 font-sans ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>{c.description}</td>
+                      <td className="py-3.5 px-4 text-[#F0B90B] font-bold">{c.rate}</td>
+                      <td className="py-3.5 px-4 font-bold text-emerald-500 text-sm">
+                        +₦{Number(c.earned).toFixed(2)}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${
+                            c.status === 'cleared'
+                              ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                              : 'bg-purple-500/10 text-purple-500 border border-purple-500/20'
+                          }`}
+                        >
+                          {c.status}
+                        </span>
+                      </td>
+                      <td className={`py-3.5 px-4 text-[11px] ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>{c.date}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -240,36 +253,49 @@ export const RewardsDataTab: React.FC = () => {
                 </tr>
               </thead>
               <tbody className={`divide-y font-mono ${isDark ? 'divide-gray-800/40' : 'divide-slate-100'}`}>
-                {referrals.map((r: any) => (
-                  <tr key={r.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50/80'} transition-colors`}>
-                    <td className="py-3.5 px-4 font-sans">
-                      <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{r.referrerName}</div>
-                      <div className={`text-[11px] font-mono ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>{r.referrerPhone}</div>
-                    </td>
-                    <td className="py-3.5 px-4 font-sans">
-                      <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{r.refereeName}</div>
-                      <div className={`text-[11px] font-mono ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>{r.refereePhone}</div>
-                    </td>
-                    <td className="py-3.5 px-4 text-[#F0B90B] font-bold">{r.referralCode}</td>
-                    <td className="py-3.5 px-4 font-bold text-emerald-500 text-sm">
-                      ₦{Number(r.bonusAmount).toLocaleString()}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${
-                          r.status === 'paid'
-                            ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
-                            : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
-                        }`}
-                      >
-                        {r.status.replace('_', ' ')}
-                      </span>
-                    </td>
-                    <td className={`py-3.5 px-4 text-[11px] ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>
-                      {new Date(r.createdAt).toLocaleDateString()}
+                {referrals.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-10 text-center font-sans">
+                      <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
+                        No referral rewards or invites recorded yet.
+                      </p>
+                      <p className="text-[11px] text-gray-500 mt-1">
+                        Completed peer referrals and onboarding bonuses will stream here.
+                      </p>
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  referrals.map((r: any) => (
+                    <tr key={r.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50/80'} transition-colors`}>
+                      <td className="py-3.5 px-4 font-sans">
+                        <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{r.referrerName}</div>
+                        <div className={`text-[11px] font-mono ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>{r.referrerPhone}</div>
+                      </td>
+                      <td className="py-3.5 px-4 font-sans">
+                        <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{r.refereeName}</div>
+                        <div className={`text-[11px] font-mono ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>{r.refereePhone}</div>
+                      </td>
+                      <td className="py-3.5 px-4 text-[#F0B90B] font-bold">{r.referralCode}</td>
+                      <td className="py-3.5 px-4 font-bold text-emerald-500 text-sm">
+                        ₦{Number(r.bonusAmount).toLocaleString()}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${
+                            r.status === 'paid'
+                              ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                              : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                          }`}
+                        >
+                          {r.status.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className={`py-3.5 px-4 text-[11px] ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>
+                        {new Date(r.createdAt).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

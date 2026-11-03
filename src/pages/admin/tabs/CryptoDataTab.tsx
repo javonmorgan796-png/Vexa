@@ -39,10 +39,10 @@ export const CryptoDataTab: React.FC = () => {
   }, []);
 
   const metrics = data?.metrics || {
-    totalTradingVolumeNaira: 2187500.0,
-    totalCustodyNaira: 567300000.0,
-    totalOrdersExecuted: 4,
-    activeTradersCount: 84,
+    totalTradingVolumeNaira: 0,
+    totalCustodyNaira: 0,
+    totalOrdersExecuted: 0,
+    activeTradersCount: 0,
   };
 
   const custodyHoldings = data?.custodyHoldings || [];
@@ -215,40 +215,53 @@ export const CryptoDataTab: React.FC = () => {
               </tr>
             </thead>
             <tbody className={`divide-y font-mono ${isDark ? 'divide-gray-800/40' : 'divide-slate-100'}`}>
-              {orders.map((o: any) => (
-                <tr key={o.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50/80'} transition-colors`}>
-                  <td className="py-3.5 px-4 font-sans">
-                    <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{o.userName}</div>
-                    <div className={`text-[11px] font-mono ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>{o.userPhone}</div>
-                  </td>
-                  <td className="py-3.5 px-4 font-sans">
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                        o.kind === 'buy' || o.kind === 'deposit'
-                          ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
-                          : 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
-                      }`}
-                    >
-                      {o.kind.replace('_', ' ')}
-                    </span>
-                  </td>
-                  <td className={`py-3.5 px-4 font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                    {Number(o.amount).toLocaleString()} {o.asset}
-                  </td>
-                  <td className="py-3.5 px-4 font-bold text-emerald-500">
-                    ₦{Number(o.nairaAmount).toLocaleString()}
-                  </td>
-                  <td className={`py-3.5 px-4 ${isDark ? 'text-gray-300' : 'text-slate-600'}`}>
-                    ₦{Number(o.rate).toLocaleString()}
-                  </td>
-                  <td className="py-3.5 px-4 text-[#F0B90B] text-[11px] font-bold">
-                    {o.txHash}
-                  </td>
-                  <td className={`py-3.5 px-4 text-[11px] ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>
-                    {new Date(o.createdAt).toLocaleString()}
+              {orders.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-10 text-center font-sans">
+                    <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
+                      No crypto exchange orders executed yet.
+                    </p>
+                    <p className="text-[11px] text-gray-500 mt-1">
+                      User swap and custody orders will stream here with cryptographic hash references.
+                    </p>
                   </td>
                 </tr>
-              ))}
+              ) : (
+                orders.map((o: any) => (
+                  <tr key={o.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50/80'} transition-colors`}>
+                    <td className="py-3.5 px-4 font-sans">
+                      <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{o.userName}</div>
+                      <div className={`text-[11px] font-mono ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>{o.userPhone}</div>
+                    </td>
+                    <td className="py-3.5 px-4 font-sans">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                          o.kind === 'buy' || o.kind === 'deposit'
+                            ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                            : 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
+                        }`}
+                      >
+                        {o.kind.replace('_', ' ')}
+                      </span>
+                    </td>
+                    <td className={`py-3.5 px-4 font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      {Number(o.amount).toLocaleString()} {o.asset}
+                    </td>
+                    <td className="py-3.5 px-4 font-bold text-emerald-500">
+                      ₦{Number(o.nairaAmount).toLocaleString()}
+                    </td>
+                    <td className={`py-3.5 px-4 ${isDark ? 'text-gray-300' : 'text-slate-600'}`}>
+                      ₦{Number(o.rate).toLocaleString()}
+                    </td>
+                    <td className="py-3.5 px-4 text-[#F0B90B] text-[11px] font-bold">
+                      {o.txHash}
+                    </td>
+                    <td className={`py-3.5 px-4 text-[11px] ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>
+                      {new Date(o.createdAt).toLocaleString()}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
