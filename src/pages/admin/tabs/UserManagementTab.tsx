@@ -194,64 +194,66 @@ export const UserManagementTab: React.FC = () => {
       </div>
 
       {/* Users Table */}
-      <div className={`rounded-2xl border overflow-hidden ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-gray-200'}`}>
+      <div className={`rounded-2xl border overflow-hidden ${isDark ? 'bg-[#12151D] border-gray-800' : 'bg-white border-slate-200 shadow-sm'}`}>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className={`border-b ${isDark ? 'border-gray-800 bg-gray-900/30 text-gray-400' : 'border-gray-200 bg-gray-50 text-gray-500'}`}>
-                <th className="py-3 px-4 font-semibold">Customer</th>
-                <th className="py-3 px-4 font-semibold">Account Number</th>
-                <th className="py-3 px-4 font-semibold">Wallet Balance</th>
-                <th className="py-3 px-4 font-semibold">Tier & KYC</th>
-                <th className="py-3 px-4 font-semibold">Account Status</th>
-                <th className="py-3 px-4 font-semibold text-right">Actions</th>
+              <tr className={`border-b ${isDark ? 'border-gray-800 bg-[#0E1118] text-gray-400' : 'border-slate-200 bg-slate-100/80 text-slate-500'}`}>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Customer</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Account Number</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Wallet Balance</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-center">Tier & KYC</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-center">Account Status</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className={`divide-y ${isDark ? 'divide-gray-800/40' : 'divide-slate-200'}`}>
+            <tbody className={`divide-y ${isDark ? 'divide-gray-800/60' : 'divide-slate-100'}`}>
               {users.map((u) => (
-                <tr key={u.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50'} transition-colors`}>
-                  <td className="py-3.5 px-4">
+                <tr key={u.id} className={`${isDark ? 'hover:bg-gray-800/30' : 'hover:bg-slate-50'} transition-colors`}>
+                  <td className="py-4 px-4 sm:px-5">
                     <div className="flex items-center space-x-3">
-                      <div className="w-9 h-9 rounded-full bg-[#F0B90B]/10 border border-[#F0B90B]/30 flex items-center justify-center text-[#F0B90B] font-bold text-xs uppercase">
+                      <div className="w-9 h-9 rounded-full bg-[#F0B90B]/10 border border-[#F0B90B]/30 flex items-center justify-center text-[#F0B90B] font-bold text-xs uppercase shrink-0">
                         {u.name.slice(0, 2)}
                       </div>
                       <div>
-                        <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{u.name}</div>
-                        <div className="text-[11px] text-gray-400 font-mono">{u.phone}</div>
+                        <div className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{u.name}</div>
+                        <div className="text-xs text-gray-400 font-mono mt-0.5">{u.phone}</div>
                       </div>
                     </div>
                   </td>
-                  <td className={`py-3.5 px-4 font-mono font-medium ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>
-                    {u.accountNumber}
+                  <td className="py-4 px-4 sm:px-5">
+                    <span className={`font-mono text-xs font-semibold ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>
+                      {u.accountNumber}
+                    </span>
                   </td>
-                  <td className="py-3.5 px-4">
-                    <div className={`font-bold font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  <td className="py-4 px-4 sm:px-5 text-right">
+                    <div className={`font-bold font-mono text-sm tabular-nums ${isDark ? 'text-white' : 'text-slate-900'}`}>
                       ₦{Number(u.balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </div>
                   </td>
-                  <td className="py-3.5 px-4">
+                  <td className="py-4 px-4 sm:px-5 text-center">
                     <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold ${
+                      className={`inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-semibold ${
                         u.verified
                           ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                          : isDark ? 'bg-gray-800 text-gray-400' : 'bg-slate-100 text-slate-600 border border-slate-200'
+                          : isDark ? 'bg-gray-800 text-gray-400 border border-gray-700' : 'bg-slate-100 text-slate-600 border border-slate-200'
                       }`}
                     >
                       Tier {u.level} · {u.verified ? 'Verified' : 'Basic'}
                     </span>
                   </td>
-                  <td className="py-3.5 px-4">
+                  <td className="py-4 px-4 sm:px-5 text-center">
                     {u.isSuspended ? (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20 uppercase tracking-wide">
                         Restricted / Frozen
                       </span>
                     ) : (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-wide">
                         Active Normal
                       </span>
                     )}
                   </td>
-                  <td className="py-3.5 px-4 text-right">
+                  <td className="py-4 px-4 sm:px-5 text-right">
                     <button
                       onClick={() => {
                         setSelectedUser(u);

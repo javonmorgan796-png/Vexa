@@ -380,26 +380,26 @@ export const OverviewTab: React.FC = () => {
           </button>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-gray-800/80">
+          <table className="w-full text-left">
             <thead>
-              <tr className={`border-b ${isDark ? 'border-gray-800 text-gray-400' : 'border-slate-200 text-slate-500 bg-slate-50'}`}>
-                <th className="py-3 px-2 font-semibold">Reference</th>
-                <th className="py-3 px-2 font-semibold">User</th>
-                <th className="py-3 px-2 font-semibold">Transaction Type</th>
-                <th className="py-3 px-2 font-semibold">Amount</th>
-                <th className="py-3 px-2 font-semibold">Status</th>
-                <th className="py-3 px-2 font-semibold">Timestamp</th>
+              <tr className={`border-b ${isDark ? 'border-gray-800 bg-[#12151D]/80 text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Reference</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">User</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Type</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Amount</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-center">Status</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Timestamp</th>
               </tr>
             </thead>
-            <tbody className={`divide-y font-mono ${isDark ? 'divide-gray-800/40' : 'divide-slate-100'}`}>
+            <tbody className={`divide-y ${isDark ? 'divide-gray-800/60 bg-[#161A23]' : 'divide-slate-100 bg-white'}`}>
               {recentTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-10 text-center font-sans">
-                    <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
-                      No transactions recorded yet in the core ledger.
+                  <td colSpan={6} className="py-12 text-center">
+                    <p className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-slate-600'}`}>
+                      No transactions recorded yet in the core ledger
                     </p>
-                    <p className="text-[11px] text-gray-500 mt-1">
+                    <p className={`text-xs mt-1 ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
                       Real inbound deposits and customer transfers will stream here automatically.
                     </p>
                   </td>
@@ -407,16 +407,22 @@ export const OverviewTab: React.FC = () => {
               ) : (
                 recentTransactions.map((tx: any) => (
                   <tr key={tx.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50/80'} transition-colors`}>
-                    <td className={`py-3 px-2 font-medium ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{tx.reference}</td>
-                    <td className="py-3 px-2 font-sans">
-                      <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{tx.user}</div>
-                      <div className={`text-[11px] ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>{tx.phone}</div>
+                    <td className="py-4 px-4 sm:px-5 font-mono text-xs font-semibold text-slate-700 dark:text-gray-300">
+                      {tx.reference}
                     </td>
-                    <td className={`py-3 px-2 font-sans ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>{tx.type}</td>
-                    <td className={`py-3 px-2 font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>₦{Number(tx.amount).toLocaleString()}</td>
-                    <td className="py-3 px-2">
+                    <td className="py-4 px-4 sm:px-5">
+                      <div className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{tx.user}</div>
+                      <div className={`text-xs font-mono mt-0.5 ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{tx.phone}</div>
+                    </td>
+                    <td className="py-4 px-4 sm:px-5">
+                      <span className={`text-xs font-medium uppercase tracking-wide ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>{tx.type}</span>
+                    </td>
+                    <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm text-slate-900 dark:text-white">
+                      ₦{Number(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="py-4 px-4 sm:px-5 text-center">
                       <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider font-mono ${
                           tx.status === 'successful'
                             ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
                             : tx.status === 'pending'
@@ -427,7 +433,7 @@ export const OverviewTab: React.FC = () => {
                         {tx.status}
                       </span>
                     </td>
-                    <td className={`py-3 px-2 ${isDark ? 'text-gray-500' : 'text-slate-400'} text-[11px]`}>
+                    <td className="py-4 px-4 sm:px-5 text-right font-mono text-xs text-slate-500 dark:text-gray-400">
                       {new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                     </td>
                   </tr>

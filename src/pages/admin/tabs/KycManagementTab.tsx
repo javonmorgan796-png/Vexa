@@ -95,40 +95,41 @@ export const KycManagementTab: React.FC = () => {
       {/* Table */}
       <div className={`rounded-2xl border overflow-hidden ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-slate-200 shadow-sm'}`}>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="w-full text-left">
             <thead>
-              <tr className={`border-b ${isDark ? 'border-gray-800 bg-gray-900/30 text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
-                <th className="py-3 px-4 font-semibold">Applicant</th>
-                <th className="py-3 px-4 font-semibold">Document Type</th>
-                <th className="py-3 px-4 font-semibold">Identification Number</th>
-                <th className="py-3 px-4 font-semibold">Submitted</th>
-                <th className="py-3 px-4 font-semibold">Status</th>
-                <th className="py-3 px-4 font-semibold text-right">Actions</th>
+              <tr className={`border-b ${isDark ? 'border-gray-800 bg-[#12151D]/80 text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Applicant</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-center">Document Type</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Identification Number</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Submitted</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-center">Status</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className={`divide-y ${isDark ? 'divide-gray-800/40' : 'divide-slate-200'}`}>
+            <tbody className={`divide-y ${isDark ? 'divide-gray-800/60 bg-[#161A23]' : 'divide-slate-100 bg-white'}`}>
               {filtered.map((r) => (
-                <tr key={r.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50'} transition-colors`}>
-                  <td className="py-3.5 px-4">
-                    <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{r.userName}</div>
-                    <div className="text-[11px] text-gray-400 font-mono">{r.userPhone}</div>
+                <tr key={r.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50/80'} transition-colors`}>
+                  <td className="py-4 px-4 sm:px-5">
+                    <div className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{r.userName}</div>
+                    <div className={`text-xs font-mono mt-0.5 ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{r.userPhone}</div>
                   </td>
-                  <td className="py-3.5 px-4 font-medium">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] ${
+                  <td className="py-4 px-4 sm:px-5 text-center">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-mono font-medium ${
                       isDark ? 'bg-gray-800 text-gray-300' : 'bg-slate-100 text-slate-700'
                     }`}>
                       {r.idType}
                     </span>
                   </td>
-                  <td className="py-3.5 px-4 font-mono font-medium text-[#F0B90B]">
+                  <td className="py-4 px-4 sm:px-5 font-mono font-bold text-xs text-[#F0B90B]">
                     {r.idNumber}
                   </td>
-                  <td className="py-3.5 px-4 text-gray-400 text-[11px]">
-                    {new Date(r.createdAt).toLocaleDateString()} · {new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  <td className="py-4 px-4 sm:px-5 text-right font-mono text-xs text-slate-500 dark:text-gray-400">
+                    <div>{new Date(r.createdAt).toLocaleDateString(undefined, { dateStyle: 'short' })}</div>
+                    <div className="text-[11px] text-slate-400 dark:text-gray-500">{new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                   </td>
-                  <td className="py-3.5 px-4">
+                  <td className="py-4 px-4 sm:px-5 text-center">
                     <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider font-mono ${
                         r.status === 'approved'
                           ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                           : r.status === 'pending'
@@ -139,7 +140,7 @@ export const KycManagementTab: React.FC = () => {
                       {r.status}
                     </span>
                   </td>
-                  <td className="py-3.5 px-4 text-right">
+                  <td className="py-4 px-4 sm:px-5 text-right">
                     <button
                       onClick={() => setInspectRequest(r)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors inline-flex items-center space-x-1.5 ${
@@ -156,8 +157,13 @@ export const KycManagementTab: React.FC = () => {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-gray-500">
-                    No KYC requests under {activeTab} status.
+                  <td colSpan={6} className="py-12 text-center">
+                    <p className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-slate-600'}`}>
+                      No KYC requests under {activeTab} status
+                    </p>
+                    <p className={`text-xs mt-1 ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
+                      Incoming customer verification submissions will appear here.
+                    </p>
                   </td>
                 </tr>
               )}

@@ -186,25 +186,25 @@ export const RewardsDataTab: React.FC = () => {
 
         {activeSubTab === 'cashback' ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left">
               <thead>
-                <tr className={`border-b ${isDark ? 'border-gray-800 bg-gray-900/30 text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
-                  <th className="py-3 px-4 font-semibold">Customer</th>
-                  <th className="py-3 px-4 font-semibold">Eligible Transaction Description</th>
-                  <th className="py-3 px-4 font-semibold">Cashback Rate</th>
-                  <th className="py-3 px-4 font-semibold">Earned Reward</th>
-                  <th className="py-3 px-4 font-semibold">Settlement Status</th>
-                  <th className="py-3 px-4 font-semibold">Date</th>
+                <tr className={`border-b ${isDark ? 'border-gray-800 bg-[#12151D]/80 text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+                  <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Customer</th>
+                  <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Eligible Transaction</th>
+                  <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Cashback Rate</th>
+                  <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Earned Reward</th>
+                  <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-center">Settlement Status</th>
+                  <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Date</th>
                 </tr>
               </thead>
-              <tbody className={`divide-y font-mono ${isDark ? 'divide-gray-800/40' : 'divide-slate-100'}`}>
+              <tbody className={`divide-y ${isDark ? 'divide-gray-800/60 bg-[#161A23]' : 'divide-slate-100 bg-white'}`}>
                 {cashbackHistory.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-10 text-center font-sans">
-                      <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
-                        No cashback rewards disbursed yet.
+                    <td colSpan={6} className="py-12 text-center">
+                      <p className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-slate-600'}`}>
+                        No cashback rewards disbursed yet
                       </p>
-                      <p className="text-[11px] text-gray-500 mt-1">
+                      <p className={`text-xs mt-1 ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
                         Cashback credits earned from bill payments and card transactions will appear here.
                       </p>
                     </td>
@@ -212,18 +212,22 @@ export const RewardsDataTab: React.FC = () => {
                 ) : (
                   cashbackHistory.map((c: any) => (
                     <tr key={c.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50/80'} transition-colors`}>
-                      <td className="py-3.5 px-4 font-sans">
-                        <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{c.userName}</div>
-                        <div className={`text-[11px] font-mono ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>{c.userPhone}</div>
+                      <td className="py-4 px-4 sm:px-5">
+                        <div className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{c.userName}</div>
+                        <div className={`text-xs font-mono mt-0.5 ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{c.userPhone}</div>
                       </td>
-                      <td className={`py-3.5 px-4 font-sans ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>{c.description}</td>
-                      <td className="py-3.5 px-4 text-[#F0B90B] font-bold">{c.rate}</td>
-                      <td className="py-3.5 px-4 font-bold text-emerald-500 text-sm">
-                        +₦{Number(c.earned).toFixed(2)}
+                      <td className="py-4 px-4 sm:px-5">
+                        <div className={`text-sm ${isDark ? 'text-gray-200' : 'text-slate-800'}`}>{c.description}</div>
                       </td>
-                      <td className="py-3.5 px-4">
+                      <td className="py-4 px-4 sm:px-5 text-right font-mono font-bold text-xs text-[#F0B90B]">
+                        {c.rate}
+                      </td>
+                      <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm text-emerald-600 dark:text-emerald-400">
+                        +₦{Number(c.earned).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-4 px-4 sm:px-5 text-center">
                         <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider font-mono ${
                             c.status === 'cleared'
                               ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
                               : 'bg-purple-500/10 text-purple-500 border border-purple-500/20'
@@ -232,7 +236,9 @@ export const RewardsDataTab: React.FC = () => {
                           {c.status}
                         </span>
                       </td>
-                      <td className={`py-3.5 px-4 text-[11px] ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>{c.date}</td>
+                      <td className="py-4 px-4 sm:px-5 text-right font-mono text-xs text-slate-500 dark:text-gray-400">
+                        {c.date}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -241,25 +247,25 @@ export const RewardsDataTab: React.FC = () => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left">
               <thead>
-                <tr className={`border-b ${isDark ? 'border-gray-800 bg-gray-900/30 text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
-                  <th className="py-3 px-4 font-semibold">Referrer (Inviter)</th>
-                  <th className="py-3 px-4 font-semibold">Referred Customer (Referee)</th>
-                  <th className="py-3 px-4 font-semibold">Referral Code</th>
-                  <th className="py-3 px-4 font-semibold">Reward Bonus</th>
-                  <th className="py-3 px-4 font-semibold">Payout Status</th>
-                  <th className="py-3 px-4 font-semibold">Enrollment Date</th>
+                <tr className={`border-b ${isDark ? 'border-gray-800 bg-[#12151D]/80 text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+                  <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Referrer (Inviter)</th>
+                  <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Referred Customer</th>
+                  <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-center">Referral Code</th>
+                  <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Reward Bonus</th>
+                  <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-center">Payout Status</th>
+                  <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Enrollment Date</th>
                 </tr>
               </thead>
-              <tbody className={`divide-y font-mono ${isDark ? 'divide-gray-800/40' : 'divide-slate-100'}`}>
+              <tbody className={`divide-y ${isDark ? 'divide-gray-800/60 bg-[#161A23]' : 'divide-slate-100 bg-white'}`}>
                 {referrals.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-10 text-center font-sans">
-                      <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
-                        No referral rewards or invites recorded yet.
+                    <td colSpan={6} className="py-12 text-center">
+                      <p className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-slate-600'}`}>
+                        No referral rewards or invites recorded yet
                       </p>
-                      <p className="text-[11px] text-gray-500 mt-1">
+                      <p className={`text-xs mt-1 ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
                         Completed peer referrals and onboarding bonuses will stream here.
                       </p>
                     </td>
@@ -267,21 +273,23 @@ export const RewardsDataTab: React.FC = () => {
                 ) : (
                   referrals.map((r: any) => (
                     <tr key={r.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50/80'} transition-colors`}>
-                      <td className="py-3.5 px-4 font-sans">
-                        <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{r.referrerName}</div>
-                        <div className={`text-[11px] font-mono ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>{r.referrerPhone}</div>
+                      <td className="py-4 px-4 sm:px-5">
+                        <div className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{r.referrerName}</div>
+                        <div className={`text-xs font-mono mt-0.5 ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{r.referrerPhone}</div>
                       </td>
-                      <td className="py-3.5 px-4 font-sans">
-                        <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{r.refereeName}</div>
-                        <div className={`text-[11px] font-mono ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>{r.refereePhone}</div>
+                      <td className="py-4 px-4 sm:px-5">
+                        <div className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{r.refereeName}</div>
+                        <div className={`text-xs font-mono mt-0.5 ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{r.refereePhone}</div>
                       </td>
-                      <td className="py-3.5 px-4 text-[#F0B90B] font-bold">{r.referralCode}</td>
-                      <td className="py-3.5 px-4 font-bold text-emerald-500 text-sm">
-                        ₦{Number(r.bonusAmount).toLocaleString()}
+                      <td className="py-4 px-4 sm:px-5 text-center font-mono font-bold text-xs text-[#F0B90B]">
+                        {r.referralCode}
                       </td>
-                      <td className="py-3.5 px-4">
+                      <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm text-emerald-600 dark:text-emerald-400">
+                        ₦{Number(r.bonusAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-4 px-4 sm:px-5 text-center">
                         <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider font-mono ${
                             r.status === 'paid'
                               ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
                               : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
@@ -290,8 +298,8 @@ export const RewardsDataTab: React.FC = () => {
                           {r.status.replace('_', ' ')}
                         </span>
                       </td>
-                      <td className={`py-3.5 px-4 text-[11px] ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>
-                        {new Date(r.createdAt).toLocaleDateString()}
+                      <td className="py-4 px-4 sm:px-5 text-right font-mono text-xs text-slate-500 dark:text-gray-400">
+                        {new Date(r.createdAt).toLocaleDateString(undefined, { dateStyle: 'medium' })}
                       </td>
                     </tr>
                   ))

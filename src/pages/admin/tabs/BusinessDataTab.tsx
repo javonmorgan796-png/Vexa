@@ -178,70 +178,70 @@ export const BusinessDataTab: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className={`border-b ${isDark ? 'border-gray-800 bg-gray-900/30 text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
-                <th className="py-3 px-4 font-semibold">Business Entity</th>
-                <th className="py-3 px-4 font-semibold">Industry / Category</th>
-                <th className="py-3 px-4 font-semibold">Account Number</th>
-                <th className="py-3 px-4 font-semibold">Corporate Balance</th>
-                <th className="py-3 px-4 font-semibold">Staff & Payroll</th>
-                <th className="py-3 px-4 font-semibold">Status</th>
-                <th className="py-3 px-4 font-semibold text-right">Actions</th>
+              <tr className={`border-b ${isDark ? 'border-gray-800 bg-[#0E1118] text-gray-400' : 'border-slate-200 bg-slate-100/80 text-slate-500'}`}>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Business Entity</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Industry / Category</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Account Number</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Corporate Balance</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Staff & Payroll</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-center">Status</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className={`divide-y font-mono ${isDark ? 'divide-gray-800/40' : 'divide-slate-100'}`}>
+            <tbody className={`divide-y ${isDark ? 'divide-gray-800/60' : 'divide-slate-100'}`}>
               {businesses.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-10 text-center font-sans">
-                    <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
+                  <td colSpan={7} className="py-12 px-4 text-center font-sans">
+                    <p className={`text-sm font-semibold ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>
                       No business or corporate accounts registered yet.
                     </p>
-                    <p className="text-[11px] text-gray-500 mt-1">
+                    <p className="text-xs text-gray-400 mt-1">
                       Enterprise onboarding submissions will appear here for administrative verification.
                     </p>
                   </td>
                 </tr>
               ) : (
                 businesses.map((biz: any) => (
-                  <tr key={biz.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50/80'} transition-colors`}>
-                    <td className="py-3.5 px-4 font-sans">
-                      <div className={`font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>{biz.businessName}</div>
-                      <div className={`text-[11px] font-mono ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
+                  <tr key={biz.id} className={`${isDark ? 'hover:bg-gray-800/30' : 'hover:bg-slate-50'} transition-colors`}>
+                    <td className="py-4 px-4 sm:px-5 font-sans">
+                      <div className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{biz.businessName}</div>
+                      <div className={`text-xs font-mono mt-0.5 ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
                         Owner: {biz.ownerName} ({biz.ownerPhone})
                       </div>
                     </td>
-                    <td className="py-3.5 px-4 font-sans">
-                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium ${isDark ? 'bg-gray-800 text-gray-300' : 'bg-slate-100 text-slate-700'}`}>
+                    <td className="py-4 px-4 sm:px-5 font-sans">
+                      <span className={`px-2.5 py-1 rounded-md text-[11px] font-semibold ${isDark ? 'bg-gray-800 text-gray-300 border border-gray-700' : 'bg-slate-100 text-slate-700 border border-slate-200'}`}>
                         {biz.industry}
                       </span>
                     </td>
-                    <td className="py-3.5 px-4 text-[#F0B90B] font-bold">
+                    <td className="py-4 px-4 sm:px-5 text-[#F0B90B] font-mono font-bold text-xs">
                       {biz.accountNumber}
                     </td>
-                    <td className={`py-3.5 px-4 font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    <td className={`py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
                       ₦{Number(biz.balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </td>
-                    <td className="py-3.5 px-4 font-sans">
-                      <div className={`font-medium ${isDark ? 'text-white' : 'text-slate-900'}`}>{biz.employeeCount} Employees</div>
-                      <div className={`text-[11px] font-mono ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
+                    <td className="py-4 px-4 sm:px-5 font-sans">
+                      <div className={`text-xs font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{biz.employeeCount} Employees</div>
+                      <div className={`text-[11px] font-mono mt-0.5 ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
                         ₦{Number(biz.monthlyPayroll).toLocaleString()}/mo
                       </div>
                     </td>
-                    <td className="py-3.5 px-4">
+                    <td className="py-4 px-4 sm:px-5 text-center">
                       <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${
+                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider ${
                           biz.status === 'active'
-                            ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
-                            : 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
+                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                            : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
                         }`}
                       >
                         {biz.status}
                       </span>
                     </td>
-                    <td className="py-3.5 px-4 text-right font-sans">
+                    <td className="py-4 px-4 sm:px-5 text-right font-sans">
                       <button
                         onClick={() => setSelectedBiz(biz)}
                         className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                          isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-200 border-gray-700' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                          isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-200 border-gray-700' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
                         }`}
                       >
                         Audit Entity
@@ -256,7 +256,7 @@ export const BusinessDataTab: React.FC = () => {
       </div>
 
       {/* Corporate Transactions Ledger */}
-      <div className={`rounded-2xl border overflow-hidden ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-slate-200 shadow-sm'}`}>
+      <div className={`rounded-2xl border overflow-hidden ${isDark ? 'bg-[#12151D] border-gray-800' : 'bg-white border-slate-200 shadow-sm'}`}>
         <div className={`p-4 border-b ${isDark ? 'border-gray-800/60' : 'border-slate-200'}`}>
           <h2 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Recent Enterprise Dispatches & Payroll Events</h2>
           <p className={`text-xs mt-0.5 ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>Corporate high-value transactions and automated scheduled disbursements.</p>
@@ -265,32 +265,32 @@ export const BusinessDataTab: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className={`border-b ${isDark ? 'border-gray-800 bg-gray-900/30 text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
-                <th className="py-3 px-4 font-semibold">Reference</th>
-                <th className="py-3 px-4 font-semibold">Corporate Entity</th>
-                <th className="py-3 px-4 font-semibold">Dispatch Type</th>
-                <th className="py-3 px-4 font-semibold">Total Amount</th>
-                <th className="py-3 px-4 font-semibold">Status</th>
-                <th className="py-3 px-4 font-semibold">Execution Time</th>
+              <tr className={`border-b ${isDark ? 'border-gray-800 bg-[#0E1118] text-gray-400' : 'border-slate-200 bg-slate-100/80 text-slate-500'}`}>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Reference</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Corporate Entity</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Dispatch Type</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Total Amount</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-center">Status</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Execution Time</th>
               </tr>
             </thead>
-            <tbody className={`divide-y font-mono ${isDark ? 'divide-gray-800/40' : 'divide-slate-100'}`}>
+            <tbody className={`divide-y ${isDark ? 'divide-gray-800/60' : 'divide-slate-100'}`}>
               {corporateTransactions.map((tx: any) => (
-                <tr key={tx.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50/80'} transition-colors`}>
-                  <td className="py-3.5 px-4 font-semibold text-[#F0B90B]">{tx.reference}</td>
-                  <td className={`py-3.5 px-4 font-sans font-medium ${isDark ? 'text-white' : 'text-slate-900'}`}>{tx.businessName}</td>
-                  <td className={`py-3.5 px-4 font-sans ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>
+                <tr key={tx.id} className={`${isDark ? 'hover:bg-gray-800/30' : 'hover:bg-slate-50'} transition-colors`}>
+                  <td className="py-4 px-4 sm:px-5 font-mono text-xs font-semibold text-[#F0B90B]">{tx.reference}</td>
+                  <td className={`py-4 px-4 sm:px-5 font-sans font-semibold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>{tx.businessName}</td>
+                  <td className={`py-4 px-4 sm:px-5 font-sans text-xs ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>
                     {tx.type} {tx.recipientsCount > 1 && `(${tx.recipientsCount} staff)`}
                   </td>
-                  <td className={`py-3.5 px-4 font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  <td className={`py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
                     ₦{Number(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                   </td>
-                  <td className="py-3.5 px-4">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 uppercase">
+                  <td className="py-4 px-4 sm:px-5 text-center">
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-wide">
                       {tx.status}
                     </span>
                   </td>
-                  <td className={`py-3.5 px-4 text-[11px] ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>
+                  <td className={`py-4 px-4 sm:px-5 text-right font-mono text-xs ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
                     {new Date(tx.timestamp).toLocaleString()}
                   </td>
                 </tr>

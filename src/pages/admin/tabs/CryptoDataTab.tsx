@@ -202,26 +202,26 @@ export const CryptoDataTab: React.FC = () => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="w-full text-left">
             <thead>
-              <tr className={`border-b ${isDark ? 'border-gray-800 bg-gray-900/30 text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
-                <th className="py-3 px-4 font-semibold">Trader</th>
-                <th className="py-3 px-4 font-semibold">Order Type</th>
-                <th className="py-3 px-4 font-semibold">Crypto Amount</th>
-                <th className="py-3 px-4 font-semibold">Naira Valuation</th>
-                <th className="py-3 px-4 font-semibold">Execution Rate</th>
-                <th className="py-3 px-4 font-semibold">Tx Hash / Ledger</th>
-                <th className="py-3 px-4 font-semibold">Timestamp</th>
+              <tr className={`border-b ${isDark ? 'border-gray-800 bg-[#12151D]/80 text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Trader</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-center">Order Type</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Crypto Amount</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Naira Valuation</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Execution Rate</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Tx Hash / Ledger</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Timestamp</th>
               </tr>
             </thead>
-            <tbody className={`divide-y font-mono ${isDark ? 'divide-gray-800/40' : 'divide-slate-100'}`}>
+            <tbody className={`divide-y ${isDark ? 'divide-gray-800/60 bg-[#161A23]' : 'divide-slate-100 bg-white'}`}>
               {orders.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-10 text-center font-sans">
-                    <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
-                      No crypto exchange orders executed yet.
+                  <td colSpan={7} className="py-12 text-center">
+                    <p className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-slate-600'}`}>
+                      No crypto exchange orders executed yet
                     </p>
-                    <p className="text-[11px] text-gray-500 mt-1">
+                    <p className={`text-xs mt-1 ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
                       User swap and custody orders will stream here with cryptographic hash references.
                     </p>
                   </td>
@@ -229,13 +229,13 @@ export const CryptoDataTab: React.FC = () => {
               ) : (
                 orders.map((o: any) => (
                   <tr key={o.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50/80'} transition-colors`}>
-                    <td className="py-3.5 px-4 font-sans">
-                      <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{o.userName}</div>
-                      <div className={`text-[11px] font-mono ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>{o.userPhone}</div>
+                    <td className="py-4 px-4 sm:px-5">
+                      <div className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{o.userName}</div>
+                      <div className={`text-xs font-mono mt-0.5 ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{o.userPhone}</div>
                     </td>
-                    <td className="py-3.5 px-4 font-sans">
+                    <td className="py-4 px-4 sm:px-5 text-center">
                       <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider font-mono ${
                           o.kind === 'buy' || o.kind === 'deposit'
                             ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
                             : 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
@@ -244,20 +244,20 @@ export const CryptoDataTab: React.FC = () => {
                         {o.kind.replace('_', ' ')}
                       </span>
                     </td>
-                    <td className={`py-3.5 px-4 font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      {Number(o.amount).toLocaleString()} {o.asset}
+                    <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm text-slate-900 dark:text-white">
+                      {Number(o.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })} {o.asset}
                     </td>
-                    <td className="py-3.5 px-4 font-bold text-emerald-500">
-                      ₦{Number(o.nairaAmount).toLocaleString()}
+                    <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm text-emerald-600 dark:text-emerald-400">
+                      ₦{Number(o.nairaAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
-                    <td className={`py-3.5 px-4 ${isDark ? 'text-gray-300' : 'text-slate-600'}`}>
-                      ₦{Number(o.rate).toLocaleString()}
+                    <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums text-xs text-slate-600 dark:text-gray-300">
+                      ₦{Number(o.rate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
-                    <td className="py-3.5 px-4 text-[#F0B90B] text-[11px] font-bold">
+                    <td className="py-4 px-4 sm:px-5 font-mono text-xs font-semibold text-[#F0B90B] truncate max-w-[150px]">
                       {o.txHash}
                     </td>
-                    <td className={`py-3.5 px-4 text-[11px] ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>
-                      {new Date(o.createdAt).toLocaleString()}
+                    <td className="py-4 px-4 sm:px-5 text-right font-mono text-xs text-slate-500 dark:text-gray-400">
+                      {new Date(o.createdAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
                     </td>
                   </tr>
                 ))

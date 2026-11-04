@@ -111,28 +111,28 @@ export const AdminManagementTab: React.FC = () => {
       {/* Admins Table */}
       <div className={`rounded-2xl border overflow-hidden ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-slate-200 shadow-sm'}`}>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="w-full text-left">
             <thead>
-              <tr className={`border-b ${isDark ? 'border-gray-800 bg-gray-900/30 text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
-                <th className="py-3 px-4 font-semibold">Administrator</th>
-                <th className="py-3 px-4 font-semibold">Authorized Phone</th>
-                <th className="py-3 px-4 font-semibold">Role Designation</th>
-                <th className="py-3 px-4 font-semibold">Permissions Scope</th>
-                <th className="py-3 px-4 font-semibold">Status</th>
-                <th className="py-3 px-4 font-semibold text-right">Actions</th>
+              <tr className={`border-b ${isDark ? 'border-gray-800 bg-[#12151D]/80 text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Administrator</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Authorized Phone</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-center">Role Designation</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Permissions Scope</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-center">Status</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className={`divide-y font-mono ${isDark ? 'divide-gray-800/40' : 'divide-slate-200'}`}>
+            <tbody className={`divide-y ${isDark ? 'divide-gray-800/60 bg-[#161A23]' : 'divide-slate-100 bg-white'}`}>
               {admins.map((admin) => (
-                <tr key={admin.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50'} transition-colors`}>
-                  <td className="py-3.5 px-4 font-sans">
-                    <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{admin.name}</div>
-                    <div className="text-[11px] text-gray-400 font-mono">ID: {admin.id}</div>
+                <tr key={admin.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50/80'} transition-colors`}>
+                  <td className="py-4 px-4 sm:px-5">
+                    <div className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{admin.name}</div>
+                    <div className="text-xs text-slate-400 dark:text-gray-500 font-mono mt-0.5">ID: {admin.id}</div>
                   </td>
-                  <td className="py-3.5 px-4 text-[#F0B90B] font-bold">{admin.phone}</td>
-                  <td className="py-3.5 px-4 font-sans">
+                  <td className="py-4 px-4 sm:px-5 font-mono font-bold text-xs text-[#F0B90B]">{admin.phone}</td>
+                  <td className="py-4 px-4 sm:px-5 text-center">
                     <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider font-mono ${
                         admin.role === 'super_admin'
                           ? 'bg-amber-500/20 text-amber-500 border border-amber-500/40'
                           : admin.role === 'finance_manager'
@@ -143,16 +143,16 @@ export const AdminManagementTab: React.FC = () => {
                       {admin.role.replace('_', ' ')}
                     </span>
                   </td>
-                  <td className="py-3.5 px-4 font-sans text-gray-400 text-[11px]">
+                  <td className="py-4 px-4 sm:px-5 font-mono text-xs text-slate-500 dark:text-gray-400">
                     {admin.role === 'super_admin' ? (
-                      <span className="text-emerald-500 font-semibold font-mono">Full Root Authorization (*)</span>
+                      <span className="text-emerald-500 font-bold">Full Root Authorization (*)</span>
                     ) : (
                       <span>{admin.permissions?.length || 0} policy scopes</span>
                     )}
                   </td>
-                  <td className="py-3.5 px-4">
+                  <td className="py-4 px-4 sm:px-5 text-center">
                     <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider font-mono ${
                         admin.isActive
                           ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                           : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
@@ -161,11 +161,11 @@ export const AdminManagementTab: React.FC = () => {
                       {admin.isActive ? 'Active' : 'Suspended'}
                     </span>
                   </td>
-                  <td className="py-3.5 px-4 text-right font-sans">
+                  <td className="py-4 px-4 sm:px-5 text-right">
                     {isSuperAdmin && admin.role !== 'super_admin' ? (
                       <button
                         onClick={() => handleToggleAdminStatus(admin.id)}
-                        className={`px-3 py-1 rounded-lg text-xs font-semibold border transition-colors ${
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
                           admin.isActive
                             ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/30'
                             : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
@@ -174,11 +174,23 @@ export const AdminManagementTab: React.FC = () => {
                         {admin.isActive ? 'Suspend Access' : 'Reactivate'}
                       </button>
                     ) : (
-                      <span className="text-gray-500 text-[11px] font-mono">Protected</span>
+                      <span className="text-xs font-mono text-slate-400 dark:text-gray-500">Protected</span>
                     )}
                   </td>
                 </tr>
               ))}
+              {admins.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center">
+                    <p className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-slate-600'}`}>
+                      No administrative accounts configured
+                    </p>
+                    <p className={`text-xs mt-1 ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
+                      Enrolled staff and role permissions will be listed here.
+                    </p>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

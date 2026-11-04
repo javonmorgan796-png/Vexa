@@ -101,43 +101,44 @@ export const AuditLogsTab: React.FC = () => {
       {/* Logs Table */}
       <div className={`rounded-2xl border overflow-hidden ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-slate-200 shadow-sm'}`}>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="w-full text-left">
             <thead>
-              <tr className={`border-b ${isDark ? 'border-gray-800 bg-gray-900/30 text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
-                <th className="py-3 px-4 font-semibold">Timestamp</th>
-                <th className="py-3 px-4 font-semibold">Operator (Admin)</th>
-                <th className="py-3 px-4 font-semibold">Action Trigger</th>
-                <th className="py-3 px-4 font-semibold">Target Entity</th>
-                <th className="py-3 px-4 font-semibold">IP Address</th>
-                <th className="py-3 px-4 font-semibold text-right">Payload</th>
+              <tr className={`border-b ${isDark ? 'border-gray-800 bg-[#12151D]/80 text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Timestamp</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Operator (Admin)</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-center">Action Trigger</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Target Entity</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">IP Address</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Payload</th>
               </tr>
             </thead>
-            <tbody className={`divide-y font-mono ${isDark ? 'divide-gray-800/40' : 'divide-slate-200'}`}>
+            <tbody className={`divide-y ${isDark ? 'divide-gray-800/60 bg-[#161A23]' : 'divide-slate-100 bg-white'}`}>
               {filtered.map((log) => (
-                <tr key={log.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50'} transition-colors`}>
-                  <td className="py-3.5 px-4 text-gray-400 text-[11px]">
-                    {new Date(log.createdAt).toLocaleString()}
+                <tr key={log.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50/80'} transition-colors`}>
+                  <td className="py-4 px-4 sm:px-5 font-mono text-xs text-slate-500 dark:text-gray-400">
+                    <div>{new Date(log.createdAt).toLocaleDateString(undefined, { dateStyle: 'short' })}</div>
+                    <div className="text-[11px] text-slate-400 dark:text-gray-500">{new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
                   </td>
-                  <td className="py-3.5 px-4 font-sans">
-                    <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{log.adminName}</div>
-                    <div className="text-[11px] text-[#F0B90B] font-mono">{log.adminPhone}</div>
+                  <td className="py-4 px-4 sm:px-5">
+                    <div className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{log.adminName}</div>
+                    <div className="text-xs text-[#F0B90B] font-mono mt-0.5">{log.adminPhone}</div>
                   </td>
-                  <td className="py-3.5 px-4 font-bold">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-md ${
-                      isDark ? 'bg-gray-800 text-[#F0B90B]' : 'bg-amber-50 text-amber-800 border border-amber-200'
+                  <td className="py-4 px-4 sm:px-5 text-center">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold font-mono uppercase tracking-wider ${
+                      isDark ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'bg-amber-50 text-amber-800 border border-amber-200'
                     }`}>
                       {log.action}
                     </span>
                   </td>
-                  <td className="py-3.5 px-4 font-sans">
-                    <span className="uppercase text-[10px] font-bold text-gray-400 font-mono">[{log.targetType}] </span>
-                    <span className={`font-mono text-[11px] ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>{log.targetId || '—'}</span>
+                  <td className="py-4 px-4 sm:px-5">
+                    <span className="uppercase text-[10px] font-bold text-slate-400 dark:text-gray-500 font-mono">[{log.targetType}] </span>
+                    <span className={`font-mono text-xs font-semibold ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>{log.targetId || '—'}</span>
                   </td>
-                  <td className="py-3.5 px-4 text-gray-500 text-[11px]">{log.ipAddress}</td>
-                  <td className="py-3.5 px-4 text-right font-sans">
+                  <td className="py-4 px-4 sm:px-5 font-mono text-xs text-slate-500 dark:text-gray-400">{log.ipAddress}</td>
+                  <td className="py-4 px-4 sm:px-5 text-right">
                     <button
                       onClick={() => setSelectedLog(log)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold inline-flex items-center space-x-1 border transition-colors ${
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center space-x-1.5 border transition-colors ${
                         isDark
                           ? 'bg-gray-800 hover:bg-gray-700 text-gray-200 border-gray-700'
                           : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
@@ -151,8 +152,13 @@ export const AuditLogsTab: React.FC = () => {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-gray-500 font-sans">
-                    No audit records found matching query.
+                  <td colSpan={6} className="py-12 text-center">
+                    <p className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-slate-600'}`}>
+                      No audit records found matching query
+                    </p>
+                    <p className={`text-xs mt-1 ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
+                      Administrative actions, compliance changes, and security events will log here.
+                    </p>
                   </td>
                 </tr>
               )}

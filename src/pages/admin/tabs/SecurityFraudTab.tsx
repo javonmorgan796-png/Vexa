@@ -165,6 +165,16 @@ export const SecurityFraudTab: React.FC = () => {
             </div>
           </div>
         ))}
+        {alerts.length === 0 && (
+          <div className="py-12 text-center rounded-2xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#161A23]">
+            <p className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-slate-600'}`}>
+              No active security alerts or fraud flags
+            </p>
+            <p className={`text-xs mt-1 ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
+              Real-time velocity anomalies, KYC mismatches, and login alerts will surface here.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Inspection & Resolution Modal */}

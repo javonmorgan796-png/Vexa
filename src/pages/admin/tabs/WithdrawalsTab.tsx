@@ -78,39 +78,39 @@ export const WithdrawalsTab: React.FC = () => {
 
       <div className={`rounded-2xl border overflow-hidden ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-slate-200 shadow-sm'}`}>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="w-full text-left">
             <thead>
-              <tr className={`border-b ${isDark ? 'border-gray-800 bg-gray-900/30 text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
-                <th className="py-3 px-4 font-semibold">Reference</th>
-                <th className="py-3 px-4 font-semibold">Requesting Customer</th>
-                <th className="py-3 px-4 font-semibold">Beneficiary Account</th>
-                <th className="py-3 px-4 font-semibold">Amount</th>
-                <th className="py-3 px-4 font-semibold">Risk Analysis</th>
-                <th className="py-3 px-4 font-semibold">Status</th>
-                <th className="py-3 px-4 font-semibold text-right">Actions</th>
+              <tr className={`border-b ${isDark ? 'border-gray-800 bg-[#12151D]/80 text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Reference</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Customer</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Beneficiary Account</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Amount</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-center">Risk Analysis</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-center">Status</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className={`divide-y font-mono ${isDark ? 'divide-gray-800/40' : 'divide-slate-200'}`}>
+            <tbody className={`divide-y ${isDark ? 'divide-gray-800/60 bg-[#161A23]' : 'divide-slate-100 bg-white'}`}>
               {withdrawals.map((w) => (
-                <tr key={w.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50'} transition-colors`}>
-                  <td className="py-3.5 px-4 font-semibold text-[#F0B90B]">{w.reference}</td>
-                  <td className="py-3.5 px-4 font-sans">
-                    <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{w.userName}</div>
-                    <div className="text-[11px] text-gray-400 font-mono">{w.userPhone}</div>
+                <tr key={w.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50/80'} transition-colors`}>
+                  <td className="py-4 px-4 sm:px-5 font-mono font-bold text-xs text-[#F0B90B]">{w.reference}</td>
+                  <td className="py-4 px-4 sm:px-5">
+                    <div className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{w.userName}</div>
+                    <div className={`text-xs font-mono mt-0.5 ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{w.userPhone}</div>
                   </td>
-                  <td className="py-3.5 px-4 font-sans">
-                    <div className={`font-medium ${isDark ? 'text-white' : 'text-slate-800'}`}>{w.recipientName}</div>
-                    <div className="text-[11px] text-gray-400 font-mono">
+                  <td className="py-4 px-4 sm:px-5">
+                    <div className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-800'}`}>{w.recipientName}</div>
+                    <div className={`text-xs font-mono mt-0.5 ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
                       {w.bankName} · {w.recipientAccount}
                     </div>
                   </td>
-                  <td className={`py-3.5 px-4 font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                    ₦{Number(w.amount).toLocaleString()}
+                  <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm text-slate-900 dark:text-white">
+                    ₦{Number(w.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
-                  <td className="py-3.5 px-4 font-sans">
-                    <div className="flex items-center space-x-1.5">
+                  <td className="py-4 px-4 sm:px-5 text-center">
+                    <div className="flex flex-col items-center">
                       <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider font-mono ${
                           w.riskScore === 'high'
                             ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
                             : w.riskScore === 'medium'
@@ -120,14 +120,16 @@ export const WithdrawalsTab: React.FC = () => {
                       >
                         Risk: {w.riskScore}
                       </span>
-                    </div>
-                    <div className="text-[11px] text-gray-400 mt-1 max-w-xs line-clamp-1">
-                      {w.riskNotes}
+                      {w.riskNotes && (
+                        <div className="text-[11px] text-slate-400 dark:text-gray-500 mt-1 max-w-xs truncate">
+                          {w.riskNotes}
+                        </div>
+                      )}
                     </div>
                   </td>
-                  <td className="py-3.5 px-4">
+                  <td className="py-4 px-4 sm:px-5 text-center">
                     <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider font-mono ${
                         w.status === 'approved'
                           ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                           : w.status === 'pending'
@@ -138,7 +140,7 @@ export const WithdrawalsTab: React.FC = () => {
                       {w.status}
                     </span>
                   </td>
-                  <td className="py-3.5 px-4 text-right font-sans">
+                  <td className="py-4 px-4 sm:px-5 text-right">
                     {w.status === 'pending' && hasPermission('withdrawals.manage') ? (
                       <div className="flex items-center justify-end space-x-1.5">
                         <button
@@ -155,13 +157,25 @@ export const WithdrawalsTab: React.FC = () => {
                         </button>
                       </div>
                     ) : (
-                      <span className="text-gray-500 text-[11px] font-mono">
+                      <span className="text-xs font-mono text-slate-400 dark:text-gray-500">
                         {w.reviewedBy || 'Settled'}
                       </span>
                     )}
                   </td>
                 </tr>
               ))}
+              {withdrawals.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center">
+                    <p className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-slate-600'}`}>
+                      No outbound withdrawal requests pending
+                    </p>
+                    <p className={`text-xs mt-1 ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
+                      Customer interbank withdrawal requests will appear here for security review.
+                    </p>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

@@ -98,31 +98,35 @@ export const DepositsTab: React.FC = () => {
 
       <div className={`rounded-2xl border overflow-hidden ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-slate-200 shadow-sm'}`}>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="w-full text-left">
             <thead>
-              <tr className={`border-b ${isDark ? 'border-gray-800 bg-gray-900/30 text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
-                <th className="py-3 px-4 font-semibold">Gateway Reference</th>
-                <th className="py-3 px-4 font-semibold">Customer</th>
-                <th className="py-3 px-4 font-semibold">Funding Channel</th>
-                <th className="py-3 px-4 font-semibold">Amount</th>
-                <th className="py-3 px-4 font-semibold">Status</th>
-                <th className="py-3 px-4 font-semibold">Timestamp</th>
-                <th className="py-3 px-4 font-semibold text-right">Actions</th>
+              <tr className={`border-b ${isDark ? 'border-gray-800 bg-[#12151D]/80 text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Gateway Reference</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Customer</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Channel</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Amount</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-center">Status</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Timestamp</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className={`divide-y font-mono ${isDark ? 'divide-gray-800/40' : 'divide-slate-200'}`}>
+            <tbody className={`divide-y ${isDark ? 'divide-gray-800/60 bg-[#161A23]' : 'divide-slate-100 bg-white'}`}>
               {filtered.map((d) => (
-                <tr key={d.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50'} transition-colors`}>
-                  <td className="py-3.5 px-4 font-semibold text-[#F0B90B]">{d.reference}</td>
-                  <td className="py-3.5 px-4 font-sans">
-                    <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{d.user}</div>
-                    <div className="text-[11px] text-gray-400 font-mono">{d.phone}</div>
+                <tr key={d.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50/80'} transition-colors`}>
+                  <td className="py-4 px-4 sm:px-5 font-mono font-bold text-xs text-[#F0B90B]">{d.reference}</td>
+                  <td className="py-4 px-4 sm:px-5">
+                    <div className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{d.user}</div>
+                    <div className={`text-xs font-mono mt-0.5 ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{d.phone}</div>
                   </td>
-                  <td className={`py-3.5 px-4 font-sans ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>{d.channel}</td>
-                  <td className={`py-3.5 px-4 font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>₦{Number(d.amount).toLocaleString()}</td>
-                  <td className="py-3.5 px-4">
+                  <td className="py-4 px-4 sm:px-5">
+                    <span className={`text-xs font-medium uppercase tracking-wide ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>{d.channel}</span>
+                  </td>
+                  <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm text-slate-900 dark:text-white">
+                    ₦{Number(d.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </td>
+                  <td className="py-4 px-4 sm:px-5 text-center">
                     <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider font-mono ${
                         d.status === 'successful'
                           ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                           : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
@@ -131,26 +135,39 @@ export const DepositsTab: React.FC = () => {
                       {d.status}
                     </span>
                   </td>
-                  <td className="py-3.5 px-4 text-gray-400 font-sans text-[11px]">
-                    {new Date(d.createdAt).toLocaleString()}
+                  <td className="py-4 px-4 sm:px-5 text-right font-mono text-xs text-slate-500 dark:text-gray-400">
+                    <div>{new Date(d.createdAt).toLocaleDateString(undefined, { dateStyle: 'short' })}</div>
+                    <div className="text-[11px] text-slate-400 dark:text-gray-500">{new Date(d.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                   </td>
-                  <td className="py-3.5 px-4 text-right font-sans">
+                  <td className="py-4 px-4 sm:px-5 text-right">
                     {d.status === 'failed' && hasPermission('deposits.manage') ? (
                       <button
                         onClick={() => {
                           setSelectedDeposit(d);
                           setResolveModalOpen(true);
                         }}
-                        className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-black font-semibold rounded-lg text-xs transition-colors"
+                        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-black font-semibold rounded-lg text-xs transition-colors"
                       >
                         Investigate & Credit
                       </button>
                     ) : (
-                      <span className="text-gray-500 text-[11px]">Settled</span>
+                      <span className="text-xs font-mono text-slate-400 dark:text-gray-500">Settled</span>
                     )}
                   </td>
                 </tr>
               ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center">
+                    <p className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-slate-600'}`}>
+                      No inbound deposits found
+                    </p>
+                    <p className={`text-xs mt-1 ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
+                      Incoming Paystack and bank transfer deposits will appear here.
+                    </p>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

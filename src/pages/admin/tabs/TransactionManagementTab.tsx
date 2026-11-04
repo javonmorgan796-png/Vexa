@@ -111,48 +111,50 @@ export const TransactionManagementTab: React.FC = () => {
       </div>
 
       {/* Ledger Table */}
-      <div className={`rounded-2xl border overflow-hidden ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-slate-200 shadow-sm'}`}>
+      <div className={`rounded-2xl border overflow-hidden ${isDark ? 'bg-[#12151D] border-gray-800' : 'bg-white border-slate-200 shadow-sm'}`}>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className={`border-b ${isDark ? 'border-gray-800 bg-gray-900/30 text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
-                <th className="py-3 px-4 font-semibold">Reference</th>
-                <th className="py-3 px-4 font-semibold">Customer</th>
-                <th className="py-3 px-4 font-semibold">Category / Type</th>
-                <th className="py-3 px-4 font-semibold">Amount & Fee</th>
-                <th className="py-3 px-4 font-semibold">Beneficiary / Destination</th>
-                <th className="py-3 px-4 font-semibold">Status</th>
-                <th className="py-3 px-4 font-semibold text-right">Details</th>
+              <tr className={`border-b ${isDark ? 'border-gray-800 bg-[#0E1118] text-gray-400' : 'border-slate-200 bg-slate-100/80 text-slate-500'}`}>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Reference</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Customer</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Category / Type</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Amount & Fee</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Beneficiary / Target</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-center">Status</th>
+                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Details</th>
               </tr>
             </thead>
-            <tbody className={`divide-y font-mono ${isDark ? 'divide-gray-800/40' : 'divide-slate-200'}`}>
+            <tbody className={`divide-y ${isDark ? 'divide-gray-800/60' : 'divide-slate-100'}`}>
               {filtered.map((tx) => (
-                <tr key={tx.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50'} transition-colors`}>
-                  <td className="py-3.5 px-4 font-semibold text-[#F0B90B]">{tx.reference}</td>
-                  <td className="py-3.5 px-4 font-sans">
-                    <div className={`font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{tx.user}</div>
-                    <div className="text-[11px] text-gray-400 font-mono">{tx.phone}</div>
+                <tr key={tx.id} className={`${isDark ? 'hover:bg-gray-800/30' : 'hover:bg-slate-50'} transition-colors`}>
+                  <td className="py-4 px-4 sm:px-5 font-mono text-xs font-semibold text-[#F0B90B]">{tx.reference}</td>
+                  <td className="py-4 px-4 sm:px-5 font-sans">
+                    <div className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{tx.user}</div>
+                    <div className="text-xs text-gray-400 font-mono mt-0.5">{tx.phone}</div>
                   </td>
-                  <td className={`py-3.5 px-4 font-sans ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>
-                    <span className="inline-flex items-center space-x-1">
+                  <td className="py-4 px-4 sm:px-5 font-sans">
+                    <span className={`inline-flex items-center space-x-1.5 text-xs font-medium ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>
                       {tx.type.includes('Transfer') || tx.type.includes('Withdrawal') ? (
-                        <ArrowUpRight className="w-3.5 h-3.5 text-rose-400" />
+                        <ArrowUpRight className="w-3.5 h-3.5 text-rose-400 shrink-0" />
                       ) : (
-                        <ArrowDownLeft className="w-3.5 h-3.5 text-emerald-400" />
+                        <ArrowDownLeft className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                       )}
                       <span>{tx.type}</span>
                     </span>
                   </td>
-                  <td className="py-3.5 px-4">
-                    <div className={`font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>₦{Number(tx.amount).toLocaleString()}</div>
-                    <div className="text-[10px] text-gray-500 font-sans">Fee: ₦{Number(tx.fee).toFixed(2)}</div>
+                  <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums">
+                    <div className={`font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      ₦{Number(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </div>
+                    <div className="text-[11px] text-gray-400 font-sans mt-0.5">Fee: ₦{Number(tx.fee).toFixed(2)}</div>
                   </td>
-                  <td className={`py-3.5 px-4 font-sans text-[11px] max-w-xs truncate ${isDark ? 'text-gray-400' : 'text-slate-600'}`}>
+                  <td className={`py-4 px-4 sm:px-5 font-sans text-xs max-w-xs truncate ${isDark ? 'text-gray-300' : 'text-slate-600'}`}>
                     {tx.recipient}
                   </td>
-                  <td className="py-3.5 px-4">
+                  <td className="py-4 px-4 sm:px-5 text-center">
                     <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
+                      className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider ${
                         tx.status === 'successful'
                           ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                           : tx.status === 'pending'
@@ -163,10 +165,10 @@ export const TransactionManagementTab: React.FC = () => {
                       {tx.status}
                     </span>
                   </td>
-                  <td className="py-3.5 px-4 text-right">
+                  <td className="py-4 px-4 sm:px-5 text-right">
                     <button
                       onClick={() => setSelectedTx(tx)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors font-sans ${
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors font-sans ${
                         isDark
                           ? 'bg-gray-800 hover:bg-gray-700 text-gray-200 border-gray-700'
                           : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'

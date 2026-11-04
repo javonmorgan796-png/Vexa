@@ -212,6 +212,16 @@ export const CardManagementTab: React.FC = () => {
             </div>
           </div>
         ))}
+        {filtered.length === 0 && (
+          <div className="col-span-full py-12 text-center">
+            <p className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-slate-600'}`}>
+              No debit cards found
+            </p>
+            <p className={`text-xs mt-1 ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
+              Issued customer virtual and physical debit cards will appear here.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Issue Modal */}
