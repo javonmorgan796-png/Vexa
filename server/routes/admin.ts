@@ -1,5 +1,14 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { randomUUID, createHmac } from "node:crypto";
+import {
+  randomUUID,
+  createHmac,
+  pbkdf2Sync,
+  randomBytes,
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  timingSafeEqual,
+} from "node:crypto";
 
 const router: IRouter = Router();
 
@@ -9,12 +18,196 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env["SUPABASE_SERVICE_ROLE_KEY"];
 // Default super admin designated by user
 const PRIMARY_SUPER_ADMIN_PHONE = "09067212032";
 
-// Master administrative password (can be set in env or defaults to institutional key)
+// Master administrative password (can be overridden via env)
 const ADMIN_MASTER_PASSWORD = process.env["ADMIN_MASTER_PASSWORD"] || "VexaAdmin@2026!";
 
 // Standard Base32 secret for Google Authenticator (TOTP RFC 6238)
 const ADMIN_TOTP_SECRET = process.env["ADMIN_TOTP_SECRET"] || "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
 const ADMIN_RESCUE_CODE = process.env["ADMIN_RESCUE_CODE"] || "982710";
+
+// ── Cryptographic Security Core (PBKDF2-HMAC-SHA512 & AES-256-GCM) ──
+const MASTER_ENCRYPTION_SECRET =
+  process.env["ADMIN_ENCRYPTION_KEY"] ||
+  process.env["SUPABASE_SERVICE_ROLE_KEY"] ||
+  "VEXA_SECURE_ADMIN_ENCRYPTION_MASTER_KEY_2026";
+const ENCRYPTION_KEY = createHash("sha256").update(MASTER_ENCRYPTION_SECRET).digest();
+
+export function hashCredential(value: string, salt: string): string {
+  return pbkdf2Sync(value, salt, 100000, 64, "sha512").toString("hex");
+}
+
+export function verifyCredentialHash(value: string, salt: string, storedHash: string): boolean {
+  try {
+    const computed = hashCredential(value, salt);
+    return timingSafeEqual(Buffer.from(computed, "hex"), Buffer.from(storedHash, "hex"));
+  } catch {
+    return false;
+  }
+}
+
+export function encryptTotpSecret(secret: string): { encrypted: string; iv: string; tag: string } {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", ENCRYPTION_KEY, iv);
+  let encrypted = cipher.update(secret, "utf8", "hex");
+  encrypted += cipher.final("hex");
+  const tag = cipher.getAuthTag().toString("hex");
+  return { encrypted, iv: iv.toString("hex"), tag };
+}
+
+export function decryptTotpSecret(encryptedHex: string, ivHex: string, tagHex: string): string {
+  try {
+    const iv = Buffer.from(ivHex, "hex");
+    const tag = Buffer.from(tagHex, "hex");
+    const decipher = createDecipheriv("aes-256-gcm", ENCRYPTION_KEY, iv);
+    decipher.setAuthTag(tag);
+    let decrypted = decipher.update(encryptedHex, "hex", "utf8");
+    decrypted += decipher.final("utf8");
+    return decrypted;
+  } catch (err) {
+    console.error("[AdminCrypto] Failed to decrypt TOTP secret:", err);
+    return "";
+  }
+}
+
+// In-Memory Secure Cryptographic Credentials Store
+interface AdminCredentialRecord {
+  phone: string;
+  password_hash: string;
+  password_salt: string;
+  password_algo: string;
+  totp_secret_encrypted: string;
+  totp_secret_iv: string;
+  totp_secret_tag: string;
+  rescue_code_hash: string;
+  rescue_code_salt: string;
+  failed_attempts: number;
+  locked_until?: number;
+}
+
+const inMemoryAdminCredentials = new Map<string, AdminCredentialRecord>();
+
+// Seed primary super admin with cryptographically salted PBKDF2 hash & AES-256-GCM encrypted TOTP secret
+const defaultPasswordSalt = "3a62cf98a668eeaabd7864b816d97b66107ab00c96831b81af35330d0539b389";
+const defaultPasswordHash = hashCredential(ADMIN_MASTER_PASSWORD, defaultPasswordSalt);
+const defaultRescueSalt = "de81c90f2fd8e1ab6d4c041af982bce244688f60d228984e7ccc85d23ca8049a";
+const defaultRescueHash = hashCredential(ADMIN_RESCUE_CODE, defaultRescueSalt);
+const defaultEncryptedTotp = encryptTotpSecret(ADMIN_TOTP_SECRET);
+
+inMemoryAdminCredentials.set(PRIMARY_SUPER_ADMIN_PHONE, {
+  phone: PRIMARY_SUPER_ADMIN_PHONE,
+  password_hash: defaultPasswordHash,
+  password_salt: defaultPasswordSalt,
+  password_algo: "pbkdf2_sha512",
+  totp_secret_encrypted: defaultEncryptedTotp.encrypted,
+  totp_secret_iv: defaultEncryptedTotp.iv,
+  totp_secret_tag: defaultEncryptedTotp.tag,
+  rescue_code_hash: defaultRescueHash,
+  rescue_code_salt: defaultRescueSalt,
+  failed_attempts: 0,
+});
+
+// Helper to query admin credentials from Supabase or fallback
+async function getAdminCredentials(phone: string): Promise<AdminCredentialRecord | null> {
+  const normalized = normalizePhone(phone);
+
+  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      const resp = await fetch(`${SUPABASE_URL}/rest/v1/admin_credentials?phone=eq.${normalized}&select=*`, {
+        headers: {
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+      });
+      if (resp.ok) {
+        const rows = await resp.json();
+        if (Array.isArray(rows) && rows.length > 0) {
+          const row = rows[0];
+          return {
+            phone: row.phone,
+            password_hash: row.password_hash,
+            password_salt: row.password_salt,
+            password_algo: row.password_algo || "pbkdf2_sha512",
+            totp_secret_encrypted: row.totp_secret_encrypted,
+            totp_secret_iv: row.totp_secret_iv,
+            totp_secret_tag: row.totp_secret_tag,
+            rescue_code_hash: row.rescue_code_hash,
+            rescue_code_salt: row.rescue_code_salt,
+            failed_attempts: row.failed_attempts || 0,
+            locked_until: row.locked_until ? new Date(row.locked_until).getTime() : undefined,
+          };
+        }
+      }
+    } catch (err) {
+      console.warn("[AdminCredentials] Supabase fetch failed, falling back to secure store:", err);
+    }
+  }
+
+  return inMemoryAdminCredentials.get(normalized) || inMemoryAdminCredentials.get(PRIMARY_SUPER_ADMIN_PHONE) || null;
+}
+
+// Helper to update attempt and lockout in Supabase & memory
+async function updateAdminAttempts(phone: string, attempts: number, lockoutUntil?: number) {
+  const normalized = normalizePhone(phone);
+  const mem = inMemoryAdminCredentials.get(normalized);
+  if (mem) {
+    mem.failed_attempts = attempts;
+    mem.locked_until = lockoutUntil;
+  }
+
+  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/admin_credentials?phone=eq.${normalized}`, {
+        method: "PATCH",
+        headers: {
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({
+          failed_attempts: attempts,
+          locked_until: lockoutUntil ? new Date(lockoutUntil).toISOString() : null,
+          updated_at: new Date().toISOString(),
+        }),
+      });
+    } catch {
+      // Ignored
+    }
+  }
+}
+
+// Helper to record successful login
+async function recordAdminLogin(phone: string, ip: string) {
+  const normalized = normalizePhone(phone);
+  const mem = inMemoryAdminCredentials.get(normalized);
+  if (mem) {
+    mem.failed_attempts = 0;
+    mem.locked_until = undefined;
+  }
+
+  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/admin_credentials?phone=eq.${normalized}`, {
+        method: "PATCH",
+        headers: {
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({
+          failed_attempts: 0,
+          locked_until: null,
+          last_login_at: new Date().toISOString(),
+          last_login_ip: ip,
+          updated_at: new Date().toISOString(),
+        }),
+      });
+    } catch {
+      // Ignored
+    }
+  }
+}
 
 // RFC 6238 Base32 decoder and TOTP calculation
 function base32Decode(str: string): Buffer {
@@ -65,11 +258,6 @@ function verifyTOTP(token: string, secretBase32: string): boolean {
 }
 
 // Security rate limiter & challenge session caches
-interface FailedAttemptInfo {
-  attempts: number;
-  lockoutUntil?: number;
-}
-const failedPasswordAttempts = new Map<string, FailedAttemptInfo>();
 const tempChallengeTokens = new Map<string, { adminPhone: string; expiresAt: number }>();
 const activeElevatedSessions = new Map<string, { adminPhone: string; expiresAt: number }>();
 
@@ -429,21 +617,23 @@ router.get("/admin/auth/check", async (req: Request, res: Response) => {
 // 2. High-Security Admin 2-Step Challenge Authentication Routes
 // ─────────────────────────────────────────────────────────────
 
-// Step 1: Password Challenge
+// Step 1: Password Challenge (PBKDF2-HMAC-SHA512 Verified Against Supabase admin_credentials)
 router.post("/admin/auth/verify-password", async (req: Request, res: Response) => {
   const { password, phone } = req.body;
   const clientIp = req.ip || "127.0.0.1";
   const normalizedPhone = normalizePhone(phone || PRIMARY_SUPER_ADMIN_PHONE);
 
-  const attemptKey = `${clientIp}:${normalizedPhone}`;
-  const attemptInfo = failedPasswordAttempts.get(attemptKey) || { attempts: 0 };
+  const creds = await getAdminCredentials(normalizedPhone);
+  if (!creds) {
+    return res.status(403).json({ error: "Access Denied", message: "Unauthorized administrative access attempt." });
+  }
 
-  // Check lockout
-  if (attemptInfo.lockoutUntil && Date.now() < attemptInfo.lockoutUntil) {
-    const remainingSeconds = Math.ceil((attemptInfo.lockoutUntil - Date.now()) / 1000);
+  // Check lockout (from Supabase or memory cache)
+  if (creds.locked_until && Date.now() < creds.locked_until) {
+    const remainingSeconds = Math.ceil((creds.locked_until - Date.now()) / 1000);
     return res.status(429).json({
       error: "Account Locked",
-      message: `Too many failed password attempts. Access temporarily restricted for ${remainingSeconds} seconds.`,
+      message: `Too many failed password attempts. Access restricted for ${remainingSeconds} seconds.`,
       lockoutSeconds: remainingSeconds,
     });
   }
@@ -452,27 +642,33 @@ router.post("/admin/auth/verify-password", async (req: Request, res: Response) =
     return res.status(400).json({ error: "Password is required." });
   }
 
-  if (password.trim() !== ADMIN_MASTER_PASSWORD) {
-    attemptInfo.attempts += 1;
-    if (attemptInfo.attempts >= 5) {
-      attemptInfo.lockoutUntil = Date.now() + 15 * 60 * 1000; // 15 mins
-      failedPasswordAttempts.set(attemptKey, attemptInfo);
+  // Cryptographic constant-time PBKDF2 hash verification
+  const isMatch = verifyCredentialHash(password.trim(), creds.password_salt, creds.password_hash);
+
+  if (!isMatch) {
+    const currentAttempts = (creds.failed_attempts || 0) + 1;
+    let lockoutTime: number | undefined;
+
+    if (currentAttempts >= 5) {
+      lockoutTime = Date.now() + 15 * 60 * 1000; // 15-minute security lockout
+      await updateAdminAttempts(normalizedPhone, currentAttempts, lockoutTime);
       return res.status(429).json({
         error: "Lockout Triggered",
         message: "Maximum password attempts exceeded. Administrative access locked for 15 minutes.",
         lockoutSeconds: 900,
       });
     }
-    failedPasswordAttempts.set(attemptKey, attemptInfo);
+
+    await updateAdminAttempts(normalizedPhone, currentAttempts);
     return res.status(401).json({
       error: "Invalid Credentials",
-      message: `Incorrect administrator password. ${5 - attemptInfo.attempts} attempt(s) remaining before lockout.`,
-      remainingAttempts: 5 - attemptInfo.attempts,
+      message: `Incorrect administrator password. ${5 - currentAttempts} attempt(s) remaining before lockout.`,
+      remainingAttempts: 5 - currentAttempts,
     });
   }
 
   // Password valid! Clear failures and issue temporary challenge token for Step 2
-  failedPasswordAttempts.delete(attemptKey);
+  await updateAdminAttempts(normalizedPhone, 0);
   const tempChallengeToken = `challenge-${randomUUID()}`;
   tempChallengeTokens.set(tempChallengeToken, {
     adminPhone: normalizedPhone,
@@ -487,7 +683,7 @@ router.post("/admin/auth/verify-password", async (req: Request, res: Response) =
   });
 });
 
-// Step 2: Google Authenticator (TOTP) Verification
+// Step 2: Google Authenticator (TOTP) Verification (Decrypted AES-256-GCM Secret from Supabase)
 router.post("/admin/auth/verify-totp", async (req: Request, res: Response) => {
   const { code, tempChallengeToken, rescueCode } = req.body;
 
@@ -501,9 +697,21 @@ router.post("/admin/auth/verify-totp", async (req: Request, res: Response) => {
     return res.status(401).json({ error: "Security challenge expired. Please restart the admin login." });
   }
 
+  const creds = await getAdminCredentials(challenge.adminPhone);
+  if (!creds) {
+    return res.status(403).json({ error: "Administrative profile missing." });
+  }
+
+  // Decrypt the TOTP secret using AES-256-GCM
+  const decryptedSecret = decryptTotpSecret(
+    creds.totp_secret_encrypted,
+    creds.totp_secret_iv,
+    creds.totp_secret_tag,
+  );
+
   const inputCode = String(code || "").trim();
-  const isRescue = rescueCode && rescueCode === ADMIN_RESCUE_CODE;
-  const isTotpValid = verifyTOTP(inputCode, ADMIN_TOTP_SECRET);
+  const isRescue = rescueCode && verifyCredentialHash(rescueCode.trim(), creds.rescue_code_salt, creds.rescue_code_hash);
+  const isTotpValid = decryptedSecret ? verifyTOTP(inputCode, decryptedSecret) : false;
 
   if (!isTotpValid && !isRescue) {
     return res.status(401).json({
@@ -520,6 +728,8 @@ router.post("/admin/auth/verify-totp", async (req: Request, res: Response) => {
     adminPhone: challenge.adminPhone,
     expiresAt,
   });
+
+  await recordAdminLogin(challenge.adminPhone, req.ip || "127.0.0.1");
 
   logAdminAudit(
     {
@@ -578,18 +788,84 @@ router.post("/admin/auth/lock", (req: Request, res: Response) => {
   return res.json({ success: true, locked: true, message: "Administrative console locked." });
 });
 
-// Google Authenticator Setup URI & Secret Endpoint
-router.get("/admin/auth/totp-setup", (_req: Request, res: Response) => {
-  const phone = PRIMARY_SUPER_ADMIN_PHONE;
-  const issuer = "Vexa";
-  const totpUri = `otpauth://totp/${issuer}%20Admin:${phone}?secret=${ADMIN_TOTP_SECRET}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`;
+// Save / Update Admin Credentials to Supabase (Secured)
+router.post("/admin/auth/save-credentials", async (req: Request, res: Response) => {
+  const elevatedToken = req.header("x-admin-session-token");
+  if (!elevatedToken || !activeElevatedSessions.has(elevatedToken)) {
+    return res.status(403).json({ error: "Forbidden", message: "Elevated administrator session required." });
+  }
 
-  return res.json({
-    secret: ADMIN_TOTP_SECRET,
-    uri: totpUri,
-    rescueCode: ADMIN_RESCUE_CODE,
-    account: `${phone}@vexa.app`,
+  const { newPassword, newTotpSecret, newRescueCode } = req.body;
+  const phone = PRIMARY_SUPER_ADMIN_PHONE;
+
+  const creds = await getAdminCredentials(phone);
+  if (!creds) {
+    return res.status(404).json({ error: "Record not found." });
+  }
+
+  let passwordHash = creds.password_hash;
+  let passwordSalt = creds.password_salt;
+  if (newPassword && typeof newPassword === "string" && newPassword.trim().length >= 8) {
+    passwordSalt = randomBytes(32).toString("hex");
+    passwordHash = hashCredential(newPassword.trim(), passwordSalt);
+  }
+
+  let encTotp = { encrypted: creds.totp_secret_encrypted, iv: creds.totp_secret_iv, tag: creds.totp_secret_tag };
+  if (newTotpSecret && typeof newTotpSecret === "string" && newTotpSecret.trim().length >= 16) {
+    encTotp = encryptTotpSecret(newTotpSecret.trim().toUpperCase());
+  }
+
+  let rescueHash = creds.rescue_code_hash;
+  let rescueSalt = creds.rescue_code_salt;
+  if (newRescueCode && typeof newRescueCode === "string" && newRescueCode.trim().length >= 6) {
+    rescueSalt = randomBytes(32).toString("hex");
+    rescueHash = hashCredential(newRescueCode.trim(), rescueSalt);
+  }
+
+  // Update in memory
+  inMemoryAdminCredentials.set(phone, {
+    phone,
+    password_hash: passwordHash,
+    password_salt: passwordSalt,
+    password_algo: "pbkdf2_sha512",
+    totp_secret_encrypted: encTotp.encrypted,
+    totp_secret_iv: encTotp.iv,
+    totp_secret_tag: encTotp.tag,
+    rescue_code_hash: rescueHash,
+    rescue_code_salt: rescueSalt,
+    failed_attempts: 0,
   });
+
+  // Save to Supabase
+  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/admin_credentials`, {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "resolution=merge-duplicates",
+        },
+        body: JSON.stringify({
+          phone,
+          password_hash: passwordHash,
+          password_salt: passwordSalt,
+          password_algo: "pbkdf2_sha512",
+          totp_secret_encrypted: encTotp.encrypted,
+          totp_secret_iv: encTotp.iv,
+          totp_secret_tag: encTotp.tag,
+          rescue_code_hash: rescueHash,
+          rescue_code_salt: rescueSalt,
+          updated_at: new Date().toISOString(),
+        }),
+      });
+    } catch (err) {
+      console.warn("[AdminCredentials] Supabase save error:", err);
+    }
+  }
+
+  return res.json({ success: true, message: "Admin credentials successfully encrypted and saved." });
 });
 
 // All endpoints below require active admin authentication

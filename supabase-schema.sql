@@ -1222,3 +1222,80 @@ DROP TRIGGER IF EXISTS on_admin_user_sync ON auth.users;
 CREATE TRIGGER on_admin_user_sync
   AFTER INSERT OR UPDATE ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_admin_user_sync();
+
+-- ── 10. High-Security Admin Credentials Storage ──────────────
+-- Stores salted, hashed master passwords and AES-256-GCM encrypted TOTP secrets.
+-- Row Level Security (RLS) is STRICT: only service_role can access.
+-- Zero public access via client anon keys.
+
+CREATE TABLE IF NOT EXISTS public.admin_credentials (
+  id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  phone                   TEXT NOT NULL UNIQUE,
+  password_hash           TEXT NOT NULL,
+  password_salt           TEXT NOT NULL,
+  password_algo           TEXT NOT NULL DEFAULT 'pbkdf2_sha512',
+  totp_secret_encrypted   TEXT NOT NULL,
+  totp_secret_iv          TEXT NOT NULL,
+  totp_secret_tag         TEXT NOT NULL,
+  rescue_code_hash        TEXT NOT NULL,
+  rescue_code_salt        TEXT NOT NULL,
+  failed_attempts         INTEGER NOT NULL DEFAULT 0,
+  locked_until            TIMESTAMPTZ,
+  last_login_at           TIMESTAMPTZ,
+  last_login_ip           TEXT,
+  created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Enable RLS
+ALTER TABLE public.admin_credentials ENABLE ROW LEVEL SECURITY;
+
+-- Allow ONLY service_role (backend server). No anon or authenticated client user can read or write.
+DROP POLICY IF EXISTS "Service role full access on admin_credentials" ON public.admin_credentials;
+CREATE POLICY "Service role full access on admin_credentials"
+  ON public.admin_credentials FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
+-- Ensure NO public read/write from anon or client tokens
+DROP POLICY IF EXISTS "Deny public access on admin_credentials" ON public.admin_credentials;
+CREATE POLICY "Deny public access on admin_credentials"
+  ON public.admin_credentials FOR ALL
+  TO anon, authenticated
+  USING (false)
+  WITH CHECK (false);
+
+-- Seed Initial Encrypted Super Admin Credentials (PBKDF2-HMAC-SHA512 with 100k iterations & AES-256-GCM)
+INSERT INTO public.admin_credentials (
+  phone,
+  password_hash,
+  password_salt,
+  password_algo,
+  totp_secret_encrypted,
+  totp_secret_iv,
+  totp_secret_tag,
+  rescue_code_hash,
+  rescue_code_salt
+)
+VALUES (
+  '09067212032',
+  '0f38d5320690afcd59ae32ab98c527819197d857190a010f81ab01adc8f2e094452d23f154b75f02ce075d78cc66061ed1458ce967b84039efd75afbefe25264',
+  '3a62cf98a668eeaabd7864b816d97b66107ab00c96831b81af35330d0539b389',
+  'pbkdf2_sha512',
+  '8596b8f7ce5364993e7974b90ee9fcf1ad6a36a3d0c0c33d1dea635c61f7f45e',
+  '35f0484328f3c2bdd941ae7f',
+  'ce5fd24ad9fb85e6f79955a285b4d10c',
+  'b4b5ef6fba036a2e933467ca1003b976f8783c9926069a5a77bea4db491e6a33ce9d52a6de604d68927205fbd1200972c8eb85d708c7dbea8d083ef3d2db56a6',
+  'de81c90f2fd8e1ab6d4c041af982bce244688f60d228984e7ccc85d23ca8049a'
+)
+ON CONFLICT (phone) DO UPDATE SET
+  password_hash = EXCLUDED.password_hash,
+  password_salt = EXCLUDED.password_salt,
+  totp_secret_encrypted = EXCLUDED.totp_secret_encrypted,
+  totp_secret_iv = EXCLUDED.totp_secret_iv,
+  totp_secret_tag = EXCLUDED.totp_secret_tag,
+  rescue_code_hash = EXCLUDED.rescue_code_hash,
+  rescue_code_salt = EXCLUDED.rescue_code_salt,
+  updated_at = NOW();
+
