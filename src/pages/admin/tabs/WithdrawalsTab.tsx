@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 
 export const WithdrawalsTab: React.FC = () => {
-  const { fetchAdminApi, adminTheme, hasPermission } = useAdmin();
+  const { fetchAdminApi, adminTheme, hasPermission, refreshBadgeCounts } = useAdmin();
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -55,7 +55,8 @@ export const WithdrawalsTab: React.FC = () => {
         }),
       });
       setConfirmModal({ open: false, item: null, action: 'approve', reason: '' });
-      loadWithdrawals();
+      await loadWithdrawals();
+      refreshBadgeCounts();
     } catch (err: any) {
       alert(err.message || 'Withdrawal review failed');
     } finally {

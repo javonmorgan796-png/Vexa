@@ -27,6 +27,25 @@ export type AdminTab =
   | 'audit-logs'
   | 'system-settings';
 
+export interface AdminBadgeCounts {
+  kyc: number;
+  withdrawals: number;
+  deposits: number;
+  support: number;
+  security: number;
+  total: number;
+}
+
+export interface AdminNotificationItem {
+  id: string;
+  type: 'kyc' | 'withdrawal' | 'deposit' | 'support' | 'security';
+  title: string;
+  description: string;
+  timestamp: string;
+  targetTab: AdminTab;
+  severity: 'info' | 'warning' | 'critical';
+}
+
 interface AdminContextType {
   adminUser: AdminUser | null;
   loading: boolean;
@@ -43,6 +62,9 @@ interface AdminContextType {
   toggleAdminTheme: () => void;
   refreshAdmin: () => Promise<void>;
   fetchAdminApi: (path: string, options?: RequestInit) => Promise<any>;
+  badgeCounts: AdminBadgeCounts;
+  adminNotifications: AdminNotificationItem[];
+  refreshBadgeCounts: () => Promise<void>;
 }
 
 const AdminContext = createContext<AdminContextType | null>(null);
@@ -57,6 +79,16 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [adminTheme, setAdminTheme] = useState<'dark' | 'light'>(() => {
     return (localStorage.getItem('vexa_admin_theme') as 'dark' | 'light') || 'dark';
   });
+
+  const [badgeCounts, setBadgeCounts] = useState<AdminBadgeCounts>({
+    kyc: 0,
+    withdrawals: 0,
+    deposits: 0,
+    support: 0,
+    security: 0,
+    total: 0,
+  });
+  const [adminNotifications, setAdminNotifications] = useState<AdminNotificationItem[]>([]);
 
   const [elevatedToken, setElevatedToken] = useState<string | null>(() => {
     return sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY);
@@ -114,7 +146,13 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         throw new Error(errorData.message || errorData.error || `HTTP ${res.status}`);
       }
 
-      return res.json();
+      const jsonResult = await res.json();
+      if (options.method && options.method.toUpperCase() !== 'GET') {
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('vexa:admin-refresh'));
+        }, 80);
+      }
+      return jsonResult;
     },
     [session, user, elevatedToken]
   );
@@ -213,6 +251,36 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [elevatedToken]);
 
+  const refreshBadgeCounts = useCallback(async () => {
+    try {
+      const data = await fetchAdminApi('/api/admin/notifications/badge-counts');
+      if (data && data.counts) {
+        setBadgeCounts(data.counts);
+      }
+      if (data && Array.isArray(data.notifications)) {
+        setAdminNotifications(data.notifications);
+      }
+    } catch {
+      // Ignored
+    }
+  }, [fetchAdminApi]);
+
+  useEffect(() => {
+    if (!adminUser) return;
+    refreshBadgeCounts();
+    const interval = setInterval(() => {
+      refreshBadgeCounts();
+    }, 5000);
+    const handleRefresh = () => {
+      refreshBadgeCounts();
+    };
+    window.addEventListener('vexa:admin-refresh', handleRefresh);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('vexa:admin-refresh', handleRefresh);
+    };
+  }, [adminUser, refreshBadgeCounts]);
+
   const hasPermission = useCallback(
     (perm: string) => {
       if (!adminUser) return false;
@@ -240,6 +308,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         toggleAdminTheme,
         refreshAdmin: checkAdminAuth,
         fetchAdminApi,
+        badgeCounts,
+        adminNotifications,
+        refreshBadgeCounts,
       }}
     >
       {children}

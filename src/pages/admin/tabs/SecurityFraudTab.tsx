@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 
 export const SecurityFraudTab: React.FC = () => {
-  const { fetchAdminApi, adminTheme, hasPermission } = useAdmin();
+  const { fetchAdminApi, adminTheme, hasPermission, refreshBadgeCounts } = useAdmin();
   const [alerts, setAlerts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedAlert, setSelectedAlert] = useState<any>(null);
@@ -53,7 +53,8 @@ export const SecurityFraudTab: React.FC = () => {
       });
       setSelectedAlert(null);
       setResolveNotes('');
-      loadAlerts();
+      await loadAlerts();
+      refreshBadgeCounts();
     } catch (err: any) {
       alert(err.message || 'Alert update failed');
     } finally {

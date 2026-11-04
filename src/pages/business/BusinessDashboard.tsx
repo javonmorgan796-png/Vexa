@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useBusiness } from '@/context/BusinessContext';
+import { useUserData } from '@/context/UserDataContext';
 
 function fmt(n: number) { return '₦' + n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
@@ -21,6 +22,7 @@ const FEATURE_CARDS = [
 export default function BusinessDashboard() {
   const [, navigate] = useLocation();
   const { business, transactions, employees } = useBusiness();
+  const { unreadNotificationsCount } = useUserData();
   const [balanceHidden, setBalanceHidden] = useState(false);
 
   if (!business) { navigate('/business/onboarding'); return null; }
@@ -44,9 +46,17 @@ export default function BusinessDashboard() {
               <p className="text-white text-[14px] font-bold leading-tight">{business.businessName}</p>
             </div>
           </div>
-          <button onClick={() => navigate('/business/notifications')} className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10 relative">
+          <button
+            onClick={() => navigate('/business/notifications')}
+            className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10 relative hover:bg-white/20 transition-colors"
+            aria-label={`Notifications (${unreadNotificationsCount} unread)`}
+          >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-[#162353]" />
+            {unreadNotificationsCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold font-mono rounded-full flex items-center justify-center border-2 border-[#162353] shadow-xs animate-in zoom-in-75">
+                {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
+              </span>
+            )}
           </button>
         </div>
 

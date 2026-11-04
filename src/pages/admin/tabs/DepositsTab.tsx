@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 export const DepositsTab: React.FC = () => {
-  const { fetchAdminApi, adminTheme, hasPermission } = useAdmin();
+  const { fetchAdminApi, adminTheme, hasPermission, refreshBadgeCounts } = useAdmin();
   const [deposits, setDeposits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -51,7 +51,8 @@ export const DepositsTab: React.FC = () => {
       setSelectedDeposit((prev: any) => ({ ...prev, status: 'successful' }));
       setResolveModalOpen(false);
       setResolveNotes('');
-      loadDeposits();
+      await loadDeposits();
+      refreshBadgeCounts();
     } catch (err: any) {
       alert(err.message || 'Resolve failed');
     } finally {

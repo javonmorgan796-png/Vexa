@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 export const KycManagementTab: React.FC = () => {
-  const { fetchAdminApi, adminTheme, hasPermission } = useAdmin();
+  const { fetchAdminApi, adminTheme, hasPermission, refreshBadgeCounts } = useAdmin();
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'rejected'>('pending');
@@ -53,7 +53,8 @@ export const KycManagementTab: React.FC = () => {
       setInspectRequest(null);
       setRejectModalOpen(false);
       setRejectReason('');
-      loadKyc();
+      await loadKyc();
+      refreshBadgeCounts();
     } catch (err: any) {
       alert(err.message || 'Review failed');
     } finally {

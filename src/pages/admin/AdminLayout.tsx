@@ -28,6 +28,7 @@ import {
   Coins,
   Gift,
   Radio,
+  RotateCw,
 } from 'lucide-react';
 
 import { OverviewTab } from './tabs/OverviewTab';
@@ -56,11 +57,37 @@ interface NavItem {
 }
 
 export const AdminLayout: React.FC = () => {
-  const { adminUser, activeTab, setActiveTab, adminTheme, toggleAdminTheme, hasPermission, lockAdminSession } = useAdmin();
+  const {
+    adminUser,
+    activeTab,
+    setActiveTab,
+    adminTheme,
+    toggleAdminTheme,
+    hasPermission,
+    lockAdminSession,
+    badgeCounts,
+    adminNotifications,
+    refreshBadgeCounts,
+  } = useAdmin();
   const [, navigate] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
-  const [quickQuery, setQuickQuery] = useState('');
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notifDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  // Close notifications dropdown on outside click
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (notifDropdownRef.current && !notifDropdownRef.current.contains(e.target as Node)) {
+        setNotificationsOpen(false);
+      }
+    };
+    if (notificationsOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [notificationsOpen]);
 
   const isDark = adminTheme === 'dark';
 
@@ -70,14 +97,14 @@ export const AdminLayout: React.FC = () => {
     { id: 'business', label: 'Business Data', icon: <BriefcaseBusiness className="w-4 h-4 text-emerald-400" />, permission: 'users.view' },
     { id: 'crypto', label: 'Crypto Exchange Data', icon: <Coins className="w-4 h-4 text-amber-400" />, permission: 'transactions.view' },
     { id: 'rewards', label: 'Referral & Cashback History', icon: <Gift className="w-4 h-4 text-purple-400" />, permission: 'transactions.view' },
-    { id: 'kyc', label: 'KYC Management', icon: <FileCheck2 className="w-4 h-4" />, badge: 2, permission: 'kyc.view' },
+    { id: 'kyc', label: 'KYC Management', icon: <FileCheck2 className="w-4 h-4" />, badge: badgeCounts.kyc, permission: 'kyc.view' },
     { id: 'transactions', label: 'Transactions', icon: <ArrowLeftRight className="w-4 h-4" />, permission: 'transactions.view' },
-    { id: 'deposits', label: 'Deposits', icon: <ArrowDownLeft className="w-4 h-4" />, permission: 'deposits.view' },
-    { id: 'withdrawals', label: 'Withdrawals', icon: <ArrowUpRight className="w-4 h-4" />, badge: 1, permission: 'withdrawals.view' },
+    { id: 'deposits', label: 'Deposits', icon: <ArrowDownLeft className="w-4 h-4" />, badge: badgeCounts.deposits, permission: 'deposits.view' },
+    { id: 'withdrawals', label: 'Withdrawals', icon: <ArrowUpRight className="w-4 h-4" />, badge: badgeCounts.withdrawals, permission: 'withdrawals.view' },
     { id: 'cards', label: 'Card Management', icon: <CreditCard className="w-4 h-4" />, permission: 'cards.view' },
-    { id: 'support', label: 'Customer Support', icon: <Headphones className="w-4 h-4" />, badge: 1, permission: 'support.view' },
-    { id: 'security', label: 'Security & Fraud', icon: <ShieldAlert className="w-4 h-4 text-rose-400" />, badge: 1, permission: 'security.view' },
-    { id: 'integrations', label: 'API Integrations Hub', icon: <Radio className="w-4 h-4 text-cyan-400" />, badge: 2, permission: 'settings.view' },
+    { id: 'support', label: 'Customer Support', icon: <Headphones className="w-4 h-4" />, badge: badgeCounts.support, permission: 'support.view' },
+    { id: 'security', label: 'Security & Fraud', icon: <ShieldAlert className="w-4 h-4 text-rose-400" />, badge: badgeCounts.security, permission: 'security.view' },
+    { id: 'integrations', label: 'API Integrations Hub', icon: <Radio className="w-4 h-4 text-cyan-400" />, permission: 'settings.view' },
     { id: 'management', label: 'Admin Management', icon: <UserCog className="w-4 h-4" />, permission: 'admins.view' },
     { id: 'audit-logs', label: 'Audit Logs', icon: <History className="w-4 h-4" />, permission: 'audit.view' },
     { id: 'system-settings', label: 'System Settings', icon: <Settings className="w-4 h-4" />, permission: 'settings.view' },
@@ -195,11 +222,13 @@ export const AdminLayout: React.FC = () => {
                 </div>
                 {item.badge !== undefined && item.badge > 0 && (
                   <span
-                    className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
-                      isActive ? 'bg-black text-[#F0B90B]' : 'bg-[#F0B90B]/20 text-[#F0B90B]'
+                    className={`px-2 py-0.5 min-w-[20px] text-center rounded-full text-[10px] font-mono font-bold transition-all ${
+                      isActive
+                        ? 'bg-black text-[#F0B90B]'
+                        : 'bg-rose-500/15 text-rose-500 border border-rose-500/25'
                     }`}
                   >
-                    {item.badge}
+                    {item.badge > 99 ? '99+' : item.badge}
                   </span>
                 )}
               </button>
@@ -266,6 +295,133 @@ export const AdminLayout: React.FC = () => {
             {/* Role Badge */}
             <div className="px-2.5 py-1 rounded-lg bg-[#F0B90B]/10 border border-[#F0B90B]/30 text-[#F0B90B] font-bold text-[10px] tracking-wider uppercase font-mono">
               {adminUser?.role?.replace('_', ' ')}
+            </div>
+
+            {/* Real-Time Live Notification Bell & Dropdown */}
+            <div className="relative" ref={notifDropdownRef}>
+              <button
+                onClick={() => setNotificationsOpen((prev) => !prev)}
+                className={`relative p-2 rounded-xl border transition-colors ${
+                  notificationsOpen
+                    ? 'bg-[#F0B90B] text-black border-[#F0B90B] shadow-xs'
+                    : isDark
+                    ? 'bg-gray-800/60 border-gray-700 text-gray-300 hover:text-white'
+                    : 'bg-slate-100 border-slate-300 text-slate-700 hover:text-black shadow-xs'
+                }`}
+                title="Real-Time Admin Alerts"
+                aria-label={`Real-Time Alerts (${badgeCounts.total} pending)`}
+              >
+                <Bell className="w-4 h-4" />
+                {badgeCounts.total > 0 && (
+                  <span className={`absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold font-mono rounded-full flex items-center justify-center border-2 ${isDark ? 'border-[#0B0E14]' : 'border-white'} shadow-xs animate-in zoom-in-75`}>
+                    {badgeCounts.total > 99 ? '99+' : badgeCounts.total}
+                  </span>
+                )}
+              </button>
+
+              {/* Real-Time Dropdown Panel */}
+              {notificationsOpen && (
+                <div
+                  className={`absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl border shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 ${
+                    isDark ? 'bg-[#161A23] border-gray-800 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-xl'
+                  }`}
+                >
+                  <div className={`p-3.5 border-b flex items-center justify-between ${isDark ? 'border-gray-800/80 bg-gray-900/40' : 'border-slate-200 bg-slate-50'}`}>
+                    <div className="flex items-center space-x-2">
+                      <div className="p-1.5 rounded-lg bg-[#F0B90B]/10 text-[#F0B90B]">
+                        <Bell className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold uppercase tracking-wider font-mono">Live Action Queue</div>
+                        <div className="text-[10px] text-slate-400 dark:text-gray-400">Real-time terminal alerts</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-red-500/10 text-red-500 dark:text-red-400 border border-red-500/20">
+                        {badgeCounts.total} pending
+                      </span>
+                      <button
+                        onClick={() => refreshBadgeCounts()}
+                        className={`p-1.5 rounded-lg transition-colors ${isDark ? 'text-gray-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'}`}
+                        title="Refresh live queues now"
+                      >
+                        <RotateCw className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Summary Metric Counters */}
+                  <div className={`grid grid-cols-4 gap-1 p-2 border-b text-[10px] font-mono ${isDark ? 'border-gray-800/60 bg-gray-900/20' : 'border-slate-100 bg-slate-50/60'}`}>
+                    <button
+                      onClick={() => { handleSelectTab('kyc'); setNotificationsOpen(false); }}
+                      className={`p-1.5 rounded-lg text-center transition-colors ${badgeCounts.kyc > 0 ? (isDark ? 'bg-amber-500/10 text-amber-400 font-bold border border-amber-500/20' : 'bg-amber-50 text-amber-700 font-bold border border-amber-200') : 'text-gray-400 opacity-60'}`}
+                    >
+                      <div>KYC</div>
+                      <div className="text-xs font-bold font-mono">{badgeCounts.kyc}</div>
+                    </button>
+                    <button
+                      onClick={() => { handleSelectTab('withdrawals'); setNotificationsOpen(false); }}
+                      className={`p-1.5 rounded-lg text-center transition-colors ${badgeCounts.withdrawals > 0 ? (isDark ? 'bg-rose-500/10 text-rose-400 font-bold border border-rose-500/20' : 'bg-rose-50 text-rose-700 font-bold border border-rose-200') : 'text-gray-400 opacity-60'}`}
+                    >
+                      <div>Payouts</div>
+                      <div className="text-xs font-bold font-mono">{badgeCounts.withdrawals}</div>
+                    </button>
+                    <button
+                      onClick={() => { handleSelectTab('support'); setNotificationsOpen(false); }}
+                      className={`p-1.5 rounded-lg text-center transition-colors ${badgeCounts.support > 0 ? (isDark ? 'bg-blue-500/10 text-blue-400 font-bold border border-blue-500/20' : 'bg-blue-50 text-blue-700 font-bold border border-blue-200') : 'text-gray-400 opacity-60'}`}
+                    >
+                      <div>Support</div>
+                      <div className="text-xs font-bold font-mono">{badgeCounts.support}</div>
+                    </button>
+                    <button
+                      onClick={() => { handleSelectTab('security'); setNotificationsOpen(false); }}
+                      className={`p-1.5 rounded-lg text-center transition-colors ${badgeCounts.security > 0 ? (isDark ? 'bg-purple-500/10 text-purple-400 font-bold border border-purple-500/20' : 'bg-purple-50 text-purple-700 font-bold border border-purple-200') : 'text-gray-400 opacity-60'}`}
+                    >
+                      <div>Threats</div>
+                      <div className="text-xs font-bold font-mono">{badgeCounts.security}</div>
+                    </button>
+                  </div>
+
+                  {/* Alerts Feed List */}
+                  <div className={`max-h-72 overflow-y-auto divide-y ${isDark ? 'divide-gray-800/40' : 'divide-slate-100'}`}>
+                    {adminNotifications.length === 0 ? (
+                      <div className="py-8 px-4 text-center">
+                        <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-emerald-500 opacity-80" />
+                        <p className={`text-xs font-semibold ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>All Queues Clear</p>
+                        <p className="text-[11px] text-gray-500 mt-0.5">Real-time alerts will stream here as customers submit requests.</p>
+                      </div>
+                    ) : (
+                      adminNotifications.map((notif) => (
+                        <div
+                          key={notif.id}
+                          onClick={() => {
+                            handleSelectTab(notif.targetTab);
+                            setNotificationsOpen(false);
+                          }}
+                          className={`p-3 flex items-start space-x-3 cursor-pointer transition-colors ${
+                            isDark ? 'hover:bg-gray-800/40' : 'hover:bg-slate-50'
+                          }`}
+                        >
+                          <span
+                            className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
+                              notif.severity === 'critical' ? 'bg-rose-500' : notif.severity === 'warning' ? 'bg-amber-500' : 'bg-blue-500'
+                            }`}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold truncate">{notif.title}</span>
+                              <span className="text-[10px] text-gray-400 font-mono shrink-0 ml-2">
+                                {new Date(notif.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <p className={`text-[11px] mt-0.5 line-clamp-1 ${isDark ? 'text-gray-300' : 'text-slate-600'}`}>{notif.description}</p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Theme Toggle */}

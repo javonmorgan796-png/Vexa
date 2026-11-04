@@ -733,10 +733,16 @@ function MoniepointHome() {
             <button onClick={() => navigate('/help-support')} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">
               <Headphones className="w-6 h-6 text-[#222]" strokeWidth={1.75} />
             </button>
-            <button onClick={() => navigate('/notifications')} className="relative w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">
+            <button
+              onClick={() => navigate('/notifications')}
+              className="relative w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors"
+              aria-label={`Notifications (${unreadNotificationsCount} unread)`}
+            >
               <Bell className="w-6 h-6 text-[#222]" strokeWidth={1.75} />
               {unreadNotificationsCount > 0 && (
-                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-white" />
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold font-mono rounded-full flex items-center justify-center border-2 border-white shadow-xs animate-in zoom-in-75">
+                  {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
+                </span>
               )}
             </button>
           </div>

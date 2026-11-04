@@ -354,7 +354,32 @@ let inMemoryKycRequests: Array<{
   reviewedBy?: string;
   reviewedAt?: string;
   createdAt: string;
-}> = [];
+}> = [
+  {
+    id: "kyc-seed-01",
+    userId: "usr-01",
+    userName: "Chibuzor Emmanuel",
+    userPhone: "09067212032",
+    idType: "National ID (NIN)",
+    idNumber: "78291039481",
+    documentUrl: "https://images.unsplash.com/photo-1544717305-2782549b5136?w=400",
+    selfieUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400",
+    status: "pending",
+    createdAt: new Date(Date.now() - 1000 * 60 * 35).toISOString(),
+  },
+  {
+    id: "kyc-seed-02",
+    userId: "usr-02",
+    userName: "Fatima Al-Hassan",
+    userPhone: "08034567890",
+    idType: "International Passport",
+    idNumber: "A08928392",
+    documentUrl: "https://images.unsplash.com/photo-1544717305-2782549b5136?w=400",
+    selfieUrl: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400",
+    status: "pending",
+    createdAt: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
+  },
+];
 
 let inMemoryCards: Array<{
   id: string;
@@ -387,7 +412,29 @@ let inMemorySupportTickets: Array<{
   assignedTo?: string;
   createdAt: string;
   updatedAt: string;
-}> = [];
+}> = [
+  {
+    id: "tkt-seed-01",
+    ticketNumber: "TCK-9402",
+    userId: "usr-04",
+    userName: "Grace Danjuma",
+    userPhone: "07019284920",
+    subject: "Virtual Mastercard payment declined on AWS",
+    category: "card",
+    priority: "high",
+    status: "open",
+    messages: [
+      {
+        sender: "user",
+        name: "Grace Danjuma",
+        text: "Hello, my virtual card was declined for my server billing of $45. My wallet has sufficient funds, please check.",
+        timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+      },
+    ],
+    createdAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+    updatedAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+  },
+];
 
 let inMemoryFraudAlerts: Array<{
   id: string;
@@ -402,7 +449,20 @@ let inMemoryFraudAlerts: Array<{
   resolvedBy?: string;
   resolvedAt?: string;
   createdAt: string;
-}> = [];
+}> = [
+  {
+    id: "alert-seed-01",
+    userId: "usr-05",
+    userName: "Kenneth Obi",
+    userPhone: "08098273910",
+    severity: "high",
+    alertType: "RAPID_VELOCITY_OUTFLOW",
+    description: "3 consecutive outbound transfer attempts within 45 seconds from new IP subnet.",
+    metadata: { ip: "102.89.45.12", attempts: 3, windowSeconds: 45 },
+    status: "unresolved",
+    createdAt: new Date(Date.now() - 1000 * 60 * 20).toISOString(),
+  },
+];
 
 let inMemoryWithdrawals: Array<{
   id: string;
@@ -421,7 +481,24 @@ let inMemoryWithdrawals: Array<{
   createdAt: string;
   reviewedBy?: string;
   reviewedAt?: string;
-}> = [];
+}> = [
+  {
+    id: "wth-seed-01",
+    userId: "usr-03",
+    userName: "Babatunde Adeleke",
+    userPhone: "08129849201",
+    accountNumber: "1092837461",
+    bankName: "Access Bank",
+    recipientAccount: "0123984920",
+    recipientName: "Babatunde Adeleke Enterprise",
+    amount: 150000,
+    status: "pending",
+    riskScore: "medium",
+    riskNotes: "First withdrawal to newly added corporate beneficiary",
+    reference: "VX-WTH-8829102",
+    createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
+  },
+];
 
 let inMemorySystemSettings: Record<string, unknown> = {
   maintenance_mode: false,
@@ -963,6 +1040,179 @@ router.get("/admin/overview", async (_req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────────────────────
+// Real-Time Admin Badge Counts & Actionable Notifications
+// ─────────────────────────────────────────────────────────────
+router.get("/admin/notifications/badge-counts", async (_req: Request, res: Response) => {
+  let pendingKycCount = inMemoryKycRequests.filter((k) => k.status === "pending").length;
+  let pendingWithdrawalsCount = inMemoryWithdrawals.filter((w) => w.status === "pending").length;
+  let failedDepositsCount = 0;
+  let openTicketsCount = inMemorySupportTickets.filter((t) => t.status === "open" || t.status === "in_progress").length;
+  let unresolvedAlertsCount = inMemoryFraudAlerts.filter((a) => a.status === "unresolved").length;
+
+  const notifications: Array<{
+    id: string;
+    type: "kyc" | "withdrawal" | "deposit" | "support" | "security";
+    title: string;
+    description: string;
+    timestamp: string;
+    targetTab: string;
+    severity: "info" | "warning" | "critical";
+  }> = [];
+
+  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      // 1. Live KYC submissions
+      const kycRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/kyc_documents?status=eq.pending&select=id,user_name,user_phone,id_type,created_at&order=created_at.desc&limit=25`,
+        { headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` } }
+      );
+      if (kycRes.ok) {
+        const rows = await kycRes.json();
+        if (Array.isArray(rows)) {
+          pendingKycCount = rows.length;
+          rows.forEach((r: any) => {
+            notifications.push({
+              id: `kyc-${r.id}`,
+              type: "kyc",
+              title: "Pending KYC Document",
+              description: `${r.user_name || "Applicant"} (${r.id_type || "Government ID"}) awaiting verification`,
+              timestamp: r.created_at || new Date().toISOString(),
+              targetTab: "kyc",
+              severity: "warning",
+            });
+          });
+        }
+      }
+
+      // 2. Live Outbound Withdrawals
+      const wthRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/transactions?type=eq.withdrawal&status=eq.pending&select=id,amount,user_name,recipient_name,bank_name,created_at&order=created_at.desc&limit=25`,
+        { headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` } }
+      );
+      if (wthRes.ok) {
+        const rows = await wthRes.json();
+        if (Array.isArray(rows)) {
+          pendingWithdrawalsCount = rows.length;
+          rows.forEach((r: any) => {
+            notifications.push({
+              id: `wth-${r.id}`,
+              type: "withdrawal",
+              title: "Pending Outbound Withdrawal",
+              description: `₦${Number(r.amount).toLocaleString()} to ${r.recipient_name || "Beneficiary"} (${r.bank_name || "Bank"})`,
+              timestamp: r.created_at || new Date().toISOString(),
+              targetTab: "withdrawals",
+              severity: "warning",
+            });
+          });
+        }
+      }
+
+      // 3. Live Failed Deposits needing investigation
+      const depRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/transactions?type=eq.deposit&status=eq.failed&select=id,amount,user_name,reference,created_at&order=created_at.desc&limit=25`,
+        { headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` } }
+      );
+      if (depRes.ok) {
+        const rows = await depRes.json();
+        if (Array.isArray(rows)) {
+          failedDepositsCount = rows.length;
+          rows.forEach((r: any) => {
+            notifications.push({
+              id: `dep-${r.id}`,
+              type: "deposit",
+              title: "Failed Deposit Flagged",
+              description: `₦${Number(r.amount).toLocaleString()} by ${r.user_name || "Customer"} (Ref: ${r.reference || r.id.slice(0, 8)})`,
+              timestamp: r.created_at || new Date().toISOString(),
+              targetTab: "deposits",
+              severity: "critical",
+            });
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("[Admin Badge Counts] Supabase lookup error:", err);
+    }
+  }
+
+  // Include in-memory items
+  inMemoryKycRequests
+    .filter((k) => k.status === "pending")
+    .forEach((k) => {
+      if (!notifications.some((n) => n.id === `kyc-${k.id}`)) {
+        notifications.push({
+          id: `kyc-${k.id}`,
+          type: "kyc",
+          title: "Pending KYC Document",
+          description: `${k.userName} (${k.idType}) submitted for review`,
+          timestamp: k.createdAt,
+          targetTab: "kyc",
+          severity: "warning",
+        });
+      }
+    });
+
+  inMemoryWithdrawals
+    .filter((w) => w.status === "pending")
+    .forEach((w) => {
+      if (!notifications.some((n) => n.id === `wth-${w.id}`)) {
+        notifications.push({
+          id: `wth-${w.id}`,
+          type: "withdrawal",
+          title: "Pending Outbound Withdrawal",
+          description: `₦${Number(w.amount).toLocaleString()} to ${w.recipientName} (${w.bankName})`,
+          timestamp: w.createdAt,
+          targetTab: "withdrawals",
+          severity: "warning",
+        });
+      }
+    });
+
+  inMemorySupportTickets
+    .filter((t) => t.status === "open" || t.status === "in_progress")
+    .forEach((t) => {
+      notifications.push({
+        id: `ticket-${t.id}`,
+        type: "support",
+        title: `Support Ticket: ${t.subject}`,
+        description: `${t.userName} · Priority: ${t.priority.toUpperCase()}`,
+        timestamp: t.updatedAt || t.createdAt,
+        targetTab: "support",
+        severity: t.priority === "urgent" || t.priority === "high" ? "critical" : "info",
+      });
+    });
+
+  inMemoryFraudAlerts
+    .filter((a) => a.status === "unresolved")
+    .forEach((a) => {
+      notifications.push({
+        id: `alert-${a.id}`,
+        type: "security",
+        title: `Security Anomaly: ${a.alertType}`,
+        description: `${a.description} (${a.severity.toUpperCase()})`,
+        timestamp: a.createdAt,
+        targetTab: "security",
+        severity: a.severity === "critical" || a.severity === "high" ? "critical" : "warning",
+      });
+    });
+
+  notifications.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  const total = pendingKycCount + pendingWithdrawalsCount + failedDepositsCount + openTicketsCount + unresolvedAlertsCount;
+
+  return res.json({
+    counts: {
+      kyc: pendingKycCount,
+      withdrawals: pendingWithdrawalsCount,
+      deposits: failedDepositsCount,
+      support: openTicketsCount,
+      security: unresolvedAlertsCount,
+      total,
+    },
+    notifications: notifications.slice(0, 30),
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
 // 4. User Management (Pure Live DB - Zero Mock Data)
 // ─────────────────────────────────────────────────────────────
 router.get("/admin/users", async (req: Request, res: Response) => {
@@ -1341,7 +1591,7 @@ router.get("/admin/withdrawals", async (_req: Request, res: Response) => {
   return res.json({ withdrawals });
 });
 
-router.post("/admin/withdrawals/:id/review", (req: Request, res: Response) => {
+router.post("/admin/withdrawals/:id/review", async (req: Request, res: Response) => {
   const { id } = req.params;
   const { action, reason } = req.body;
 
@@ -1350,6 +1600,24 @@ router.post("/admin/withdrawals/:id/review", (req: Request, res: Response) => {
     item.status = action === "approve" ? "approved" : "rejected";
     item.reviewedBy = req.admin?.name || "Administrator";
     item.reviewedAt = new Date().toISOString();
+  }
+
+  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/transactions?id=eq.${id}`, {
+        method: "PATCH",
+        headers: {
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          status: action === "approve" ? "successful" : "failed",
+        }),
+      });
+    } catch {
+      // Ignored
+    }
   }
 
   logAdminAudit(

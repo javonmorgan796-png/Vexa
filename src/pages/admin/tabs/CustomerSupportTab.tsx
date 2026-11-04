@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 export const CustomerSupportTab: React.FC = () => {
-  const { fetchAdminApi, adminTheme, hasPermission } = useAdmin();
+  const { fetchAdminApi, adminTheme, hasPermission, refreshBadgeCounts } = useAdmin();
   const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTicket, setActiveTicket] = useState<any>(null);
@@ -60,7 +60,8 @@ export const CustomerSupportTab: React.FC = () => {
 
       setActiveTicket(res.ticket);
       setReplyText('');
-      loadTickets();
+      await loadTickets();
+      refreshBadgeCounts();
     } catch (err: any) {
       alert(err.message || 'Reply failed');
     } finally {
