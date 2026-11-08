@@ -760,73 +760,140 @@ function MoniepointHome() {
           <TwoFactorWarningCard onEnable={() => navigate('/two-factor')} />
 
           {/* ── Account card ────────────────────────────────────────── */}
-          {/* Account details, balance and actions stay separated on narrow screens. */}
-          <div className="mx-3 mt-3 bg-[#162353] rounded-[20px] px-4 pt-3 pb-4 text-white relative overflow-hidden">
+          {/* ── High-Grade Banking Wallet Card ────────────────────────── */}
+          <div className="mx-3 mt-3 rounded-[24px] bg-gradient-to-br from-[#0c2b38] via-[#09353e] to-[#04242c] p-5 sm:p-6 text-white relative overflow-hidden shadow-xl ring-1 ring-white/10">
 
-            {/* Vexa logo — visible top-right */}
-            <div className="absolute top-3 right-4 pointer-events-none select-none flex flex-col items-center gap-1">
-              <img
-                src="/vexa-logo.png"
-                alt="Vexa"
-                className="w-[78px] h-8 object-contain"
-                style={{ opacity: 0.95 }}
-              />
-            </div>
+            {/* Subtle atmospheric ambient glow */}
+            <div className="absolute -top-16 -right-16 w-48 h-48 bg-emerald-400/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-cyan-400/10 rounded-full blur-3xl pointer-events-none" />
 
-            {/* account number row */}
-            <div className="relative z-10 mb-5 inline-flex max-w-[calc(100%-84px)] items-center gap-1 text-[12px] leading-4 font-normal text-white/90">
-              <span className="min-w-0 truncate">{accountNumber} | {displayName}</span>
+            {/* Top row: Account pill chip on left & Contactless indicator on right (Vexa logo removed) */}
+            <div className="relative z-10 flex items-center justify-between gap-2 mb-4">
               <button
                 type="button"
                 onClick={() => void copyAccountNumber()}
                 disabled={!accountNumber || accountNumber === '—'}
                 aria-label={accountCopyStatus === 'copied' ? 'Account number copied' : accountCopyStatus === 'error' ? 'Could not copy account number' : 'Copy account number'}
-                title={accountCopyStatus === 'copied' ? 'Copied!' : accountCopyStatus === 'error' ? 'Could not copy' : 'Copy account number'}
-                className="relative shrink-0 rounded p-0.5 text-white/70 transition-colors hover:text-white disabled:opacity-50"
+                title={accountCopyStatus === 'copied' ? 'Copied!' : 'Click to copy account number'}
+                className="group relative inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/10 transition-all active:scale-95 text-left max-w-[80%]"
               >
-                {accountCopyStatus === 'copied'
-                  ? <Check className="h-3.5 w-3.5 text-emerald-300" />
-                  : accountCopyStatus === 'error'
-                    ? <X className="h-3.5 w-3.5 text-red-300" />
-                    : <Copy className="h-3.5 w-3.5" />}
+                <span className="font-mono font-bold tracking-wider text-[13px] text-white select-all">
+                  {accountNumber}
+                </span>
+                <span className="w-1 h-1 rounded-full bg-white/40 shrink-0" />
+                <span className="font-medium text-[12px] text-white/90 truncate max-w-[130px] sm:max-w-[180px]">
+                  {displayName}
+                </span>
+                <span className="text-white/70 group-hover:text-white shrink-0 transition-colors">
+                  {accountCopyStatus === 'copied' ? (
+                    <Check className="h-3.5 w-3.5 text-emerald-300" />
+                  ) : accountCopyStatus === 'error' ? (
+                    <X className="h-3.5 w-3.5 text-red-300" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" />
+                  )}
+                </span>
+
                 {accountCopyStatus !== 'idle' && (
-                  <span className={`absolute left-1/2 top-full z-20 mt-1 -translate-x-1/2 whitespace-nowrap rounded px-1.5 py-0.5 text-[9px] font-semibold ${accountCopyStatus === 'copied' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
-                    {accountCopyStatus === 'copied' ? 'Copied' : 'Copy failed'}
+                  <span className={`absolute left-1/2 -bottom-7 z-20 -translate-x-1/2 whitespace-nowrap rounded-md px-2 py-0.5 text-[10px] font-semibold shadow-md ${accountCopyStatus === 'copied' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>
+                    {accountCopyStatus === 'copied' ? 'Account Copied!' : 'Copy failed'}
                   </span>
                 )}
               </button>
-              <span className="sr-only" aria-live="polite">
-                {accountCopyStatus === 'copied' ? 'Account number copied to clipboard.' : accountCopyStatus === 'error' ? 'Could not copy account number.' : ''}
-              </span>
+
+              {/* Right side card feature: Contactless NFC wave icon & Verified chip (replacing Vexa logo) */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                <div
+                  className="w-8 h-8 rounded-full bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center text-white/80 shadow-xs"
+                  title="Contactless Enabled"
+                  aria-label="Contactless Enabled"
+                >
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                    <path d="M8.5 16.5a5 5 0 0 1 0-7" />
+                    <path d="M12 19a8.5 8.5 0 0 1 0-12" />
+                    <path d="M15.5 21.5a12 12 0 0 1 0-17" />
+                  </svg>
+                </div>
+              </div>
             </div>
 
-            {/* balance */}
-            <div className="relative z-10 flex items-center gap-2.5 mb-1.5">
-              <span className="text-[22px] font-bold tracking-tight leading-none">
-                {balanceHidden ? '* * * * *' : `₦${balance.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            {/* Balance label & toggle button */}
+            <div className="relative z-10 flex items-center gap-2 mb-1.5">
+              <span className="text-[12px] font-semibold text-white/75 tracking-wider uppercase">
+                Available Balance
               </span>
-              <button onClick={() => setBalanceHidden(v => !v)} className="focus:outline-none">
-                {balanceHidden
-                  ? <Eye className="w-[18px] h-[18px] text-white/60 mt-0.5" strokeWidth={2} />
-                  : <EyeOff className="w-[18px] h-[18px] text-white/60 mt-0.5" strokeWidth={2} />
-                }
+              <button
+                type="button"
+                onClick={() => setBalanceHidden(v => !v)}
+                className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors focus:outline-none"
+                aria-label={balanceHidden ? 'Show balance' : 'Hide balance'}
+                title={balanceHidden ? 'Show balance' : 'Hide balance'}
+              >
+                {balanceHidden ? (
+                  <Eye className="w-3.5 h-3.5 text-white/80" strokeWidth={2.2} />
+                ) : (
+                  <EyeOff className="w-3.5 h-3.5 text-white/80" strokeWidth={2.2} />
+                )}
               </button>
             </div>
 
-            {/* last updated */}
-            <p className="relative z-10 text-[11px] text-white/80 font-normal mb-4">
-              Last updated {lastBalanceUpdatedAt ? timeSince(lastBalanceUpdatedAt) : 'updating…'}
-            </p>
+            {/* Hero Amount */}
+            <div className="relative z-10 flex items-baseline gap-1 my-1">
+              {balanceHidden ? (
+                <span className="text-[30px] sm:text-[34px] font-black tracking-widest text-white/90 py-1 select-none">
+                  ••••••••••
+                </span>
+              ) : (
+                <div className="flex items-baseline">
+                  <span className="text-[24px] sm:text-[28px] font-extrabold text-white/90 mr-1 select-none">₦</span>
+                  <span className="text-[32px] sm:text-[38px] font-black tracking-tight text-white leading-none">
+                    {balance.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
+            </div>
 
-            {/* action buttons — content-width pills, left-aligned */}
-            <div className="relative z-10 flex gap-3">
-              <button onClick={() => navigate('/deposit')} className="home-deposit-button rounded-full h-9 px-4 inline-flex items-center gap-1.5 bg-white text-[#162353] shadow-sm text-[12px] font-bold transition-all hover:bg-[#F2F5FF] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#162353]">
-                <span className="text-[17px] leading-none font-medium">+</span>
-                Deposit
+            {/* Meta Row: Real-time update & Tier status */}
+            <div className="relative z-10 flex items-center justify-between text-[11px] text-white/65 mt-2 mb-5">
+              <span className="flex items-center gap-1.5 font-normal">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Last updated {lastBalanceUpdatedAt ? timeSince(lastBalanceUpdatedAt) : 'just now'}
+              </span>
+              <span className="font-medium text-white/70 tracking-wide">
+                Tier 3 · CBN Licensed
+              </span>
+            </div>
+
+            {/* Action buttons: Add Money, Transfer, History */}
+            <div className="relative z-10 flex items-center gap-2.5 pt-1">
+              <button
+                onClick={() => navigate('/deposit')}
+                className="home-deposit-button flex-1 h-11 rounded-xl bg-white hover:bg-slate-100 text-[#07242F] font-bold text-[13px] inline-flex items-center justify-center gap-2 shadow-sm transition-all active:scale-[0.98] focus-visible:outline-none"
+              >
+                <span className="w-5 h-5 rounded-full bg-[#07242F] text-white flex items-center justify-center text-[13px] font-black leading-none">
+                  +
+                </span>
+                <span>Add Money</span>
               </button>
-              <button onClick={() => navigate('/history')} className="rounded-full h-9 px-4 inline-flex items-center gap-1.5 bg-white/12 text-white shadow-sm text-[12px] font-semibold backdrop-blur-sm transition-all hover:bg-white/20 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#162353]">
-                <Clock className="w-3.5 h-3.5" strokeWidth={2} />
-                History
+
+              <button
+                onClick={() => navigate('/transfer')}
+                className="flex-1 h-11 rounded-xl bg-white/12 hover:bg-white/20 text-white font-semibold text-[13px] inline-flex items-center justify-center gap-1.5 backdrop-blur-md transition-all active:scale-[0.98] border border-white/10 focus-visible:outline-none"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M7 17l9.2-9.2M17 17V8H8" />
+                </svg>
+                <span>Transfer</span>
+              </button>
+
+              <button
+                onClick={() => navigate('/history')}
+                className="h-11 px-3.5 rounded-xl bg-white/12 hover:bg-white/20 text-white font-semibold text-[13px] inline-flex items-center justify-center gap-1.5 backdrop-blur-md transition-all active:scale-[0.98] border border-white/10 focus-visible:outline-none shrink-0"
+                title="Transaction History"
+                aria-label="Transaction History"
+              >
+                <Clock className="w-4 h-4" strokeWidth={2.2} />
+                <span className="hidden sm:inline">History</span>
               </button>
             </div>
           </div>
