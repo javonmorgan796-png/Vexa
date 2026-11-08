@@ -759,28 +759,29 @@ function MoniepointHome() {
 
           <TwoFactorWarningCard onEnable={() => navigate('/two-factor')} />
 
-          {/* ── Account card ────────────────────────────────────────── */}
-          {/* Account details, balance and actions stay separated on narrow screens. */}
-          <div className="mx-3 mt-3 bg-[#162353] rounded-[20px] px-4 pt-3 pb-4 text-white relative overflow-hidden">
+          {/* ── Binance Themed Account Card ────────────────────────── */}
+          <div className="mx-3 mt-3 bg-[#181A20] rounded-[20px] px-4 pt-3.5 pb-4 text-white relative overflow-hidden border border-[#2B313A] shadow-lg">
 
             {/* account number row */}
-            <div className="relative z-10 mb-5 inline-flex max-w-full items-center gap-1 text-[12px] leading-4 font-normal text-white/90">
-              <span className="min-w-0 truncate">{accountNumber} | {displayName}</span>
+            <div className="relative z-10 mb-4 inline-flex max-w-full items-center gap-1.5 text-[12px] leading-4 font-normal text-[#848E9C]">
+              <span className="font-mono text-[#EAECEF] font-semibold">{accountNumber}</span>
+              <span className="text-[#848E9C]/60">|</span>
+              <span className="min-w-0 truncate text-[#848E9C]">{displayName}</span>
               <button
                 type="button"
                 onClick={() => void copyAccountNumber()}
                 disabled={!accountNumber || accountNumber === '—'}
                 aria-label={accountCopyStatus === 'copied' ? 'Account number copied' : accountCopyStatus === 'error' ? 'Could not copy account number' : 'Copy account number'}
-                title={accountCopyStatus === 'copied' ? 'Copied!' : accountCopyStatus === 'error' ? 'Could not copy' : 'Copy account number'}
-                className="relative shrink-0 rounded p-0.5 text-white/70 transition-colors hover:text-white disabled:opacity-50"
+                title={accountCopyStatus === 'copied' ? 'Copied!' : 'Copy account number'}
+                className="relative shrink-0 rounded p-0.5 text-[#F0B90B] hover:text-[#FCD535] transition-colors disabled:opacity-50"
               >
                 {accountCopyStatus === 'copied'
-                  ? <Check className="h-3.5 w-3.5 text-emerald-300" />
+                  ? <Check className="h-3.5 w-3.5 text-[#0ECB81]" />
                   : accountCopyStatus === 'error'
-                    ? <X className="h-3.5 w-3.5 text-red-300" />
+                    ? <X className="h-3.5 w-3.5 text-[#F6465D]" />
                     : <Copy className="h-3.5 w-3.5" />}
                 {accountCopyStatus !== 'idle' && (
-                  <span className={`absolute left-1/2 top-full z-20 mt-1 -translate-x-1/2 whitespace-nowrap rounded px-1.5 py-0.5 text-[9px] font-semibold ${accountCopyStatus === 'copied' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
+                  <span className={`absolute left-1/2 top-full z-20 mt-1 -translate-x-1/2 whitespace-nowrap rounded px-1.5 py-0.5 text-[9px] font-semibold ${accountCopyStatus === 'copied' ? 'bg-[#0ECB81] text-white' : 'bg-[#F6465D] text-white'}`}>
                     {accountCopyStatus === 'copied' ? 'Copied' : 'Copy failed'}
                   </span>
                 )}
@@ -791,31 +792,38 @@ function MoniepointHome() {
             </div>
 
             {/* balance */}
-            <div className="relative z-10 flex items-center gap-2.5 mb-1.5">
-              <span className="text-[22px] font-bold tracking-tight leading-none">
+            <div className="relative z-10 flex items-center gap-2.5 mb-1">
+              <span className="text-[23px] font-bold tracking-tight leading-none text-white">
                 {balanceHidden ? '* * * * *' : `₦${balance.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
               </span>
               <button onClick={() => setBalanceHidden(v => !v)} className="focus:outline-none">
                 {balanceHidden
-                  ? <Eye className="w-[18px] h-[18px] text-white/60 mt-0.5" strokeWidth={2} />
-                  : <EyeOff className="w-[18px] h-[18px] text-white/60 mt-0.5" strokeWidth={2} />
+                  ? <Eye className="w-[18px] h-[18px] text-[#848E9C] mt-0.5 hover:text-white transition-colors" strokeWidth={2} />
+                  : <EyeOff className="w-[18px] h-[18px] text-[#848E9C] mt-0.5 hover:text-white transition-colors" strokeWidth={2} />
                 }
               </button>
             </div>
 
             {/* last updated */}
-            <p className="relative z-10 text-[11px] text-white/80 font-normal mb-4">
+            <p className="relative z-10 text-[11px] text-[#848E9C] font-normal mb-4 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#0ECB81]" />
               Last updated {lastBalanceUpdatedAt ? timeSince(lastBalanceUpdatedAt) : 'updating…'}
             </p>
 
-            {/* action buttons — content-width pills, left-aligned */}
+            {/* action buttons — Binance Yellow Deposit & Binance Dark History */}
             <div className="relative z-10 flex gap-3">
-              <button onClick={() => navigate('/deposit')} className="home-deposit-button rounded-full h-9 px-4 inline-flex items-center gap-1.5 bg-white text-[#162353] shadow-sm text-[12px] font-bold transition-all hover:bg-[#F2F5FF] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#162353]">
-                <span className="text-[17px] leading-none font-medium">+</span>
+              <button
+                onClick={() => navigate('/deposit')}
+                className="home-deposit-button rounded-full h-9 px-4 inline-flex items-center gap-1.5 bg-[#F0B90B] hover:bg-[#FCD535] text-[#181A20] shadow-sm text-[12px] font-bold transition-all active:scale-[0.97]"
+              >
+                <span className="text-[17px] leading-none font-black">+</span>
                 Deposit
               </button>
-              <button onClick={() => navigate('/history')} className="rounded-full h-9 px-4 inline-flex items-center gap-1.5 bg-white/12 text-white shadow-sm text-[12px] font-semibold backdrop-blur-sm transition-all hover:bg-white/20 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#162353]">
-                <Clock className="w-3.5 h-3.5" strokeWidth={2} />
+              <button
+                onClick={() => navigate('/history')}
+                className="rounded-full h-9 px-4 inline-flex items-center gap-1.5 bg-[#2B313A] hover:bg-[#363D47] text-[#EAECEF] shadow-sm text-[12px] font-semibold backdrop-blur-sm transition-all active:scale-[0.97]"
+              >
+                <Clock className="w-3.5 h-3.5 text-[#848E9C]" strokeWidth={2} />
                 History
               </button>
             </div>
@@ -856,16 +864,16 @@ function MoniepointHome() {
           <div className="px-4 mt-4">
             <button
               onClick={() => navigate('/business')}
-              className="w-full bg-[#162353] rounded-2xl px-4 py-3.5 flex items-center gap-3 text-left active:scale-[0.99] transition-transform"
+              className="w-full bg-[#1E2329] rounded-2xl px-4 py-3.5 flex items-center gap-3 text-left border border-[#2B313A] active:scale-[0.99] transition-transform shadow-xs"
             >
-              <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center shrink-0">
-                <BriefcaseBusiness className="w-5 h-5 text-white" strokeWidth={1.8} />
+              <div className="w-10 h-10 rounded-xl bg-[#F0B90B]/15 border border-[#F0B90B]/30 flex items-center justify-center shrink-0">
+                <BriefcaseBusiness className="w-5 h-5 text-[#F0B90B]" strokeWidth={1.8} />
               </div>
               <div className="flex-1">
-                <p className="text-white text-[13px] font-bold">Vexa Business</p>
-                <p className="text-white/60 text-[11px] mt-0.5">Manage your business finances</p>
+                <p className="text-[#EAECEF] text-[13px] font-bold">Vexa Business</p>
+                <p className="text-[#848E9C] text-[11px] mt-0.5">Manage your business finances</p>
               </div>
-              <ChevronRight className="w-4 h-4 text-white/60" />
+              <ChevronRight className="w-4 h-4 text-[#848E9C]" />
             </button>
           </div>
 
@@ -3115,7 +3123,7 @@ function TransferPage() {
               }
             }}
             disabled={amtNum <= 0}
-            className={`w-full h-[50px] rounded-xl text-[14px] font-semibold text-white transition-all ${amtNum > 0 ? 'bg-[#162353] active:opacity-80' : 'bg-[#162353]/40'}`}
+            className={`w-full h-[50px] rounded-xl text-[14px] font-bold transition-all shadow-sm ${amtNum > 0 ? 'bg-[#F0B90B] hover:bg-[#FCD535] text-[#181A20] active:scale-[0.99]' : 'bg-[#F0B90B]/40 text-[#181A20]/40'}`}
           >
             Continue
           </button>
@@ -3241,7 +3249,7 @@ function TransferPage() {
         <button
            onClick={() => { if (bank && bankCode && resolvedName) setStep('amount'); }}
            disabled={!bank || !bankCode || !resolvedName}
-           className={`w-full h-[50px] rounded-xl text-[14px] font-semibold text-white transition-all ${bank && bankCode && resolvedName ? 'bg-[#162353] active:opacity-80' : 'bg-[#162353]/40'}`}
+           className={`w-full h-[50px] rounded-xl text-[14px] font-bold transition-all shadow-sm ${bank && bankCode && resolvedName ? 'bg-[#F0B90B] hover:bg-[#FCD535] text-[#181A20] active:scale-[0.99]' : 'bg-[#F0B90B]/40 text-[#181A20]/40'}`}
         >
           Continue
         </button>

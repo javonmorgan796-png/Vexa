@@ -208,10 +208,10 @@ export function TransferConfirmationModal({
             type="button"
             onClick={onProceedToPin}
             disabled={isInsufficient}
-            className={`w-full h-[52px] rounded-full text-[16px] font-bold text-white transition-all shadow-sm active:scale-[0.99] flex items-center justify-center ${
+            className={`w-full h-[52px] rounded-full text-[16px] font-extrabold transition-all shadow-sm active:scale-[0.99] flex items-center justify-center ${
               isInsufficient
-                ? 'bg-[#162353]/35 cursor-not-allowed text-white/70'
-                : 'bg-[#162353] hover:bg-[#121c42] active:bg-[#0c1432]'
+                ? 'bg-[#F0B90B]/35 cursor-not-allowed text-[#181A20]/50'
+                : 'bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20]'
             }`}
           >
             Pay

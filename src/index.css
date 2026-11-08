@@ -95,9 +95,9 @@
 
 /* LIGHT MODE */
 :root {
-  --wallet-brand: #162353;
-  --business-brand: #162353;
-  --brand-cyan: #2563EB;
+  --wallet-brand: #181A20;
+  --business-brand: #1E2329;
+  --brand-cyan: #F0B90B;
   --button-outline: rgba(0, 0, 0, 0.1);
   --badge-outline: rgba(0, 0, 0, 0.05);
 
@@ -115,16 +115,16 @@
   --sidebar: 0 0% 96%;
   --sidebar-foreground: 0 0% 7%;
   --sidebar-border: 0 0% 89%;
-  --sidebar-primary: 227 58% 21%;
-  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-primary: 43 96% 49%;
+  --sidebar-primary-foreground: 220 13% 11%;
   --sidebar-accent: 0 0% 90%;
   --sidebar-accent-foreground: 0 0% 7%;
-  --sidebar-ring: 227 58% 21%;
+  --sidebar-ring: 43 96% 49%;
   --popover: 0 0% 100%;
   --popover-foreground: 0 0% 7%;
   --popover-border: 0 0% 89%;
-  --primary: 227 58% 21%;
-  --primary-foreground: 0 0% 100%;
+  --primary: 43 96% 49%;
+  --primary-foreground: 220 13% 11%;
   --secondary: 0 0% 94%;
   --secondary-foreground: 0 0% 7%;
   --muted: 0 0% 94%;
@@ -134,7 +134,7 @@
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
   --input: 0 0% 89%;
-  --ring: 190 72% 21%;
+  --ring: 43 96% 49%;
   --chart-1: 12 76% 61%;
   --chart-2: 173 58% 39%;
   --chart-3: 197 37% 24%;
