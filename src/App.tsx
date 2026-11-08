@@ -759,140 +759,64 @@ function MoniepointHome() {
 
           <TwoFactorWarningCard onEnable={() => navigate('/two-factor')} />
 
-          {/* ── Compact Banking Wallet Card ────────────────────────── */}
-          <div className="mx-3 mt-2.5 rounded-[16px] bg-gradient-to-br from-[#0c2b38] via-[#09353e] to-[#04242c] px-3.5 py-3 text-white relative overflow-hidden shadow-md ring-1 ring-white/10">
+          {/* ── Account card ────────────────────────────────────────── */}
+          {/* Account details, balance and actions stay separated on narrow screens. */}
+          <div className="mx-3 mt-3 bg-[#162353] rounded-[20px] px-4 pt-3 pb-4 text-white relative overflow-hidden">
 
-            {/* Subtle atmospheric ambient glow */}
-            <div className="absolute -top-12 -right-12 w-32 h-32 bg-emerald-400/10 rounded-full blur-2xl pointer-events-none" />
-            <div className="absolute -bottom-12 -left-12 w-32 h-32 bg-cyan-400/10 rounded-full blur-2xl pointer-events-none" />
-
-            {/* Top row: Account chip on left & subtle contactless on right (compact) */}
-            <div className="relative z-10 flex items-center justify-between gap-2 mb-2">
+            {/* account number row */}
+            <div className="relative z-10 mb-5 inline-flex max-w-full items-center gap-1 text-[12px] leading-4 font-normal text-white/90">
+              <span className="min-w-0 truncate">{accountNumber} | {displayName}</span>
               <button
                 type="button"
                 onClick={() => void copyAccountNumber()}
                 disabled={!accountNumber || accountNumber === '—'}
                 aria-label={accountCopyStatus === 'copied' ? 'Account number copied' : accountCopyStatus === 'error' ? 'Could not copy account number' : 'Copy account number'}
-                title={accountCopyStatus === 'copied' ? 'Copied!' : 'Click to copy account number'}
-                className="group relative inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/10 transition-all active:scale-95 text-left max-w-[85%]"
+                title={accountCopyStatus === 'copied' ? 'Copied!' : accountCopyStatus === 'error' ? 'Could not copy' : 'Copy account number'}
+                className="relative shrink-0 rounded p-0.5 text-white/70 transition-colors hover:text-white disabled:opacity-50"
               >
-                <span className="font-mono font-bold tracking-normal text-[11px] text-white select-all">
-                  {accountNumber}
-                </span>
-                <span className="w-1 h-1 rounded-full bg-white/40 shrink-0" />
-                <span className="font-normal text-[11px] text-white/85 truncate max-w-[120px] sm:max-w-[160px]">
-                  {displayName}
-                </span>
-                <span className="text-white/60 group-hover:text-white shrink-0 transition-colors">
-                  {accountCopyStatus === 'copied' ? (
-                    <Check className="h-3 w-3 text-emerald-300" />
-                  ) : accountCopyStatus === 'error' ? (
-                    <X className="h-3 w-3 text-red-300" />
-                  ) : (
-                    <Copy className="h-3 w-3" />
-                  )}
-                </span>
-
+                {accountCopyStatus === 'copied'
+                  ? <Check className="h-3.5 w-3.5 text-emerald-300" />
+                  : accountCopyStatus === 'error'
+                    ? <X className="h-3.5 w-3.5 text-red-300" />
+                    : <Copy className="h-3.5 w-3.5" />}
                 {accountCopyStatus !== 'idle' && (
-                  <span className={`absolute left-1/2 -bottom-6 z-20 -translate-x-1/2 whitespace-nowrap rounded px-1.5 py-0.5 text-[9px] font-semibold shadow-md ${accountCopyStatus === 'copied' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>
-                    {accountCopyStatus === 'copied' ? 'Copied!' : 'Copy failed'}
+                  <span className={`absolute left-1/2 top-full z-20 mt-1 -translate-x-1/2 whitespace-nowrap rounded px-1.5 py-0.5 text-[9px] font-semibold ${accountCopyStatus === 'copied' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
+                    {accountCopyStatus === 'copied' ? 'Copied' : 'Copy failed'}
                   </span>
                 )}
               </button>
-
-              {/* Right side: Compact contactless indicator */}
-              <div className="flex items-center shrink-0">
-                <div
-                  className="w-6 h-6 rounded-full bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center text-white/70"
-                  title="Contactless Enabled"
-                  aria-label="Contactless Enabled"
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-                    <path d="M8.5 16.5a5 5 0 0 1 0-7" />
-                    <path d="M12 19a8.5 8.5 0 0 1 0-12" />
-                    <path d="M15.5 21.5a12 12 0 0 1 0-17" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-
-            {/* Balance label & toggle button */}
-            <div className="relative z-10 flex items-center gap-1.5 mb-0.5">
-              <span className="text-[10px] font-medium text-white/70 tracking-wider uppercase">
-                Available Balance
-              </span>
-              <button
-                type="button"
-                onClick={() => setBalanceHidden(v => !v)}
-                className="w-5 h-5 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors focus:outline-none"
-                aria-label={balanceHidden ? 'Show balance' : 'Hide balance'}
-                title={balanceHidden ? 'Show balance' : 'Hide balance'}
-              >
-                {balanceHidden ? (
-                  <Eye className="w-3 h-3 text-white/75" strokeWidth={2} />
-                ) : (
-                  <EyeOff className="w-3 h-3 text-white/75" strokeWidth={2} />
-                )}
-              </button>
-            </div>
-
-            {/* Hero Amount - scaled down to crisp compact size */}
-            <div className="relative z-10 flex items-baseline gap-1 my-0.5">
-              {balanceHidden ? (
-                <span className="text-[20px] font-bold tracking-widest text-white/85 py-0.5 select-none">
-                  ••••••••••
-                </span>
-              ) : (
-                <div className="flex items-baseline">
-                  <span className="text-[16px] font-bold text-white/85 mr-0.5 select-none">₦</span>
-                  <span className="text-[21px] font-extrabold tracking-tight text-white leading-tight">
-                    {balance.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Meta Row: Real-time update & Tier status */}
-            <div className="relative z-10 flex items-center justify-between text-[10px] text-white/60 mt-0.5 mb-2.5">
-              <span className="flex items-center gap-1 font-normal">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Last updated {lastBalanceUpdatedAt ? timeSince(lastBalanceUpdatedAt) : 'just now'}
-              </span>
-              <span className="font-medium text-white/60">
-                Tier 3 · CBN Licensed
+              <span className="sr-only" aria-live="polite">
+                {accountCopyStatus === 'copied' ? 'Account number copied to clipboard.' : accountCopyStatus === 'error' ? 'Could not copy account number.' : ''}
               </span>
             </div>
 
-            {/* Compact Action buttons */}
-            <div className="relative z-10 flex items-center gap-2 pt-0.5">
-              <button
-                onClick={() => navigate('/deposit')}
-                className="home-deposit-button flex-1 h-8 rounded-lg bg-white hover:bg-slate-100 text-[#07242F] font-bold text-[11px] inline-flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-[0.98] focus-visible:outline-none"
-              >
-                <span className="w-3.5 h-3.5 rounded-full bg-[#07242F] text-white flex items-center justify-center text-[10px] font-black leading-none">
-                  +
-                </span>
-                <span>Add Money</span>
+            {/* balance */}
+            <div className="relative z-10 flex items-center gap-2.5 mb-1.5">
+              <span className="text-[22px] font-bold tracking-tight leading-none">
+                {balanceHidden ? '* * * * *' : `₦${balance.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              </span>
+              <button onClick={() => setBalanceHidden(v => !v)} className="focus:outline-none">
+                {balanceHidden
+                  ? <Eye className="w-[18px] h-[18px] text-white/60 mt-0.5" strokeWidth={2} />
+                  : <EyeOff className="w-[18px] h-[18px] text-white/60 mt-0.5" strokeWidth={2} />
+                }
               </button>
+            </div>
 
-              <button
-                onClick={() => navigate('/transfer')}
-                className="flex-1 h-8 rounded-lg bg-white/12 hover:bg-white/20 text-white font-medium text-[11px] inline-flex items-center justify-center gap-1 backdrop-blur-md transition-all active:scale-[0.98] border border-white/10 focus-visible:outline-none"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M7 17l9.2-9.2M17 17V8H8" />
-                </svg>
-                <span>Transfer</span>
+            {/* last updated */}
+            <p className="relative z-10 text-[11px] text-white/80 font-normal mb-4">
+              Last updated {lastBalanceUpdatedAt ? timeSince(lastBalanceUpdatedAt) : 'updating…'}
+            </p>
+
+            {/* action buttons — content-width pills, left-aligned */}
+            <div className="relative z-10 flex gap-3">
+              <button onClick={() => navigate('/deposit')} className="home-deposit-button rounded-full h-9 px-4 inline-flex items-center gap-1.5 bg-white text-[#162353] shadow-sm text-[12px] font-bold transition-all hover:bg-[#F2F5FF] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#162353]">
+                <span className="text-[17px] leading-none font-medium">+</span>
+                Deposit
               </button>
-
-              <button
-                onClick={() => navigate('/history')}
-                className="h-8 px-2.5 rounded-lg bg-white/12 hover:bg-white/20 text-white font-medium text-[11px] inline-flex items-center justify-center gap-1 backdrop-blur-md transition-all active:scale-[0.98] border border-white/10 focus-visible:outline-none shrink-0"
-                title="Transaction History"
-                aria-label="Transaction History"
-              >
+              <button onClick={() => navigate('/history')} className="rounded-full h-9 px-4 inline-flex items-center gap-1.5 bg-white/12 text-white shadow-sm text-[12px] font-semibold backdrop-blur-sm transition-all hover:bg-white/20 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#162353]">
                 <Clock className="w-3.5 h-3.5" strokeWidth={2} />
-                <span>History</span>
+                History
               </button>
             </div>
           </div>
