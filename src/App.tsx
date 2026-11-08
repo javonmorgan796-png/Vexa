@@ -759,56 +759,55 @@ function MoniepointHome() {
 
           <TwoFactorWarningCard onEnable={() => navigate('/two-factor')} />
 
-          {/* ── Account card ────────────────────────────────────────── */}
-          {/* ── High-Grade Banking Wallet Card ────────────────────────── */}
-          <div className="mx-3 mt-3 rounded-[24px] bg-gradient-to-br from-[#0c2b38] via-[#09353e] to-[#04242c] p-5 sm:p-6 text-white relative overflow-hidden shadow-xl ring-1 ring-white/10">
+          {/* ── Compact Banking Wallet Card ────────────────────────── */}
+          <div className="mx-3 mt-2.5 rounded-[16px] bg-gradient-to-br from-[#0c2b38] via-[#09353e] to-[#04242c] px-3.5 py-3 text-white relative overflow-hidden shadow-md ring-1 ring-white/10">
 
             {/* Subtle atmospheric ambient glow */}
-            <div className="absolute -top-16 -right-16 w-48 h-48 bg-emerald-400/10 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-cyan-400/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -top-12 -right-12 w-32 h-32 bg-emerald-400/10 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute -bottom-12 -left-12 w-32 h-32 bg-cyan-400/10 rounded-full blur-2xl pointer-events-none" />
 
-            {/* Top row: Account pill chip on left & Contactless indicator on right (Vexa logo removed) */}
-            <div className="relative z-10 flex items-center justify-between gap-2 mb-4">
+            {/* Top row: Account chip on left & subtle contactless on right (compact) */}
+            <div className="relative z-10 flex items-center justify-between gap-2 mb-2">
               <button
                 type="button"
                 onClick={() => void copyAccountNumber()}
                 disabled={!accountNumber || accountNumber === '—'}
                 aria-label={accountCopyStatus === 'copied' ? 'Account number copied' : accountCopyStatus === 'error' ? 'Could not copy account number' : 'Copy account number'}
                 title={accountCopyStatus === 'copied' ? 'Copied!' : 'Click to copy account number'}
-                className="group relative inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/10 transition-all active:scale-95 text-left max-w-[80%]"
+                className="group relative inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/10 transition-all active:scale-95 text-left max-w-[85%]"
               >
-                <span className="font-mono font-bold tracking-wider text-[13px] text-white select-all">
+                <span className="font-mono font-bold tracking-normal text-[11px] text-white select-all">
                   {accountNumber}
                 </span>
                 <span className="w-1 h-1 rounded-full bg-white/40 shrink-0" />
-                <span className="font-medium text-[12px] text-white/90 truncate max-w-[130px] sm:max-w-[180px]">
+                <span className="font-normal text-[11px] text-white/85 truncate max-w-[120px] sm:max-w-[160px]">
                   {displayName}
                 </span>
-                <span className="text-white/70 group-hover:text-white shrink-0 transition-colors">
+                <span className="text-white/60 group-hover:text-white shrink-0 transition-colors">
                   {accountCopyStatus === 'copied' ? (
-                    <Check className="h-3.5 w-3.5 text-emerald-300" />
+                    <Check className="h-3 w-3 text-emerald-300" />
                   ) : accountCopyStatus === 'error' ? (
-                    <X className="h-3.5 w-3.5 text-red-300" />
+                    <X className="h-3 w-3 text-red-300" />
                   ) : (
-                    <Copy className="h-3.5 w-3.5" />
+                    <Copy className="h-3 w-3" />
                   )}
                 </span>
 
                 {accountCopyStatus !== 'idle' && (
-                  <span className={`absolute left-1/2 -bottom-7 z-20 -translate-x-1/2 whitespace-nowrap rounded-md px-2 py-0.5 text-[10px] font-semibold shadow-md ${accountCopyStatus === 'copied' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>
-                    {accountCopyStatus === 'copied' ? 'Account Copied!' : 'Copy failed'}
+                  <span className={`absolute left-1/2 -bottom-6 z-20 -translate-x-1/2 whitespace-nowrap rounded px-1.5 py-0.5 text-[9px] font-semibold shadow-md ${accountCopyStatus === 'copied' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>
+                    {accountCopyStatus === 'copied' ? 'Copied!' : 'Copy failed'}
                   </span>
                 )}
               </button>
 
-              {/* Right side card feature: Contactless NFC wave icon & Verified chip (replacing Vexa logo) */}
-              <div className="flex items-center gap-1.5 shrink-0">
+              {/* Right side: Compact contactless indicator */}
+              <div className="flex items-center shrink-0">
                 <div
-                  className="w-8 h-8 rounded-full bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center text-white/80 shadow-xs"
+                  className="w-6 h-6 rounded-full bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center text-white/70"
                   title="Contactless Enabled"
                   aria-label="Contactless Enabled"
                 >
-                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
                     <path d="M8.5 16.5a5 5 0 0 1 0-7" />
                     <path d="M12 19a8.5 8.5 0 0 1 0-12" />
                     <path d="M15.5 21.5a12 12 0 0 1 0-17" />
@@ -818,35 +817,35 @@ function MoniepointHome() {
             </div>
 
             {/* Balance label & toggle button */}
-            <div className="relative z-10 flex items-center gap-2 mb-1.5">
-              <span className="text-[12px] font-semibold text-white/75 tracking-wider uppercase">
+            <div className="relative z-10 flex items-center gap-1.5 mb-0.5">
+              <span className="text-[10px] font-medium text-white/70 tracking-wider uppercase">
                 Available Balance
               </span>
               <button
                 type="button"
                 onClick={() => setBalanceHidden(v => !v)}
-                className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors focus:outline-none"
+                className="w-5 h-5 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors focus:outline-none"
                 aria-label={balanceHidden ? 'Show balance' : 'Hide balance'}
                 title={balanceHidden ? 'Show balance' : 'Hide balance'}
               >
                 {balanceHidden ? (
-                  <Eye className="w-3.5 h-3.5 text-white/80" strokeWidth={2.2} />
+                  <Eye className="w-3 h-3 text-white/75" strokeWidth={2} />
                 ) : (
-                  <EyeOff className="w-3.5 h-3.5 text-white/80" strokeWidth={2.2} />
+                  <EyeOff className="w-3 h-3 text-white/75" strokeWidth={2} />
                 )}
               </button>
             </div>
 
-            {/* Hero Amount */}
-            <div className="relative z-10 flex items-baseline gap-1 my-1">
+            {/* Hero Amount - scaled down to crisp compact size */}
+            <div className="relative z-10 flex items-baseline gap-1 my-0.5">
               {balanceHidden ? (
-                <span className="text-[30px] sm:text-[34px] font-black tracking-widest text-white/90 py-1 select-none">
+                <span className="text-[20px] font-bold tracking-widest text-white/85 py-0.5 select-none">
                   ••••••••••
                 </span>
               ) : (
                 <div className="flex items-baseline">
-                  <span className="text-[24px] sm:text-[28px] font-extrabold text-white/90 mr-1 select-none">₦</span>
-                  <span className="text-[32px] sm:text-[38px] font-black tracking-tight text-white leading-none">
+                  <span className="text-[16px] font-bold text-white/85 mr-0.5 select-none">₦</span>
+                  <span className="text-[21px] font-extrabold tracking-tight text-white leading-tight">
                     {balance.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
@@ -854,23 +853,23 @@ function MoniepointHome() {
             </div>
 
             {/* Meta Row: Real-time update & Tier status */}
-            <div className="relative z-10 flex items-center justify-between text-[11px] text-white/65 mt-2 mb-5">
-              <span className="flex items-center gap-1.5 font-normal">
+            <div className="relative z-10 flex items-center justify-between text-[10px] text-white/60 mt-0.5 mb-2.5">
+              <span className="flex items-center gap-1 font-normal">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 Last updated {lastBalanceUpdatedAt ? timeSince(lastBalanceUpdatedAt) : 'just now'}
               </span>
-              <span className="font-medium text-white/70 tracking-wide">
+              <span className="font-medium text-white/60">
                 Tier 3 · CBN Licensed
               </span>
             </div>
 
-            {/* Action buttons: Add Money, Transfer, History */}
-            <div className="relative z-10 flex items-center gap-2.5 pt-1">
+            {/* Compact Action buttons */}
+            <div className="relative z-10 flex items-center gap-2 pt-0.5">
               <button
                 onClick={() => navigate('/deposit')}
-                className="home-deposit-button flex-1 h-11 rounded-xl bg-white hover:bg-slate-100 text-[#07242F] font-bold text-[13px] inline-flex items-center justify-center gap-2 shadow-sm transition-all active:scale-[0.98] focus-visible:outline-none"
+                className="home-deposit-button flex-1 h-8 rounded-lg bg-white hover:bg-slate-100 text-[#07242F] font-bold text-[11px] inline-flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-[0.98] focus-visible:outline-none"
               >
-                <span className="w-5 h-5 rounded-full bg-[#07242F] text-white flex items-center justify-center text-[13px] font-black leading-none">
+                <span className="w-3.5 h-3.5 rounded-full bg-[#07242F] text-white flex items-center justify-center text-[10px] font-black leading-none">
                   +
                 </span>
                 <span>Add Money</span>
@@ -878,9 +877,9 @@ function MoniepointHome() {
 
               <button
                 onClick={() => navigate('/transfer')}
-                className="flex-1 h-11 rounded-xl bg-white/12 hover:bg-white/20 text-white font-semibold text-[13px] inline-flex items-center justify-center gap-1.5 backdrop-blur-md transition-all active:scale-[0.98] border border-white/10 focus-visible:outline-none"
+                className="flex-1 h-8 rounded-lg bg-white/12 hover:bg-white/20 text-white font-medium text-[11px] inline-flex items-center justify-center gap-1 backdrop-blur-md transition-all active:scale-[0.98] border border-white/10 focus-visible:outline-none"
               >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M7 17l9.2-9.2M17 17V8H8" />
                 </svg>
                 <span>Transfer</span>
@@ -888,12 +887,12 @@ function MoniepointHome() {
 
               <button
                 onClick={() => navigate('/history')}
-                className="h-11 px-3.5 rounded-xl bg-white/12 hover:bg-white/20 text-white font-semibold text-[13px] inline-flex items-center justify-center gap-1.5 backdrop-blur-md transition-all active:scale-[0.98] border border-white/10 focus-visible:outline-none shrink-0"
+                className="h-8 px-2.5 rounded-lg bg-white/12 hover:bg-white/20 text-white font-medium text-[11px] inline-flex items-center justify-center gap-1 backdrop-blur-md transition-all active:scale-[0.98] border border-white/10 focus-visible:outline-none shrink-0"
                 title="Transaction History"
                 aria-label="Transaction History"
               >
-                <Clock className="w-4 h-4" strokeWidth={2.2} />
-                <span className="hidden sm:inline">History</span>
+                <Clock className="w-3.5 h-3.5" strokeWidth={2} />
+                <span>History</span>
               </button>
             </div>
           </div>
