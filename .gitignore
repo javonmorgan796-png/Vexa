@@ -8,3 +8,4 @@ coverage/
 *.patch
 .env*
 !.env.example
+.aistudio/

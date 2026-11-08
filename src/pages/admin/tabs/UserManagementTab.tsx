@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAdmin } from '../AdminContext';
+import { Naira } from '@/components/Naira';
 import {
   Search,
   Filter,
@@ -212,8 +213,20 @@ export const UserManagementTab: React.FC = () => {
                 <tr key={u.id} className={`${isDark ? 'hover:bg-gray-800/30' : 'hover:bg-slate-50'} transition-colors`}>
                   <td className="py-4 px-4 sm:px-5">
                     <div className="flex items-center space-x-3">
-                      <div className="w-9 h-9 rounded-full bg-[#F0B90B]/10 border border-[#F0B90B]/30 flex items-center justify-center text-[#F0B90B] font-bold text-xs uppercase shrink-0">
-                        {u.name.slice(0, 2)}
+                      <div className="relative w-9 h-9 rounded-full shrink-0 overflow-hidden bg-[#F0B90B]/10 border border-[#F0B90B]/30 flex items-center justify-center">
+                        <span className="text-[#F0B90B] font-bold text-xs uppercase select-none">
+                          {u.name.slice(0, 2)}
+                        </span>
+                        {u.profilePhoto && (
+                          <img
+                            src={u.profilePhoto}
+                            alt={u.name}
+                            className="absolute inset-0 w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLElement).style.display = 'none';
+                            }}
+                          />
+                        )}
                       </div>
                       <div>
                         <div className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{u.name}</div>
@@ -227,8 +240,8 @@ export const UserManagementTab: React.FC = () => {
                     </span>
                   </td>
                   <td className="py-4 px-4 sm:px-5 text-right">
-                    <div className={`font-bold font-mono text-sm tabular-nums ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      ₦{Number(u.balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    <div className={`font-bold font-mono text-sm tabular-nums flex items-baseline justify-end ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      <Naira className="mr-0.5 text-xs" />{Number(u.balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </div>
                   </td>
                   <td className="py-4 px-4 sm:px-5 text-center">
@@ -293,8 +306,20 @@ export const UserManagementTab: React.FC = () => {
             {/* Modal Header */}
             <div className={`flex items-center justify-between pb-4 border-b ${isDark ? 'border-gray-800' : 'border-slate-200'}`}>
               <div className="flex items-center space-x-3">
-                <div className="w-12 h-12 rounded-2xl bg-[#F0B90B]/10 border border-[#F0B90B]/30 flex items-center justify-center text-[#F0B90B] font-bold text-base uppercase">
-                  {selectedUser.name.slice(0, 2)}
+                <div className="relative w-12 h-12 rounded-2xl shrink-0 overflow-hidden bg-[#F0B90B]/10 border border-[#F0B90B]/30 flex items-center justify-center">
+                  <span className="text-[#F0B90B] font-bold text-base uppercase select-none">
+                    {selectedUser.name.slice(0, 2)}
+                  </span>
+                  {selectedUser.profilePhoto && (
+                    <img
+                      src={selectedUser.profilePhoto}
+                      alt={selectedUser.name}
+                      className="absolute inset-0 w-full h-full object-cover"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                  )}
                 </div>
                 <div>
                   <h2 className="text-lg font-bold">{selectedUser.name}</h2>
@@ -315,8 +340,8 @@ export const UserManagementTab: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 my-5">
               <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-gray-900/50 border-gray-800' : 'bg-slate-50 border-slate-200'}`}>
                 <div className="text-[11px] text-gray-400">Ledger Balance</div>
-                <div className="text-lg font-bold text-[#F0B90B] font-mono mt-0.5">
-                  ₦{Number(selectedUser.balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                <div className="text-lg font-bold text-[#F0B90B] font-mono mt-0.5 flex items-baseline">
+                  <Naira className="mr-0.5 text-base" />{Number(selectedUser.balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </div>
               </div>
               <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-gray-900/50 border-gray-800' : 'bg-slate-50 border-slate-200'}`}>

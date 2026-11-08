@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAdmin } from '../AdminContext';
+import { Naira } from '@/components/Naira';
 import {
   Gift,
   Percent,
@@ -113,8 +114,8 @@ export const RewardsDataTab: React.FC = () => {
               <Percent className="w-5 h-5" />
             </div>
           </div>
-          <div className={`text-2xl font-bold mt-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            ₦{Number(metrics.totalCashbackDisbursed).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          <div className={`text-2xl font-bold mt-2 flex items-baseline ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            <Naira className="mr-0.5 text-xl" />{Number(metrics.totalCashbackDisbursed).toLocaleString(undefined, { minimumFractionDigits: 2 })}
           </div>
           <div className="text-xs text-emerald-400 mt-2 font-mono">Credited To User Wallets</div>
         </div>
@@ -126,10 +127,12 @@ export const RewardsDataTab: React.FC = () => {
               <Gift className="w-5 h-5" />
             </div>
           </div>
-          <div className={`text-2xl font-bold mt-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            ₦{Number(metrics.totalReferralBonusesPaid).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          <div className={`text-2xl font-bold mt-2 flex items-baseline ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            <Naira className="mr-0.5 text-xl" />{Number(metrics.totalReferralBonusesPaid).toLocaleString(undefined, { minimumFractionDigits: 2 })}
           </div>
-          <div className="text-xs text-gray-400 mt-2 font-mono">₦1,000 / Activated Referee</div>
+          <div className="text-xs text-gray-400 mt-2 font-mono flex items-baseline">
+            <Naira className="mr-0.5 text-xs" />1,000 / Activated Referee
+          </div>
         </div>
 
         <div className={`p-5 rounded-2xl border ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-gray-200'}`}>
@@ -223,7 +226,9 @@ export const RewardsDataTab: React.FC = () => {
                         {c.rate}
                       </td>
                       <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm text-emerald-600 dark:text-emerald-400">
-                        +₦{Number(c.earned).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <span className="inline-flex items-baseline justify-end">
+                          +<Naira className="mr-0.5 text-xs text-emerald-600 dark:text-emerald-400" />{Number(c.earned).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
                       </td>
                       <td className="py-4 px-4 sm:px-5 text-center">
                         <span
@@ -285,7 +290,9 @@ export const RewardsDataTab: React.FC = () => {
                         {r.referralCode}
                       </td>
                       <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm text-emerald-600 dark:text-emerald-400">
-                        ₦{Number(r.bonusAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <span className="inline-flex items-baseline justify-end">
+                          <Naira className="mr-0.5 text-xs text-emerald-600 dark:text-emerald-400" />{Number(r.bonusAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
                       </td>
                       <td className="py-4 px-4 sm:px-5 text-center">
                         <span

@@ -105,6 +105,69 @@ router.get("/paystack/resolve-account", async (req, res) => {
   }
 });
 
+export function cleanBankName(raw: string): string {
+  if (!raw) return "";
+  const trimmed = raw.trim();
+  const lower = trimmed.toLowerCase();
+
+  // Primary consumer brand names for major fintechs and banks
+  if (lower.includes("opay") || lower.includes("paycom")) return "OPay";
+  if (lower.includes("palmpay")) return "PalmPay";
+  if (lower.includes("kuda")) return "Kuda Bank";
+  if (lower.includes("moniepoint")) return "Moniepoint";
+  if (lower === "united bank for africa" || lower.startsWith("united bank for africa") || lower.includes("uba plc") || lower === "uba") return "UBA";
+  if (lower.includes("guaranty trust") || lower.includes("gtbank")) return "GTBank";
+  if (lower.includes("first bank of nigeria") || lower === "first bank") return "First Bank";
+  if (lower.includes("first city monument bank") || lower === "fcmb") return "FCMB";
+  if (lower.includes("stanbic ibtc")) return "Stanbic IBTC";
+  if (lower.includes("standard chartered")) return "Standard Chartered";
+  if (lower.includes("fairmoney")) return "FairMoney";
+  if (lower.includes("vfd microfinance") || lower.includes("vfd bank")) return "VFD Bank";
+  if (lower.includes("rubies")) return "Rubies Bank";
+  if (lower.includes("sparkle")) return "Sparkle";
+  if (lower.includes("carbon")) return "Carbon";
+  if (lower.includes("paga")) return "Paga";
+  if (lower.includes("providus")) return "Providus Bank";
+  if (lower.includes("titan trust")) return "Titan Trust Bank";
+  if (lower.includes("citibank")) return "Citibank";
+  if (lower.includes("access bank")) return "Access Bank";
+  if (lower.includes("zenith bank")) return "Zenith Bank";
+  if (lower.includes("sterling bank")) return "Sterling Bank";
+  if (lower.includes("union bank")) return "Union Bank";
+  if (lower.includes("wema bank")) return "Wema Bank";
+  if (lower.includes("fidelity bank")) return "Fidelity Bank";
+  if (lower.includes("polaris bank")) return "Polaris Bank";
+  if (lower.includes("keystone bank")) return "Keystone Bank";
+  if (lower.includes("jaiz bank")) return "Jaiz Bank";
+  if (lower.includes("taj bank")) return "TAJ Bank";
+  if (lower.includes("lotus bank")) return "Lotus Bank";
+  if (lower.includes("heritage bank")) return "Heritage Bank";
+  if (lower.includes("unity bank")) return "Unity Bank";
+
+  // General corporate legal title stripping
+  let name = trimmed
+    .replace(/\s*\([^)]*\)/g, "") // remove (MFB), (NIGERIA), etc.
+    .replace(/\b(plc|limited|ltd|mortgage bank|payment service bank|psb)\b/gi, "")
+    .replace(/\b(microfinance bank|mfb)\b/gi, "Bank")
+    .replace(/\b(of nigeria|nigeria)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Convert ALL-CAPS to friendly Title Case
+  if (name === name.toUpperCase()) {
+    name = name
+      .toLowerCase()
+      .split(" ")
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+  }
+
+  // Ensure clean single "Bank" suffix
+  name = name.replace(/\bBank Bank\b/gi, "Bank").trim();
+
+  return name || trimmed;
+}
+
 async function fetchBanks() {
   if (cachedBanks && Date.now() - cachedBanks.fetchedAt < PAYSTACK_CACHE_TTL_MS) {
     return cachedBanks;
@@ -120,12 +183,16 @@ async function fetchBanks() {
           bank.currency.toUpperCase() === "NGN" &&
           bank.type === "nuban",
         )
-        .map(bank => ({
-          name: bank.name,
-          slug: bank.slug,
-          code: bank.code,
-          logoUrl: logoUrl(bank.name),
-        }))
+        .map(bank => {
+          const cleanName = cleanBankName(bank.name);
+          return {
+            name: cleanName,
+            legalName: bank.name,
+            slug: bank.slug,
+            code: bank.code,
+            logoUrl: logoUrl(cleanName || bank.name),
+          };
+        })
         .filter((bank, index, all) => all.findIndex(item => item.code === bank.code) === index)
         .sort((a, b) => a.name.localeCompare(b.name))
     : [];

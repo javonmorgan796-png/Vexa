@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAdmin } from '../AdminContext';
+import { Naira } from '@/components/Naira';
 import {
   Search,
   ArrowDownLeft,
@@ -144,10 +145,12 @@ export const TransactionManagementTab: React.FC = () => {
                     </span>
                   </td>
                   <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums">
-                    <div className={`font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      ₦{Number(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    <div className={`font-bold text-sm flex items-baseline justify-end ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      <Naira className="mr-0.5 text-xs" />{Number(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </div>
-                    <div className="text-[11px] text-gray-400 font-sans mt-0.5">Fee: ₦{Number(tx.fee).toFixed(2)}</div>
+                    <div className="text-[11px] text-gray-400 font-sans mt-0.5 flex items-baseline justify-end">
+                      Fee: <Naira className="ml-1 mr-0.5 text-[10px]" />{Number(tx.fee).toFixed(2)}
+                    </div>
                   </td>
                   <td className={`py-4 px-4 sm:px-5 font-sans text-xs max-w-xs truncate ${isDark ? 'text-gray-300' : 'text-slate-600'}`}>
                     {tx.recipient}
@@ -204,8 +207,8 @@ export const TransactionManagementTab: React.FC = () => {
 
             <div className={`my-5 p-4 rounded-xl border text-center ${isDark ? 'bg-gray-900/60 border-gray-800' : 'bg-slate-50 border-slate-200'}`}>
               <div className="text-xs text-gray-400">Total Settlement Value</div>
-              <div className={`text-2xl font-bold font-mono mt-1 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                ₦{Number(selectedTx.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              <div className={`text-2xl font-bold font-mono mt-1 flex items-baseline justify-center ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                <Naira className="mr-0.5 text-xl" />{Number(selectedTx.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </div>
               <div className="text-xs text-emerald-500 font-semibold uppercase mt-1 tracking-wider">
                 Status: {selectedTx.status}
@@ -239,7 +242,9 @@ export const TransactionManagementTab: React.FC = () => {
               </div>
               <div className="flex items-center justify-between py-2">
                 <span className="text-gray-400 font-sans">NIBSS / Gateway Fee:</span>
-                <span className={isDark ? 'text-gray-300' : 'text-slate-700'}>₦{Number(selectedTx.fee).toFixed(2)}</span>
+                <span className={`flex items-baseline ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>
+                  <Naira className="mr-0.5 text-xs" />{Number(selectedTx.fee).toFixed(2)}
+                </span>
               </div>
             </div>
 

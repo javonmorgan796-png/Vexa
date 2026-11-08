@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAdmin } from '../AdminContext';
+import { Naira } from '@/components/Naira';
 import {
   CreditCard,
   Lock,
@@ -179,8 +180,8 @@ export const CardManagementTab: React.FC = () => {
             <div className={`mt-4 pt-3 border-t flex items-center justify-between text-xs ${isDark ? 'border-gray-800' : 'border-slate-200'}`}>
               <div>
                 <span className="text-gray-400">Limit: </span>
-                <span className={`font-bold font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  ₦{Number(card.spendingLimit).toLocaleString()}
+                <span className={`font-bold font-mono inline-flex items-baseline ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  <Naira className="mr-0.5 text-xs" />{Number(card.spendingLimit).toLocaleString()}
                 </span>
               </div>
 

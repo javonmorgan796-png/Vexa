@@ -32,6 +32,7 @@ import CryptoExchangePage from '@/pages/crypto/CryptoExchangePage';
 import { IncomingCryptoPage, OutgoingCryptoPage } from '@/pages/crypto/CryptoHistoryPage';
 import VexaTransferPage from '@/pages/transfer/VexaTransferPage';
 import BankSelectionPage from '@/pages/transfer/BankSelectionPage';
+import { TransferConfirmationModal, PaymentPinModal } from '@/components/transfer/TransferModals';
 import { BusinessProvider } from '@/context/BusinessContext';
 import BusinessDashboard from '@/pages/business/BusinessDashboard';
 import BusinessOnboarding from '@/pages/business/BusinessOnboarding';
@@ -2736,6 +2737,9 @@ function TransferPage() {
   const [savingPin, setSavingPin]             = useState(false);
   const [submitError, setSubmitError]         = useState('');
   const [receipt, setReceipt]                 = useState<TransferReceiptData | null>(null);
+  const [showConfirmPopup, setShowConfirmPopup] = useState(false);
+  const [showPinPopup, setShowPinPopup]       = useState(false);
+  const [pinModalError, setPinModalError]     = useState('');
 
   // Resolve the destination account through the API server so Paystack's
   // secret key never reaches the browser.
@@ -2808,6 +2812,46 @@ function TransferPage() {
     }
 
     setProcessing(false);
+    setReceipt({
+      transaction: result.transaction,
+      recipientName: resolvedName,
+      bank,
+      accountNumber: acctNo,
+      senderName: user?.name ?? 'Vexa account',
+      senderAccountNumber: user?.accountNumber ?? '—',
+      balanceBefore: balanceBeforeTransfer,
+      balanceAfter: Math.max(0, balanceBeforeTransfer - amtValue),
+    });
+    setStep('success');
+  }
+
+  async function handleModalPin(enteredPin: string) {
+    if (enteredPin.length < 4) return;
+    if (user?.pin && user.pin !== '0000' && enteredPin !== user.pin) {
+      setPinModalError('Incorrect PIN. Please try again.');
+      return;
+    }
+    setPinModalError('');
+    setProcessing(true);
+    setSubmitError('');
+    const amtValue = parseFloat(amount.replace(/,/g, '') || '0');
+    const balanceBeforeTransfer = balance;
+    const result = await completeBankTransfer({
+      amount: amtValue,
+      pin: enteredPin,
+      recipientName: resolvedName,
+      recipientBank: bank,
+      recipientAccount: acctNo,
+      note: narration || 'Transfer',
+    });
+    setProcessing(false);
+    if (!result.success || !result.transaction) {
+      setPinModalError(result.error ?? 'Transfer could not be completed.');
+      return;
+    }
+
+    setShowPinPopup(false);
+    setShowConfirmPopup(false);
     setReceipt({
       transaction: result.transaction,
       recipientName: resolvedName,
@@ -3003,8 +3047,8 @@ function TransferPage() {
   /* ── STEP: AMOUNT ──────────────────────────────────── */
   if (step === 'amount') {
     return (
-      <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
-        <div className="flex-none flex items-center gap-3 px-4 pb-3 bg-white border-b border-[#E8EBF0]"
+      <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col w-full max-w-full overflow-hidden" style={{ fontFamily: "'Inter', sans-serif" }}>
+        <div className="flex-none flex items-center gap-3 px-4 pb-3 bg-white w-full shadow-xs"
           style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
           <button onClick={goBack} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
@@ -3012,94 +3056,136 @@ function TransferPage() {
           <span className="text-[16px] font-bold text-[#111]">Transfer</span>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4" style={{ scrollbarWidth: 'none' }}>
+        <div className="flex-1 overflow-y-auto overflow-x-hidden w-full max-w-full px-4 py-5 space-y-4" style={{ scrollbarWidth: 'none' }}>
 
-          {/* Recipient summary */}
-          <div className="bg-white rounded-2xl px-5 py-4 border border-[#F0F0F0] flex items-center gap-3">
+          {/* Recipient summary without outline */}
+          <div className="bg-white rounded-2xl px-5 py-4 border-0 shadow-sm flex items-center gap-3 w-full min-w-0">
             <div className="w-10 h-10 rounded-full bg-[#EEF2FF] flex items-center justify-center text-[#2563EB] font-bold text-[15px] shrink-0">
               {resolvedName.charAt(0)}
             </div>
-            <div>
-              <p className="text-[14px] font-semibold text-[#111]">{resolvedName}</p>
-              <p className="text-[11px] text-[#888]">{acctNo} · {bank}</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-[14px] font-semibold text-[#111] truncate">{resolvedName}</p>
+              <p className="text-[11px] text-[#888] truncate">{acctNo} · {bank}</p>
             </div>
           </div>
 
-          {/* Amount */}
-          <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
-            <p className="text-[12px] font-semibold text-[#444] mb-3">Amount</p>
-            <div className="flex items-center gap-2 border border-[#E0E0E0] rounded-xl px-4 py-3 focus-within:border-[#2563EB] transition-colors">
-              <span className="text-[20px] font-bold text-[#444]">₦</span>
+          {/* Amount without outlines */}
+          <div className="bg-white rounded-2xl p-5 border-0 shadow-sm w-full min-w-0">
+            <p className="text-[12px] font-semibold text-[#888] mb-1">Amount</p>
+            <div className="flex items-center gap-2 border-0 outline-none ring-0 py-2 w-full min-w-0">
+              <span className="text-[32px] font-extrabold text-[#111] select-none shrink-0">₦</span>
               <input
-                type="text" inputMode="decimal" placeholder="0.00"
-                value={amount} onChange={e => setAmount(formatAmt(e.target.value))}
-                className="flex-1 text-[20px] font-semibold text-[#111] outline-none bg-transparent placeholder:text-[#CCC]"
-                autoFocus
+                type="text"
+                inputMode="decimal"
+                placeholder="0.00"
+                value={amount}
+                onChange={e => setAmount(formatAmt(e.target.value))}
+                className="flex-1 min-w-0 w-full text-[36px] font-extrabold text-[#111] outline-none border-0 ring-0 focus:outline-none focus:ring-0 bg-transparent placeholder:text-[#CBD5E1]"
               />
             </div>
-            {/* Quick amount pills */}
-            <div className="flex gap-2 mt-3 flex-wrap">
+            {/* Quick amount pills without outlines */}
+            <div className="flex gap-2 mt-3 flex-wrap w-full">
               {['1,000','5,000','10,000','20,000','50,000'].map(q => (
                 <button key={q} onClick={() => setAmount(q)}
-                  className={`px-3 py-1 rounded-full text-[11px] font-semibold border transition-all ${amount === q ? 'bg-[#162353] text-white border-[#162353]' : 'border-[#E0E0E0] text-[#444] bg-white'}`}>
+                  className={`px-3.5 py-1.5 rounded-full text-[12px] font-semibold transition-all border-0 outline-none ring-0 ${amount === q ? 'bg-[#162353] text-white shadow-xs' : 'bg-[#F2F4F7] text-[#444] hover:bg-[#E5E7EB]'}`}>
                   ₦{q}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Narration */}
-          <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
+          {/* Narration without outlines */}
+          <div className="bg-white rounded-2xl p-5 border-0 shadow-sm w-full min-w-0">
             <p className="text-[12px] font-semibold text-[#444] mb-3">Narration <span className="text-[#888] font-normal">(optional)</span></p>
             <input
               type="text" placeholder="e.g. School fees, Rent…"
               value={narration} onChange={e => setNarration(e.target.value)}
               maxLength={50}
-              className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] text-[#111] outline-none focus:border-[#2563EB] transition-colors placeholder:text-[#CCC]"
+              className="w-full bg-[#F8FAFC] border-0 outline-none ring-0 focus:outline-none focus:ring-0 rounded-xl px-4 py-3 text-[14px] text-[#111] transition-colors placeholder:text-[#94A3B8]"
             />
           </div>
 
           {/* Fee note */}
-          <p className="text-[11px] text-[#888] text-center">
+          <p className="text-[11px] text-[#888] text-center w-full">
             Transaction fee: <span className="font-semibold text-[#555]">₦10.75</span> — waived for Vexa-to-Vexa transfers
           </p>
 
         </div>
 
-        <div className="flex-none px-4 pb-6 pt-2 bg-[#F2F3F5]">
+        <div className="flex-none px-4 pb-6 pt-2 bg-[#F2F3F5] w-full max-w-full">
           <button
-            onClick={() => { if (amtNum > 0) { if (user?.pin === '0000') setStep('create_pin'); else setStep('pin'); } }}
+            onClick={() => {
+              if (amtNum > 0) {
+                if (user?.pin === '0000') {
+                  setStep('create_pin');
+                } else {
+                  setShowConfirmPopup(true);
+                }
+              }
+            }}
             disabled={amtNum <= 0}
             className={`w-full h-[50px] rounded-xl text-[14px] font-semibold text-white transition-all ${amtNum > 0 ? 'bg-[#162353] active:opacity-80' : 'bg-[#162353]/40'}`}
           >
             Continue
           </button>
         </div>
+
+        {/* OPay-style Transfer Confirmation Bottom Sheet Popup */}
+        <TransferConfirmationModal
+          isOpen={showConfirmPopup}
+          onClose={() => setShowConfirmPopup(false)}
+          onProceedToPin={() => {
+            setShowConfirmPopup(false);
+            setShowPinPopup(true);
+            setPinModalError('');
+          }}
+          bankName={bank}
+          bankLogo={bankLogo}
+          accountNumber={acctNo}
+          recipientName={resolvedName}
+          amount={amtNum}
+          userBalance={balance}
+          onAddMoney={() => navigate('/')}
+          fee={10.0}
+          vat={0.75}
+        />
+
+        {/* Enter PIN Bottom Sheet Popup matching same sleek design */}
+        <PaymentPinModal
+          isOpen={showPinPopup}
+          onClose={() => setShowPinPopup(false)}
+          onSuccessPin={handleModalPin}
+          amount={amtNum + 10.75}
+          recipientName={resolvedName}
+          bankName={bank}
+          error={pinModalError}
+          processing={processing}
+        />
       </div>
     );
   }
 
   /* ── STEP: DETAILS ─────────────────────────────────── */
   return (
-    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col w-full max-w-full overflow-hidden" style={{ fontFamily: "'Inter', sans-serif" }}>
       {/* Header */}
-      <div className="flex-none flex items-center gap-3 px-4 pb-3 bg-white border-b border-[#E8EBF0]"
+      <div className="flex-none flex items-center gap-3 px-4 pb-3 bg-white w-full shadow-xs"
         style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
         <button onClick={goBack} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         </button>
         <span className="text-[16px] font-bold text-[#111]">Transfer</span>
-        <button onClick={() => navigate('/vexa-transfer')} className="ml-auto rounded-full bg-[#EAF2FF] text-[#2563EB] px-3 py-1.5 text-[10px] font-bold">Vexa to Vexa</button>
+        <button onClick={() => navigate('/vexa-transfer')} className="ml-auto rounded-full bg-[#EAF2FF] text-[#2563EB] px-3 py-1.5 text-[10px] font-bold border-0 outline-none">Vexa to Vexa</button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4" style={{ scrollbarWidth: 'none' }}>
+      <div className="flex-1 overflow-y-auto overflow-x-hidden w-full max-w-full px-4 py-5 space-y-4" style={{ scrollbarWidth: 'none' }}>
 
         {/* Bank picker */}
-        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
+        <div className="bg-white rounded-2xl p-5 border-0 shadow-sm">
           <p className="text-[12px] font-semibold text-[#444] mb-3">Select Bank</p>
           <button
             onClick={() => navigate('/bank-selection?returnTo=/transfer')}
-            className="w-full flex items-center justify-between border border-[#E0E0E0] rounded-xl px-4 py-3 focus:border-[#2563EB] transition-colors disabled:opacity-60"
+            className="w-full flex items-center justify-between bg-[#F8FAFC] border-0 outline-none ring-0 focus:outline-none focus:ring-0 rounded-xl px-4 py-3 transition-colors disabled:opacity-60"
           >
             <span className="flex min-w-0 items-center gap-2">
               {bank ? (
@@ -3126,13 +3212,13 @@ function TransferPage() {
         </div>
 
         {/* Account number */}
-        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
+        <div className="bg-white rounded-2xl p-5 border-0 shadow-sm">
           <p className="text-[12px] font-semibold text-[#444] mb-3">Account Number</p>
           <input
             type="text" inputMode="numeric" placeholder="10-digit account number"
             value={acctNo}
             onChange={e => setAcctNo(e.target.value.replace(/\D/g, '').slice(0, 10))}
-            className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[16px] font-semibold tracking-widest text-[#111] outline-none focus:border-[#2563EB] transition-colors placeholder:text-[#CCC] placeholder:tracking-normal placeholder:font-normal"
+            className="w-full bg-[#F8FAFC] border-0 outline-none ring-0 focus:outline-none focus:ring-0 rounded-xl px-4 py-3 text-[16px] font-semibold tracking-widest text-[#111] transition-colors placeholder:text-[#94A3B8] placeholder:tracking-normal placeholder:font-normal"
           />
 
           {/* Resolved name */}

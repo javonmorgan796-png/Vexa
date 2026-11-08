@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAdmin } from '../AdminContext';
+import { Naira } from '@/components/Naira';
 import {
   ArrowDownLeft,
   Search,
@@ -123,7 +124,9 @@ export const DepositsTab: React.FC = () => {
                     <span className={`text-xs font-medium uppercase tracking-wide ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>{d.channel}</span>
                   </td>
                   <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm text-slate-900 dark:text-white">
-                    ₦{Number(d.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <span className="inline-flex items-baseline justify-end">
+                      <Naira className="mr-0.5 text-xs" />{Number(d.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
                   </td>
                   <td className="py-4 px-4 sm:px-5 text-center">
                     <span
@@ -186,7 +189,7 @@ export const DepositsTab: React.FC = () => {
             <div className={`p-3 rounded-xl border text-xs mb-4 font-mono ${isDark ? 'bg-gray-900 border-gray-800 text-gray-300' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
               <div>Reference: {selectedDeposit.reference}</div>
               <div>Customer: {selectedDeposit.user} ({selectedDeposit.phone})</div>
-              <div>Amount: ₦{Number(selectedDeposit.amount).toLocaleString()}</div>
+              <div className="flex items-baseline">Amount: <Naira className="ml-1 mr-0.5 text-xs" />{Number(selectedDeposit.amount).toLocaleString()}</div>
             </div>
 
             <label className="text-xs text-gray-400 mb-1 block">Resolution Audit Note</label>

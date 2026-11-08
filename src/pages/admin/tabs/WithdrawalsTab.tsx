@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAdmin } from '../AdminContext';
+import { Naira } from '@/components/Naira';
 import {
   ArrowUpRight,
   ShieldAlert,
@@ -106,7 +107,9 @@ export const WithdrawalsTab: React.FC = () => {
                     </div>
                   </td>
                   <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm text-slate-900 dark:text-white">
-                    ₦{Number(w.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <span className="inline-flex items-baseline justify-end">
+                      <Naira className="mr-0.5 text-xs" />{Number(w.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
                   </td>
                   <td className="py-4 px-4 sm:px-5 text-center">
                     <div className="flex flex-col items-center">
@@ -192,9 +195,11 @@ export const WithdrawalsTab: React.FC = () => {
                 : 'Reject Withdrawal Request'}
             </h3>
             <p className="text-xs text-gray-400 mb-4">
-              {confirmModal.action === 'approve'
-                ? `You are authorizing outbound dispatch of ₦${Number(confirmModal.item.amount).toLocaleString()} to ${confirmModal.item.bankName} (${confirmModal.item.recipientAccount}).`
-                : 'Rejecting this withdrawal will cancel settlement and notify customer security.'}
+              {confirmModal.action === 'approve' ? (
+                <>You are authorizing outbound dispatch of <Naira className="mr-0.5 text-xs font-bold" />{Number(confirmModal.item.amount).toLocaleString()} to {confirmModal.item.bankName} ({confirmModal.item.recipientAccount}).</>
+              ) : (
+                'Rejecting this withdrawal will cancel settlement and notify customer security.'
+              )}
             </p>
 
             <div className={`p-3 rounded-xl border text-xs mb-4 font-mono space-y-1 ${isDark ? 'bg-gray-900 border-gray-800 text-gray-300' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>

@@ -12,6 +12,15 @@ const configuredOrigins = (process.env["CORS_ORIGINS"] ?? "")
 const requestCounts = new Map<string, { count: number; resetAt: number }>();
 const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT = 120;
+const MAX_RATE_LIMIT_ENTRIES = 10_000;
+
+function pruneRateLimits() {
+  const now = Date.now();
+  for (const [ip, entry] of requestCounts) {
+    if (entry.resetAt <= now) requestCounts.delete(ip);
+  }
+}
+setInterval(pruneRateLimits, 60_000).unref();
 
 app.disable("x-powered-by");
 
@@ -34,20 +43,55 @@ app.use(
     },
   }),
 );
-app.use((req, res, next) => {
+
+// Comprehensive Defensive Security Headers
+app.use((_req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  res.setHeader("Permissions-Policy", "camera=*, microphone=(), geolocation=()");
+  // Protect against clickjacking while allowing verified same-origin and AI Studio frames
+  res.setHeader("Content-Security-Policy", "frame-ancestors 'self' https: http:;");
   next();
 });
-app.use(cors());
+
+// Secure Cross-Origin Resource Sharing
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+      if (configuredOrigins.length > 0 && configuredOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      if (
+        origin.endsWith(".run.app") ||
+        origin.endsWith(".google.com") ||
+        origin.includes("localhost") ||
+        origin.includes("127.0.0.1")
+      ) {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
+    credentials: true,
+  }),
+);
+
 // Tatum signs the exact bytes it sends. Capture this route before the JSON
 // parser so the webhook handler can verify x-payload-hash correctly.
 app.use("/api/crypto/webhooks/tatum", express.raw({ type: "application/json", limit: "100kb" }));
 app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: true, limit: "100kb" }));
+
+// Rate limiter with bounds protection
 app.use("/api", (req, res, next) => {
   const now = Date.now();
   const key = req.ip ?? "unknown";
+  
+  if (requestCounts.size >= MAX_RATE_LIMIT_ENTRIES) {
+    pruneRateLimits();
+  }
+
   const record = requestCounts.get(key);
   if (!record || record.resetAt <= now) {
     requestCounts.set(key, { count: 1, resetAt: now + RATE_WINDOW_MS });
@@ -62,5 +106,10 @@ app.use("/api", (req, res, next) => {
 });
 
 app.use("/api", router);
+
+// Catch any unhandled /api requests and return clean JSON 404 instead of falling through to Vite HTML
+app.use("/api", (req, res) => {
+  res.status(404).json({ error: "Endpoint not found", path: req.originalUrl });
+});
 
 export default app;

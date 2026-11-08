@@ -110,7 +110,24 @@ async function setLock(
   return response.json();
 }
 
+const pinFailedAttempts = new Map<string, { attempts: number; lockedUntil?: number }>();
+
+// Prune expired PIN lockout trackers
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, t] of pinFailedAttempts) {
+    if (t.lockedUntil && t.lockedUntil <= now) pinFailedAttempts.delete(id);
+  }
+}, 60_000).unref();
+
 async function verifyPin(userId: string, suppliedPin: unknown) {
+  const now = Date.now();
+  const tracker = pinFailedAttempts.get(userId);
+  if (tracker?.lockedUntil && tracker.lockedUntil > now) {
+    const waitSec = Math.ceil((tracker.lockedUntil - now) / 1000);
+    throw new Error(`Too many incorrect PIN attempts. Locked for ${waitSec} seconds.`);
+  }
+
   if (typeof suppliedPin !== "string" || !/^\d{4}$/.test(suppliedPin)) return false;
   const response = await supabaseRequest(
     `profiles?id=eq.${encodeURIComponent(userId)}&select=pin&limit=1`,
@@ -120,7 +137,22 @@ async function verifyPin(userId: string, suppliedPin: unknown) {
   const savedPin = rows[0]?.pin ?? "";
   const provided = Buffer.from(suppliedPin);
   const expected = Buffer.from(savedPin);
-  return provided.length === expected.length && timingSafeEqual(provided, expected);
+  const matches = provided.length === expected.length && timingSafeEqual(provided, expected);
+
+  if (!matches) {
+    const current = (tracker?.attempts ?? 0) + 1;
+    if (current >= 5) {
+      pinFailedAttempts.set(userId, { attempts: current, lockedUntil: now + 15 * 60 * 1000 });
+      throw new Error("Too many incorrect PIN attempts. PIN verification locked for 15 minutes.");
+    } else {
+      pinFailedAttempts.set(userId, { attempts: current });
+    }
+    return false;
+  }
+
+  // Clear failed attempts upon successful verification
+  pinFailedAttempts.delete(userId);
+  return true;
 }
 
 async function consumeOtpProof(userId: string) {

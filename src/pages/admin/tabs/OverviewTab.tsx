@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAdmin, AdminTab } from '../AdminContext';
+import { Naira } from '@/components/Naira';
 import {
   Users,
   Wallet,
@@ -32,21 +33,30 @@ export const OverviewTab: React.FC = () => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [chartRange, setChartRange] = useState<'daily' | 'weekly' | 'monthly'>('weekly');
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
 
-  const loadOverview = async () => {
+  const loadOverview = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const res = await fetchAdminApi('/api/admin/overview');
       setData(res);
+      setLastUpdated(new Date());
     } catch (err) {
       console.error('Failed to load admin overview:', err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     loadOverview();
+    const interval = setInterval(() => loadOverview(true), 6000);
+    const handleAdminRefresh = () => loadOverview(true);
+    window.addEventListener('vexa:admin-refresh', handleAdminRefresh);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('vexa:admin-refresh', handleAdminRefresh);
+    };
   }, []);
 
   const isDark = adminTheme === 'dark';
@@ -89,7 +99,7 @@ export const OverviewTab: React.FC = () => {
           <div className="flex items-center space-x-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
             <span className="text-xs font-semibold tracking-wider uppercase text-emerald-500 font-mono">
-              Core Ledger Online · Mainnet Node Active
+              Live Real-Time Feed · Synced {lastUpdated.toLocaleTimeString()}
             </span>
           </div>
           <h1 className={`text-2xl font-bold tracking-tight mt-1 ${isDark ? 'text-white' : 'text-gray-900'}`}>
@@ -101,7 +111,7 @@ export const OverviewTab: React.FC = () => {
         </div>
         <div className="flex items-center space-x-3">
           <button
-            onClick={loadOverview}
+            onClick={() => loadOverview(false)}
             disabled={loading}
             className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center space-x-2 border transition-all ${
               isDark
@@ -203,8 +213,8 @@ export const OverviewTab: React.FC = () => {
               <Wallet className="w-5 h-5" />
             </div>
           </div>
-          <div className={`text-2xl font-bold mt-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            ₦{Number(metrics.totalBalances).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          <div className={`text-2xl font-bold mt-2 flex items-baseline ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            <Naira className="mr-0.5 text-xl" />{Number(metrics.totalBalances).toLocaleString(undefined, { minimumFractionDigits: 2 })}
           </div>
           <div className="flex items-center justify-between text-xs text-gray-400 mt-3 pt-3 border-t border-gray-800/50">
             <span>Customer Holdings</span>
@@ -239,8 +249,8 @@ export const OverviewTab: React.FC = () => {
               <ArrowDownLeft className="w-5 h-5" />
             </div>
           </div>
-          <div className={`text-2xl font-bold mt-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            ₦{Number(metrics.totalDepositsVolume).toLocaleString()}
+          <div className={`text-2xl font-bold mt-2 flex items-baseline ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            <Naira className="mr-0.5 text-xl" />{Number(metrics.totalDepositsVolume).toLocaleString()}
           </div>
           <div className="flex items-center justify-between text-xs text-gray-400 mt-3 pt-3 border-t border-gray-800/50">
             <span>Paystack & Bank Gateway</span>
@@ -256,8 +266,8 @@ export const OverviewTab: React.FC = () => {
               <ArrowUpRight className="w-5 h-5" />
             </div>
           </div>
-          <div className={`text-2xl font-bold mt-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            ₦{Number(metrics.totalWithdrawalsVolume).toLocaleString()}
+          <div className={`text-2xl font-bold mt-2 flex items-baseline ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            <Naira className="mr-0.5 text-xl" />{Number(metrics.totalWithdrawalsVolume).toLocaleString()}
           </div>
           <div className="flex items-center justify-between text-xs text-gray-400 mt-3 pt-3 border-t border-gray-800/50">
             <span>Interbank NIP Rails</span>
@@ -418,7 +428,9 @@ export const OverviewTab: React.FC = () => {
                       <span className={`text-xs font-medium uppercase tracking-wide ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>{tx.type}</span>
                     </td>
                     <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm text-slate-900 dark:text-white">
-                      ₦{Number(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      <span className="inline-flex items-baseline justify-end">
+                        <Naira className="mr-0.5 text-xs" />{Number(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
                     </td>
                     <td className="py-4 px-4 sm:px-5 text-center">
                       <span

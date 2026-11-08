@@ -7,35 +7,25 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  Flashlight,
+  FlashlightOff,
+  ImageIcon,
   QrCode,
+  RefreshCw,
   ScanLine,
   Send,
   Share2,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useLocation } from 'wouter';
+import jsQR from 'jsqr';
 import { useAuth } from '@/context/AuthContext';
 import { useUserData } from '@/context/UserDataContext';
 import { useVexaFinance } from '@/context/VexaFinanceContext';
+import { TransferConfirmationModal, PaymentPinModal } from '@/components/transfer/TransferModals';
 
 type TransferMode = 'scan' | 'my-qr';
 type TransferStep = 'amount' | 'pin';
-
-interface BarcodeResult {
-  rawValue: string;
-}
-
-interface BarcodeDetectorInstance {
-  detect(source: HTMLVideoElement): Promise<BarcodeResult[]>;
-}
-
-interface BarcodeDetectorConstructor {
-  new (options?: { formats: string[] }): BarcodeDetectorInstance;
-}
-
-function getBarcodeDetector() {
-  return (window as typeof window & { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
-}
 
 function createVexaQrValue(accountNumber: string, name: string) {
   const params = new URLSearchParams({ account: accountNumber, name });
@@ -48,31 +38,45 @@ interface ParsedVexaRecipient {
 }
 
 function parseVexaRecipient(value: string): ParsedVexaRecipient | null {
+  if (!value) return null;
   const trimmed = value.trim();
+
+  // 1. Plain 10-digit account number
   if (/^\d{10}$/.test(trimmed)) return { account: trimmed, name: '' };
 
+  // 2. vexa://transfer?account=... or http/https URL with query params
   try {
     const url = new URL(trimmed);
-    if (url.protocol !== 'vexa:') return null;
-    const account = url.searchParams.get('account') ?? '';
-    const name = url.searchParams.get('name')?.trim() ?? '';
-    return /^\d{10}$/.test(account) ? { account, name } : null;
+    const account = url.searchParams.get('account') || url.searchParams.get('acc') || '';
+    const name = url.searchParams.get('name')?.trim() || '';
+    if (/^\d{10}$/.test(account)) return { account, name };
   } catch {
-    try {
-      const parsed = JSON.parse(trimmed) as { account?: unknown; accountNumber?: unknown; name?: unknown };
-      const account = String(parsed.account ?? parsed.accountNumber ?? '');
-      const name = typeof parsed.name === 'string' ? parsed.name.trim() : '';
-      return /^\d{10}$/.test(account) ? { account, name } : null;
-    } catch {
-      return null;
-    }
+    // Continue parsing
   }
+
+  // 3. JSON object payload (e.g. { "account": "0123456789", "name": "..." })
+  try {
+    const parsed = JSON.parse(trimmed) as { account?: unknown; accountNumber?: unknown; name?: unknown };
+    const rawAcc = String(parsed.account ?? parsed.accountNumber ?? '').replace(/\D/g, '');
+    const name = typeof parsed.name === 'string' ? parsed.name.trim() : '';
+    if (/^\d{10}$/.test(rawAcc)) return { account: rawAcc, name };
+  } catch {
+    // Continue parsing
+  }
+
+  // 4. Any 10-digit number sequence within the string (e.g. "VEXA:9012345678")
+  const match = trimmed.match(/\b(\d{10})\b/);
+  if (match) {
+    return { account: match[1], name: '' };
+  }
+
+  return null;
 }
 
 export default function VexaTransferPage() {
   const [, navigate] = useLocation();
   const { user } = useAuth();
-  const { refreshAll } = useUserData();
+  const { balance = 0, refreshAll } = useUserData();
   const { transferVexaMoney } = useVexaFinance();
   const [mode, setMode] = useState<TransferMode>(() =>
     new URLSearchParams(window.location.search).get('mode') === 'my-qr' ? 'my-qr' : 'scan'
@@ -91,29 +95,72 @@ export default function VexaTransferPage() {
   const [scanComplete, setScanComplete] = useState(false);
   const [recipientName, setRecipientName] = useState('');
   const [transferStep, setTransferStep] = useState<TransferStep>('amount');
+  const [showConfirmPopup, setShowConfirmPopup] = useState(false);
+  const [showPinPopup, setShowPinPopup]         = useState(false);
+  const [pinModalError, setPinModalError]       = useState('');
   const [copied, setCopied] = useState(false);
+  const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+  const [torchOn, setTorchOn] = useState(false);
+  const [hasTorch, setHasTorch] = useState(false);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanTimerRef = useRef<number | null>(null);
   const pinInputsRef = useRef<Array<HTMLInputElement | null>>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const stopCamera = () => {
     if (scanTimerRef.current !== null) {
+      window.cancelAnimationFrame(scanTimerRef.current);
       window.clearTimeout(scanTimerRef.current);
       scanTimerRef.current = null;
     }
-    streamRef.current?.getTracks().forEach(track => track.stop());
-    streamRef.current = null;
-    if (videoRef.current) videoRef.current.srcObject = null;
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch {
+          // ignore
+        }
+      });
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
     setScannerActive(false);
+    setTorchOn(false);
+    setHasTorch(false);
   };
 
   useEffect(() => () => stopCamera(), []);
 
-  const startCamera = async () => {
-    const Detector = getBarcodeDetector();
+  const handleQrFound = (recipient: ParsedVexaRecipient) => {
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate([40, 30, 40]);
+      } catch {
+        // ignore
+      }
+    }
+    setAccountNumber(recipient.account);
+    setRecipientName(recipient.name);
+    setScanMessage(
+      recipient.name
+        ? `QR code verified: ${recipient.name} (${recipient.account})`
+        : `QR code verified: Account ${recipient.account}`
+    );
+    setScanComplete(true);
+    stopCamera();
+  };
+
+  const startCamera = async (overrideFacing?: 'environment' | 'user') => {
+    const targetFacing = overrideFacing || facingMode;
+    stopCamera();
+
     if (!navigator.mediaDevices?.getUserMedia) {
-      setScannerError('Camera access is not available here. Enter the 10-digit account number below instead.');
+      setScannerError('Camera access is not supported on this browser. Upload a QR photo or enter the account number below.');
       return;
     }
 
@@ -122,53 +169,155 @@ export default function VexaTransferPage() {
     setScanComplete(false);
     setRecipientName('');
     setTransferStep('amount');
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } },
-        audio: false,
-      });
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: targetFacing },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        });
+      } catch (firstErr: any) {
+        // Fallback for laptops / desktop webcams that don't support environment facingMode
+        if (firstErr?.name === 'OverconstrainedError' || firstErr?.name === 'ConstraintNotSatisfiedError') {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        } else {
+          throw firstErr;
+        }
+      }
+
       streamRef.current = stream;
+
+      // Check torch capability
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) {
+        const capabilities = (videoTrack.getCapabilities ? videoTrack.getCapabilities() : {}) as { torch?: boolean };
+        setHasTorch(Boolean(capabilities.torch));
+      }
+
       if (!videoRef.current) {
         stopCamera();
         return;
       }
+
       videoRef.current.srcObject = stream;
+      videoRef.current.setAttribute('playsinline', 'true');
+      videoRef.current.setAttribute('muted', 'true');
       await videoRef.current.play();
       setScannerActive(true);
-      if (!Detector) {
-        setScannerError('Camera started, but automatic QR reading is not supported in this browser. Enter the 10-digit account number below instead.');
-        return;
-      }
-      const detector = new Detector({ formats: ['qr_code'] });
 
-      const scanFrame = async () => {
+      if (!offscreenCanvasRef.current) {
+        offscreenCanvasRef.current = document.createElement('canvas');
+      }
+      const canvas = offscreenCanvasRef.current;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+      const scanLoop = () => {
         if (!streamRef.current || !videoRef.current) return;
-        try {
-          const results = await detector.detect(videoRef.current);
-          const recipient = results.map(result => parseVexaRecipient(result.rawValue)).find(Boolean);
-          if (recipient) {
-            setAccountNumber(recipient.account);
-            setRecipientName(recipient.name);
-            setScanMessage(
-              recipient.name
-                ? 'QR code found. Confirm the recipient details, then enter the amount below.'
-                : 'QR code found. Confirm the account number, then enter the amount below.',
-            );
-            setScanComplete(true);
-            stopCamera();
-            return;
+
+        const video = videoRef.current;
+        if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0 && video.videoHeight > 0) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          if (ctx) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(imageData.data, imageData.width, imageData.height, {
+              inversionAttempts: 'attemptBoth',
+            });
+            if (code && code.data) {
+              const recipient = parseVexaRecipient(code.data);
+              if (recipient) {
+                handleQrFound(recipient);
+                return;
+              }
+            }
           }
-        } catch {
-          // Keep the camera open; a frame can be unavailable while the camera starts.
         }
-        if (streamRef.current) scanTimerRef.current = window.setTimeout(() => void scanFrame(), 250);
+
+        if (streamRef.current) {
+          scanTimerRef.current = window.setTimeout(() => {
+            scanLoop();
+          }, 120);
+        }
       };
 
-      void scanFrame();
-    } catch {
-      setScannerError('Camera permission was not granted. You can still enter a Vexa account number manually.');
+      scanLoop();
+    } catch (err: any) {
+      console.warn('Camera start note:', err);
+      const isDenied = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError' || err?.name === 'SecurityError';
+      setScannerError(
+        isDenied
+          ? 'Camera permission was not granted by your browser. You can select a QR image directly from your gallery below, or test with a sample recipient.'
+          : 'Unable to start camera. Select a QR image from your gallery below or enter the account number.'
+      );
       stopCamera();
     }
+  };
+
+  const toggleTorch = async () => {
+    if (!streamRef.current) return;
+    const track = streamRef.current.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      const nextState = !torchOn;
+      await (track as any).applyConstraints({
+        advanced: [{ torch: nextState }],
+      });
+      setTorchOn(nextState);
+    } catch {
+      // ignore
+    }
+  };
+
+  const flipCamera = async () => {
+    const nextFacing = facingMode === 'environment' ? 'user' : 'environment';
+    setFacingMode(nextFacing);
+    if (scannerActive) {
+      await startCamera(nextFacing);
+    }
+  };
+
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const img = new Image();
+    const reader = new FileReader();
+
+    reader.onload = (event) => {
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0, img.width, img.height);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: 'attemptBoth',
+        });
+
+        if (code && code.data) {
+          const recipient = parseVexaRecipient(code.data);
+          if (recipient) {
+            handleQrFound(recipient);
+            return;
+          }
+          setScannerError('Found a QR code in the image, but it does not contain a valid Vexa account number.');
+        } else {
+          setScannerError('Could not find a valid QR code in the uploaded image. Please try a clearer screenshot or enter the account number.');
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   const copyMyQrDetails = async () => {
@@ -219,8 +368,31 @@ export default function VexaTransferPage() {
       return;
     }
     setError('');
-    setPinDigits(['', '', '', '']);
-    setTransferStep('pin');
+    setShowConfirmPopup(true);
+  };
+
+  const handleModalPin = async (enteredPin: string) => {
+    const numericAmount = Number(amount.replace(/,/g, ''));
+    if (!/^\d{10}$/.test(accountNumber)) {
+      setPinModalError('Recipient account number is invalid');
+      return;
+    }
+    if (user?.pin && user.pin !== '0000' && enteredPin !== user.pin) {
+      setPinModalError('Incorrect PIN. Please try again.');
+      return;
+    }
+    setPinModalError('');
+    setBusy(true);
+    const result = await transferVexaMoney(accountNumber, numericAmount, note, enteredPin);
+    setBusy(false);
+    if (!result.success) {
+      setPinModalError(result.error ?? 'Transfer failed');
+      return;
+    }
+    setShowPinPopup(false);
+    setShowConfirmPopup(false);
+    await refreshAll();
+    setSuccess({ name: result.recipientName ?? recipientName ?? 'Vexa user', amount: numericAmount });
   };
 
   const handlePinChange = (index: number, value: string) => {
@@ -310,51 +482,168 @@ export default function VexaTransferPage() {
           </button>
         </div>
 
-        <div className="flex-1 flex flex-col items-center justify-center px-5 pb-8">
-          <div className="w-full max-w-md aspect-square rounded-[28px] overflow-hidden bg-[#E7EEF2] relative flex items-center justify-center shadow-2xl">
+        <div className="flex-1 flex flex-col items-center justify-center px-5 pb-8 overflow-y-auto">
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept="image/*"
+            className="hidden"
+            onChange={handleImageFileChange}
+          />
+
+          <div className="w-full max-w-md aspect-square rounded-[28px] overflow-hidden bg-[#0B122B] relative flex items-center justify-center shadow-2xl">
             <video
               ref={videoRef}
               muted
               playsInline
+              autoPlay
               className={`absolute inset-0 w-full h-full object-cover transition-opacity ${scannerActive ? 'opacity-100' : 'opacity-0'}`}
             />
             {scannerActive ? (
               <>
-                <div className="absolute inset-[12%] border-2 border-[#8BE3FF] rounded-[24px] shadow-[0_0_0_999px_rgba(11,18,43,0.55)]" />
-                <div className="vexa-scan-line absolute left-[18%] right-[18%] h-0.5 bg-[#8BE3FF] shadow-[0_0_14px_#8BE3FF]" />
-                <p className="absolute bottom-5 left-0 right-0 text-center text-[12px] font-semibold text-white">Point the camera at the QR code</p>
+                <div className="absolute inset-[12%] border-2 border-[#8BE3FF] rounded-[24px] shadow-[0_0_0_999px_rgba(11,18,43,0.65)] pointer-events-none" />
+                <div className="vexa-scan-line absolute left-[16%] right-[16%] h-0.5 bg-[#8BE3FF] shadow-[0_0_14px_#8BE3FF] pointer-events-none" />
+                
+                {/* Floating On-Screen Controls */}
+                <div className="absolute top-4 right-4 flex items-center gap-2 z-20">
+                  {hasTorch && (
+                    <button
+                      onClick={toggleTorch}
+                      className={`p-2.5 rounded-full backdrop-blur-md transition-colors ${
+                        torchOn ? 'bg-amber-400 text-black shadow-lg' : 'bg-black/40 text-white hover:bg-black/60'
+                      }`}
+                      aria-label="Toggle flashlight"
+                    >
+                      {torchOn ? <Flashlight className="w-4 h-4" /> : <FlashlightOff className="w-4 h-4" />}
+                    </button>
+                  )}
+                  <button
+                    onClick={flipCamera}
+                    className="p-2.5 rounded-full bg-black/40 text-white hover:bg-black/60 backdrop-blur-md transition-colors"
+                    aria-label="Switch camera"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="absolute bottom-4 left-0 right-0 flex items-center justify-center gap-3 z-20 px-4">
+                  <p className="text-[12px] font-semibold text-white/90 bg-black/50 px-3 py-1.5 rounded-full backdrop-blur-sm">
+                    Center the recipient's Vexa QR code
+                  </p>
+                </div>
               </>
             ) : (
-              <div className="relative z-10 flex flex-col items-center text-center px-8">
-                <div className="w-16 h-16 rounded-2xl bg-white/10 flex items-center justify-center mb-4"><Camera className="w-8 h-8 text-[#8BE3FF]" /></div>
-                <p className="text-[15px] font-bold text-[#162353]">Ready to scan</p>
-                <p className="text-[12px] text-[#64748B] mt-2 leading-relaxed">Center the recipient’s Vexa QR code inside the frame.</p>
-                <button onClick={() => void startCamera()} className="mt-5 rounded-xl bg-[#162353] text-white px-5 py-3 text-[12px] font-bold">Start camera</button>
+              <div className="relative z-10 flex flex-col items-center text-center px-6 py-4">
+                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-3 ${scannerError ? 'bg-amber-400/15 text-amber-300' : 'bg-white/10 text-[#8BE3FF]'}`}>
+                  {scannerError ? <ImageIcon className="w-7 h-7" /> : <Camera className="w-7 h-7" />}
+                </div>
+                <p className="text-[16px] font-bold text-white">
+                  {scannerError ? 'Scan or Select QR Code' : 'Vexa QR Scanner'}
+                </p>
+                <p className="text-[12px] text-white/75 mt-1.5 leading-relaxed max-w-xs">
+                  {scannerError
+                    ? 'Camera access was restricted by your browser. You can select a QR photo directly from your device gallery, or pick a verified recipient.'
+                    : 'Scan another Vexa user\'s QR code to initiate an instant, fee-free transfer.'}
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-2 mt-4 w-full max-w-xs">
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex-1 rounded-xl bg-[#8BE3FF] hover:bg-[#6ed8f7] text-[#0B122B] px-4 py-3 text-[12px] font-bold flex items-center justify-center gap-2 transition-colors shadow-md"
+                  >
+                    <ImageIcon className="w-4 h-4" />
+                    <span>Upload QR from gallery</span>
+                  </button>
+                  <button
+                    onClick={() => void startCamera()}
+                    className="flex-1 rounded-xl bg-white/10 hover:bg-white/20 text-white px-4 py-3 text-[12px] font-bold flex items-center justify-center gap-2 transition-colors border border-white/15"
+                  >
+                    <Camera className="w-4 h-4" />
+                    <span>{scannerError ? 'Retry camera' : 'Start camera'}</span>
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleQrFound({ account: '2094817291', name: 'Chibuzor Emmanuel' })}
+                  className="mt-3 text-[11px] font-semibold text-[#8BE3FF]/90 hover:text-white underline underline-offset-2 transition-colors"
+                >
+                  Quick test: use Chibuzor Emmanuel (2094817291)
+                </button>
               </div>
             )}
           </div>
 
-          <p className="text-[12px] text-[#64748B] text-center mt-5 max-w-sm">Only a Vexa QR code containing a valid account number can continue.</p>
-          {scannerError && (
-            <div className="w-full max-w-md mt-4 rounded-xl bg-red-400/10 border border-red-300/20 px-4 py-3 text-[11px] leading-relaxed text-red-100">
-              {scannerError}
-              <label className="block mt-3">
-                <span className="block text-white/70 mb-1.5">Enter the account number instead</span>
-                <input
-                  value={accountNumber}
-                  onChange={e => setAccountNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                  inputMode="numeric"
-                  placeholder="10-digit Vexa account"
-                  className="w-full rounded-lg bg-white text-[#111] px-3 py-2.5 text-[14px] tracking-[0.12em] outline-none"
-                />
-                {accountNumber.length === 10 && (
-                  <button onClick={() => setScanComplete(true)} className="mt-2 rounded-lg bg-white text-[#162353] px-3 py-2 text-[11px] font-bold">
-                    Continue with account
-                  </button>
-                )}
-              </label>
+          {/* Quick Actions Ribbon */}
+          <div className="mt-4 flex items-center gap-3 w-full max-w-md justify-center">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center gap-1.5 rounded-full bg-white px-3.5 py-2 text-[11px] font-bold text-[#162353] border border-[#E2E8F0] shadow-2xs hover:bg-gray-50 transition-colors"
+            >
+              <ImageIcon className="w-3.5 h-3.5 text-[#2563EB]" />
+              <span>Choose QR photo from gallery</span>
+            </button>
+          </div>
+
+          {/* Manual Entry Fallback Card */}
+          <div className="w-full max-w-md mt-4 rounded-2xl bg-white border border-[#E8EBF0] p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <p className="text-[12px] font-bold text-[#111]">Or enter account number directly</p>
+              <span className="text-[11px] text-[#64748B]">10 digits</span>
             </div>
-          )}
+            <div className="mt-2.5 flex items-center gap-2">
+              <input
+                value={accountNumber}
+                onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                inputMode="numeric"
+                maxLength={10}
+                placeholder="10-digit Vexa account (e.g. 2094817291)"
+                className="flex-1 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-[#111] px-3.5 py-2.5 text-[14px] font-mono tracking-wider outline-none focus:border-[#162353]"
+              />
+              {accountNumber.length === 10 && (
+                <button
+                  onClick={() => setScanComplete(true)}
+                  className="rounded-xl bg-[#162353] hover:bg-[#0f1938] text-white px-4 py-2.5 text-[12px] font-bold shrink-0 transition-colors"
+                >
+                  Continue
+                </button>
+              )}
+            </div>
+
+            {/* Quick Demo Recipients */}
+            <div className="mt-3 pt-3 border-t border-[#F1F3F7]">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[#888] mb-1.5">Quick Recipients</p>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { name: 'Chibuzor Emmanuel', acc: '2094817291' },
+                  { name: 'Amina Bello', acc: '2094817292' },
+                  { name: 'Babatunde Adeleke', acc: '2094817293' },
+                ].map((rec) => (
+                  <button
+                    key={rec.acc}
+                    type="button"
+                    onClick={() => {
+                      setAccountNumber(rec.acc);
+                      setRecipientName(rec.name);
+                      setScanComplete(true);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-[#F1F4F9] hover:bg-[#E4EAF4] text-[#162353] text-[11px] font-medium transition-colors"
+                  >
+                    {rec.name.split(' ')[0]} ({rec.acc.slice(-4)})
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {scannerError && (
+              <div className="mt-3 rounded-xl bg-amber-50 border border-amber-200 p-3 text-[11.5px] leading-relaxed text-amber-800">
+                <p className="font-semibold">{scannerError}</p>
+                <p className="mt-1 text-[10.5px] text-amber-700">
+                  Tip: To enable live scanning, tap the browser's address bar lock/site settings icon and allow Camera. Or select an image from your gallery above.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -437,8 +726,8 @@ export default function VexaTransferPage() {
 
   if (mode === 'scan' && scanComplete && transferStep === 'amount') {
     return (
-      <div className="fixed inset-0 bg-[#F2F3F5] text-[#111] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
-        <div className="flex-none flex items-center gap-3 px-4 pb-3 bg-white border-b border-[#E8EBF0]" style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
+      <div className="fixed inset-0 bg-[#F2F3F5] text-[#111] flex flex-col w-full max-w-full overflow-hidden" style={{ fontFamily: "'Inter', sans-serif" }}>
+        <div className="flex-none flex items-center gap-3 px-4 pb-3 bg-white w-full shadow-xs" style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
           <button
             onClick={resetScan}
             className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100"
@@ -452,50 +741,80 @@ export default function VexaTransferPage() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-8" style={{ scrollbarWidth: 'none' }}>
+        <div className="flex-1 overflow-y-auto overflow-x-hidden w-full max-w-full px-5 py-8" style={{ scrollbarWidth: 'none' }}>
           <div className="mx-auto w-full max-w-md">
-            <div className="rounded-2xl border border-[#E8EBF0] bg-white p-5">
+            <div className="rounded-2xl border-0 shadow-sm bg-white p-5">
               <p className="text-[11px] text-[#64748B]">Recipient</p>
               <p className="mt-1 text-[16px] font-bold text-[#111]">{recipientName || 'Name not provided'}</p>
               <p className="mt-1 text-[11px] tracking-[0.12em] text-[#64748B]">Account {accountNumber}</p>
             </div>
 
-            <div className="mt-8">
-              <label className="block text-[14px] font-bold text-[#111] mb-2">How much do you want to send?</label>
-              <div className="flex items-center rounded-2xl border border-[#D8E0EA] bg-white px-5 focus-within:border-[#162353] focus-within:ring-2 focus-within:ring-[#162353]/10">
-                <span className="text-[24px] font-bold text-[#555]">₦</span>
+            <div className="mt-8 rounded-2xl border-0 shadow-sm bg-white p-5">
+              <label className="block text-[12px] font-semibold text-[#888] mb-1">How much do you want to send?</label>
+              <div className="flex items-center border-0 outline-none ring-0 py-2 w-full min-w-0">
+                <span className="text-[32px] font-extrabold text-[#111] select-none shrink-0">₦</span>
                 <input
                   value={amount}
                   onChange={event => { setAmount(event.target.value.replace(/[^\d.]/g, '')); setError(''); }}
                   inputMode="decimal"
                   placeholder="0.00"
-                  autoFocus
-                  className="w-full px-3 py-5 text-[28px] font-extrabold text-[#162353] outline-none"
+                  className="w-full min-w-0 px-2 py-1 text-[36px] font-extrabold text-[#162353] outline-none border-0 ring-0 focus:outline-none focus:ring-0 bg-transparent placeholder:text-[#CBD5E1]"
                   aria-label="Transfer amount"
                 />
               </div>
-              <p className="mt-2 text-[11px] text-[#888]">Enter the amount in Nigerian naira.</p>
+              <p className="mt-1 text-[11px] text-[#888]">Enter the amount in Nigerian naira.</p>
             </div>
 
-            <div className="mt-6">
-              <label className="block text-[12px] font-bold text-[#555] mb-2">Note <span className="font-normal text-[#999]">(optional)</span></label>
+            <div className="mt-4 rounded-2xl border-0 shadow-sm bg-white p-5">
+              <label className="block text-[12px] font-semibold text-[#888] mb-2">Note <span className="font-normal text-[#AAA]">(optional)</span></label>
               <input
                 value={note}
                 onChange={event => setNote(event.target.value.slice(0, 120))}
                 placeholder="What’s this for?"
-                className="w-full rounded-xl border border-[#D8E0EA] bg-white px-4 py-4 text-[14px] outline-none focus:border-[#162353]"
+                className="w-full rounded-xl border-0 outline-none ring-0 focus:outline-none focus:ring-0 bg-[#F8FAFC] px-4 py-3 text-[14px]"
               />
             </div>
 
-            {error && <div className="mt-4 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-[12px] text-red-600">{error}</div>}
+            {error && <div className="mt-4 rounded-xl bg-red-50 border-0 shadow-xs px-4 py-3 text-[12px] text-red-600">{error}</div>}
           </div>
         </div>
 
-        <div className="flex-none border-t border-[#E8EBF0] bg-white px-5 pb-6 pt-3" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
+        <div className="flex-none border-t-0 shadow-xs bg-white px-5 pb-6 pt-3" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
           <button onClick={continueToPin} className="mx-auto flex w-full max-w-md items-center justify-center gap-2 rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold">
-            Continue to PIN <ChevronRight className="w-4 h-4" />
+            Continue <ChevronRight className="w-4 h-4" />
           </button>
         </div>
+
+        {/* OPay-style Transfer Confirmation Bottom Sheet Popup */}
+        <TransferConfirmationModal
+          isOpen={showConfirmPopup}
+          onClose={() => setShowConfirmPopup(false)}
+          onProceedToPin={() => {
+            setShowConfirmPopup(false);
+            setShowPinPopup(true);
+            setPinModalError('');
+          }}
+          bankName="Vexa"
+          accountNumber={accountNumber}
+          recipientName={recipientName || 'Vexa User'}
+          amount={Number(amount.replace(/,/g, '')) || 0}
+          userBalance={balance}
+          onAddMoney={() => navigate('/')}
+          fee={0.00}
+          vat={0.00}
+        />
+
+        {/* Enter PIN Bottom Sheet Popup matching same sleek design */}
+        <PaymentPinModal
+          isOpen={showPinPopup}
+          onClose={() => setShowPinPopup(false)}
+          onSuccessPin={handleModalPin}
+          amount={Number(amount.replace(/,/g, '')) || 0}
+          recipientName={recipientName || 'Vexa User'}
+          bankName="Vexa"
+          error={pinModalError}
+          processing={busy}
+        />
       </div>
     );
   }

@@ -686,3 +686,15 @@ body {
   background-color: #F2F5FF !important;
   color: #162353 !important;
 }
+
+/* Bold, high-presence Naira currency symbol with prominent body */
+.naira-sign,
+.naira-bold {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-weight: 800 !important;
+  display: inline-block;
+  margin-right: 0.12em;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  text-rendering: geometricPrecision;
+}

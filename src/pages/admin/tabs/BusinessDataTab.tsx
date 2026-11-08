@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAdmin } from '../AdminContext';
+import { Naira } from '@/components/Naira';
 import {
   BriefcaseBusiness,
   Building2,
@@ -132,8 +133,8 @@ export const BusinessDataTab: React.FC = () => {
               <Wallet className="w-5 h-5" />
             </div>
           </div>
-          <div className={`text-2xl font-bold mt-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            ₦{Number(metrics.totalCorporateBalance).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          <div className={`text-2xl font-bold mt-2 flex items-baseline ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            <Naira className="mr-0.5 text-xl" />{Number(metrics.totalCorporateBalance).toLocaleString(undefined, { minimumFractionDigits: 2 })}
           </div>
           <div className="text-xs text-emerald-500 mt-2 font-semibold">Institutional Vault Balance</div>
         </div>
@@ -158,8 +159,8 @@ export const BusinessDataTab: React.FC = () => {
               <ArrowUpRight className="w-5 h-5" />
             </div>
           </div>
-          <div className={`text-2xl font-bold mt-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            ₦{Number(metrics.monthlyPayrollVolume).toLocaleString()}
+          <div className={`text-2xl font-bold mt-2 flex items-baseline ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            <Naira className="mr-0.5 text-xl" />{Number(metrics.monthlyPayrollVolume).toLocaleString()}
           </div>
           <div className="text-xs text-gray-400 mt-2 font-mono">Disbursed Automated</div>
         </div>
@@ -218,12 +219,14 @@ export const BusinessDataTab: React.FC = () => {
                       {biz.accountNumber}
                     </td>
                     <td className={`py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      ₦{Number(biz.balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      <span className="inline-flex items-baseline justify-end">
+                        <Naira className="mr-0.5 text-xs" />{Number(biz.balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </span>
                     </td>
                     <td className="py-4 px-4 sm:px-5 font-sans">
                       <div className={`text-xs font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{biz.employeeCount} Employees</div>
-                      <div className={`text-[11px] font-mono mt-0.5 ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
-                        ₦{Number(biz.monthlyPayroll).toLocaleString()}/mo
+                      <div className={`text-[11px] font-mono mt-0.5 flex items-baseline ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
+                        <Naira className="mr-0.5 text-[10px]" />{Number(biz.monthlyPayroll).toLocaleString()}/mo
                       </div>
                     </td>
                     <td className="py-4 px-4 sm:px-5 text-center">
@@ -283,7 +286,9 @@ export const BusinessDataTab: React.FC = () => {
                     {tx.type} {tx.recipientsCount > 1 && `(${tx.recipientsCount} staff)`}
                   </td>
                   <td className={`py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                    ₦{Number(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    <span className="inline-flex items-baseline justify-end">
+                      <Naira className="mr-0.5 text-xs" />{Number(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </span>
                   </td>
                   <td className="py-4 px-4 sm:px-5 text-center">
                     <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-wide">
@@ -317,16 +322,16 @@ export const BusinessDataTab: React.FC = () => {
             <div className="my-4 space-y-3 text-xs font-mono">
               <div className={`p-3 rounded-xl border space-y-1 ${isDark ? 'bg-gray-900 border-gray-800 text-gray-300' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
                 <div>Corporate Account: <strong className="text-[#F0B90B]">{selectedBiz.accountNumber}</strong></div>
-                <div>Treasury Balance: <strong>₦{Number(selectedBiz.balance).toLocaleString()}</strong></div>
+                <div className="flex items-baseline">Treasury Balance: <strong className="ml-1 inline-flex items-baseline"><Naira className="mr-0.5 text-xs font-bold" />{Number(selectedBiz.balance).toLocaleString()}</strong></div>
                 <div>Industry: {selectedBiz.industry}</div>
                 <div>Owner/Signatory: {selectedBiz.ownerName} ({selectedBiz.ownerPhone})</div>
                 <div>Email: {selectedBiz.email}</div>
-                <div>Single Transfer Limit: ₦{Number(selectedBiz.transactionLimit).toLocaleString()}</div>
+                <div className="flex items-baseline">Single Transfer Limit: <span className="ml-1 inline-flex items-baseline"><Naira className="mr-0.5 text-xs font-bold" />{Number(selectedBiz.transactionLimit).toLocaleString()}</span></div>
               </div>
 
               <div className={`p-3 rounded-xl border space-y-1 ${isDark ? 'bg-gray-900/60 border-gray-800 text-gray-300' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
                 <div>Enrolled Employees: {selectedBiz.employeeCount}</div>
-                <div>Payroll Budget: ₦{Number(selectedBiz.monthlyPayroll).toLocaleString()} / month</div>
+                <div className="flex items-baseline">Payroll Budget: <span className="mx-1 inline-flex items-baseline"><Naira className="mr-0.5 text-xs font-bold" />{Number(selectedBiz.monthlyPayroll).toLocaleString()}</span> / month</div>
                 <div>Status: <span className="uppercase text-emerald-500 font-bold">{selectedBiz.status}</span></div>
               </div>
             </div>

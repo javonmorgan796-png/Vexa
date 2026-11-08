@@ -4,6 +4,8 @@ import { useBusiness } from '@/context/BusinessContext';
 import { useBusinessSecurity } from '@/context/BusinessSecurityContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
+import { cleanBankName } from '@/pages/transfer/BankSelectionPage';
+
 function fmt(n: number) { return '₦' + n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
 interface PaystackBank {
@@ -16,7 +18,7 @@ interface PaystackBank {
 function storedSelectedBank(): PaystackBank | null {
   try {
     const value = JSON.parse(sessionStorage.getItem('vexa.selectedBank') ?? 'null') as PaystackBank | null;
-    return value?.name && value.code ? value : null;
+    return value?.name && value.code ? { ...value, name: cleanBankName(value.name) } : null;
   } catch {
     return null;
   }
@@ -361,13 +363,21 @@ export default function BusinessTransfers() {
             )}
 
             {/* Amount */}
-            <div>
-              <p className="text-[12px] font-semibold text-[#444] mb-1.5">Amount (₦)</p>
-              <input type="number" placeholder="0.00" value={amount} onChange={e => { setAmount(e.target.value); setError(''); }}
-                className="w-full h-[56px] rounded-xl border border-[#E2E8F0] bg-white px-4 text-[20px] font-bold text-[#111] placeholder-[#C0C8D4] focus:outline-none focus:border-[#162353] transition-colors" />
+            <div className="rounded-2xl border border-[#E2E8F0] bg-white p-4">
+              <p className="text-[12px] font-semibold text-[#888] mb-1">Amount</p>
+              <div className="flex items-center border-0 outline-none ring-0 py-1 w-full min-w-0">
+                <span className="text-[28px] font-extrabold text-[#111] select-none mr-1 shrink-0">₦</span>
+                <input
+                  type="number"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={e => { setAmount(e.target.value); setError(''); }}
+                  className="w-full min-w-0 text-[32px] font-extrabold text-[#111] placeholder-[#CBD5E1] border-0 outline-none ring-0 focus:outline-none focus:ring-0 bg-transparent"
+                />
+              </div>
               <div className="flex gap-2 mt-2">
                 {[5000, 10000, 50000, 100000].map(v => (
-                  <button key={v} onClick={() => setAmount(String(v))} className="flex-1 py-1.5 bg-white border border-[#E2E8F0] rounded-lg text-[11px] font-semibold text-[#555]">
+                  <button key={v} onClick={() => setAmount(String(v))} className="flex-1 py-1.5 bg-slate-50 border border-[#E2E8F0] rounded-lg text-[11px] font-semibold text-[#555] hover:bg-slate-100">
                     ₦{(v/1000).toFixed(0)}k
                   </button>
                 ))}
