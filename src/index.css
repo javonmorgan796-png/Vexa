@@ -95,9 +95,9 @@
 
 /* LIGHT MODE */
 :root {
-  --wallet-brand: #0f4f5c;
-  --business-brand: #0e7490;
-  --brand-cyan: #0e7490;
+  --wallet-brand: #162353;
+  --business-brand: #162353;
+  --brand-cyan: #2563EB;
   --button-outline: rgba(0, 0, 0, 0.1);
   --badge-outline: rgba(0, 0, 0, 0.05);
 
@@ -115,15 +115,15 @@
   --sidebar: 0 0% 96%;
   --sidebar-foreground: 0 0% 7%;
   --sidebar-border: 0 0% 89%;
-  --sidebar-primary: 190 72% 21%;
+  --sidebar-primary: 227 58% 21%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 0 0% 90%;
   --sidebar-accent-foreground: 0 0% 7%;
-  --sidebar-ring: 190 72% 21%;
+  --sidebar-ring: 227 58% 21%;
   --popover: 0 0% 100%;
   --popover-foreground: 0 0% 7%;
   --popover-border: 0 0% 89%;
-  --primary: 190 72% 21%;
+  --primary: 227 58% 21%;
   --primary-foreground: 0 0% 100%;
   --secondary: 0 0% 94%;
   --secondary-foreground: 0 0% 7%;
