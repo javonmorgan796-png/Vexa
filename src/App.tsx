@@ -3001,7 +3001,7 @@ function TransferPage() {
             {/* PIN dots */}
             <div className="flex gap-5">
               {[0,1,2,3].map(i => (
-                <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${i < pin.length ? 'bg-[#162353] border-[#162353]' : 'border-[#CBD5E1] bg-transparent'}`} />
+                <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${i < pin.length ? 'bg-[#F0B90B] border-[#F0B90B] scale-110 shadow-xs' : 'border-[#CBD5E1] dark:border-[#3A4556] bg-transparent'}`} />
               ))}
             </div>
             {(pinError || submitError) && (
@@ -3035,7 +3035,7 @@ function TransferPage() {
             <button
               onClick={submitPin}
               disabled={pin.length < 4 || processing}
-              className={`w-full h-[50px] rounded-xl text-[14px] font-semibold text-white transition-all ${pin.length === 4 && !processing ? 'bg-[#162353] active:opacity-80' : 'bg-[#162353]/40'}`}
+              className={`w-full h-[50px] rounded-xl text-[14px] font-bold transition-all shadow-sm ${pin.length === 4 && !processing ? 'bg-[#F0B90B] hover:bg-[#FCD535] text-[#181A20] active:scale-[0.99]' : 'bg-[#F0B90B]/40 text-[#181A20]/40'}`}
             >
               {processing ? 'Processing…' : 'Confirm Transfer'}
             </button>

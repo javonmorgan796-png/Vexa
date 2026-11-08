@@ -315,8 +315,8 @@ export function PaymentPinModal({
                 key={index}
                 className={`w-4 h-4 rounded-full border-2 transition-all duration-150 ${
                   isFilled
-                    ? 'bg-[#162353] border-[#162353] scale-110 shadow-xs'
-                    : 'border-gray-300 bg-transparent'
+                    ? 'bg-[#F0B90B] border-[#F0B90B] scale-110 shadow-xs'
+                    : 'border-gray-300 dark:border-gray-600 bg-transparent'
                 }`}
               />
             );

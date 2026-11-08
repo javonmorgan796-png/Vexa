@@ -237,37 +237,37 @@
 }
 
 .dark {
-  --background: 222 47% 11%;
-  --foreground: 210 40% 96%;
-  --border: 217 33% 27%;
-  --card: 222 39% 16%;
-  --card-foreground: 210 40% 96%;
-  --card-border: 217 33% 27%;
-  --popover: 222 39% 16%;
-  --popover-foreground: 210 40% 96%;
-  --popover-border: 217 33% 27%;
-  --secondary: 217 33% 22%;
-  --secondary-foreground: 210 40% 96%;
-  --muted: 217 33% 22%;
-  --muted-foreground: 215 20% 68%;
-  --accent: 217 33% 22%;
-  --accent-foreground: 210 40% 96%;
-  --input: 217 33% 27%;
-  --ring: 187 72% 42%;
+  --background: 220 13% 7%;
+  --foreground: 210 11% 93%;
+  --border: 217 15% 20%;
+  --card: 216 16% 14%;
+  --card-foreground: 210 11% 93%;
+  --card-border: 217 15% 20%;
+  --popover: 216 16% 14%;
+  --popover-foreground: 210 11% 93%;
+  --popover-border: 217 15% 20%;
+  --secondary: 217 15% 20%;
+  --secondary-foreground: 210 11% 93%;
+  --muted: 217 15% 20%;
+  --muted-foreground: 215 10% 56%;
+  --accent: 217 15% 20%;
+  --accent-foreground: 210 11% 93%;
+  --input: 217 15% 20%;
+  --ring: 43 96% 49%;
 
-  --theme-page: #0B1220;
-  --theme-surface: #141E33;
-  --theme-surface-alt: #1B2942;
-  --theme-primary-text: #F4F7FB;
-  --theme-secondary-text: #A9B6CA;
-  --theme-border: #2B3A55;
-  --theme-icon: #B9C7DB;
-  --theme-control: #0F192C;
-  --theme-control-active: #2A3B59;
-  --theme-control-focus: #183047;
-  --theme-selected-control: #15364A;
-  --theme-selected-text: #91D8F3;
-  --theme-brand-text: #63DCC4;
+  --theme-page: #0B0E11;
+  --theme-surface: #181A20;
+  --theme-surface-alt: #1E2329;
+  --theme-primary-text: #EAECEF;
+  --theme-secondary-text: #848E9C;
+  --theme-border: #2B313A;
+  --theme-icon: #848E9C;
+  --theme-control: #1E2329;
+  --theme-control-active: #2B313A;
+  --theme-control-focus: #2B313A;
+  --theme-selected-control: #2B313A;
+  --theme-selected-text: #F0B90B;
+  --theme-brand-text: #F0B90B;
 }
 
 html,
@@ -518,7 +518,8 @@ body {
 
 .dark [class~="bg-[#F2F3F5]"],
 .dark [class~="bg-[#F5F5F5]"],
-.dark [class~="bg-[#F6F6F6]"] {
+.dark [class~="bg-[#F6F6F6]"],
+.dark [class~="bg-[#F4F6F9]"] {
   background-color: var(--theme-page) !important;
 }
 
@@ -529,7 +530,11 @@ body {
 .dark [class~="bg-[#F8F8FA]"],
 .dark [class~="bg-[#EEF1F5]"],
 .dark [class~="bg-[#F1F2F7]"],
-.dark [class~="bg-[#F9F9F9]"] {
+.dark [class~="bg-[#F9F9F9]"],
+.dark [class~="bg-[#FAFAFC]"],
+.dark [class~="bg-[#F8FAFC]"],
+.dark [class~="bg-[#F4F5F7]"],
+.dark [class~="bg-[#F2F4F7]"] {
   background-color: var(--theme-surface-alt) !important;
 }
 
@@ -678,13 +683,13 @@ body {
 /* Keep the primary home action legible when the global dark surface overrides are active. */
 .dark .home-deposit-button,
 .dark .home-deposit-button:active {
-  background-color: #FFFFFF !important;
-  color: #162353 !important;
+  background-color: #F0B90B !important;
+  color: #181A20 !important;
 }
 
 .dark .home-deposit-button:hover {
-  background-color: #F2F5FF !important;
-  color: #162353 !important;
+  background-color: #FCD535 !important;
+  color: #181A20 !important;
 }
 
 /* Bold, high-presence Naira currency symbol with prominent body */
