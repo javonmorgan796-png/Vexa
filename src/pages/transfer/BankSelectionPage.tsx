@@ -85,16 +85,16 @@ function readRecentBanks(): PaystackBank[] {
   }
 }
 
+import { BankLogoBadge } from '@/components/BankLogoBadge';
+
 function BankLogo({ bank, size = 'normal' }: { bank: PaystackBank; size?: 'small' | 'normal' }) {
   const displayName = cleanBankName(bank.name);
   return (
-    <span className={`${size === 'small' ? 'w-10 h-10' : 'w-11 h-11'} rounded-full bg-[#EEF4FF] flex items-center justify-center overflow-hidden shrink-0`}>
-      {bank.logoUrl ? (
-        <img src={bank.logoUrl} alt="" className={`${size === 'small' ? 'w-9 h-9' : 'w-10 h-10'} object-contain`} />
-      ) : (
-        <span className="text-[#0f4f5c] text-[16px] font-bold">{displayName.slice(0, 2).trim()}</span>
-      )}
-    </span>
+    <BankLogoBadge
+      bankName={displayName}
+      bankLogo={bank.logoUrl}
+      size={size === 'small' ? 'sm' : 'md'}
+    />
   );
 }
 

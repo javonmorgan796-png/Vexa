@@ -33,6 +33,8 @@ import { IncomingCryptoPage, OutgoingCryptoPage } from '@/pages/crypto/CryptoHis
 import VexaTransferPage from '@/pages/transfer/VexaTransferPage';
 import BankSelectionPage from '@/pages/transfer/BankSelectionPage';
 import { TransferConfirmationModal, PaymentPinModal } from '@/components/transfer/TransferModals';
+import { BankLogoBadge } from '@/components/BankLogoBadge';
+import { BankingTransferReceipt } from '@/components/transfer/BankingTransferReceipt';
 import { BusinessProvider } from '@/context/BusinessContext';
 import BusinessDashboard from '@/pages/business/BusinessDashboard';
 import BusinessOnboarding from '@/pages/business/BusinessOnboarding';
@@ -2460,7 +2462,7 @@ interface PaystackBank {
 
 type TxStep = 'details' | 'amount' | 'create_pin' | 'pin' | 'success';
 
-interface TransferReceiptData {
+export interface TransferReceiptData {
   transaction: AppTransaction;
   recipientName: string;
   bank: string;
@@ -2485,30 +2487,25 @@ function ordinalDay(day: number) {
   return `${day}${suffix}`;
 }
 
-function formatReceiptDate(transaction: AppTransaction) {
+export function formatReceiptDate(transaction: AppTransaction) {
   if (!transaction.createdAt) return transaction.date;
   const date = new Date(transaction.createdAt);
   if (Number.isNaN(date.getTime())) return transaction.date;
-  const parts = new Intl.DateTimeFormat('en-US', {
-    weekday: 'long',
-    month: 'long',
+  return new Intl.DateTimeFormat('en-NG', {
     day: 'numeric',
+    month: 'short',
     year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  }).formatToParts(date);
-  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find(part => part.type === type)?.value ?? '';
-  return `${get('weekday')}, ${get('month')} ${ordinalDay(Number(get('day')))}, ${get('year')} | ${get('hour')}:${get('minute')} ${get('dayPeriod')}`;
+  }).format(date);
 }
 
-function formatReceiptTime(transaction: AppTransaction) {
-  if (!transaction.createdAt) return transaction.date;
+export function formatReceiptTime(transaction: AppTransaction) {
+  if (!transaction.createdAt) return '';
   const date = new Date(transaction.createdAt);
-  if (Number.isNaN(date.getTime())) return transaction.date;
-  return new Intl.DateTimeFormat('en-US', {
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('en-NG', {
     hour: 'numeric',
     minute: '2-digit',
+    second: '2-digit',
     hour12: true,
   }).format(date);
 }
@@ -2540,167 +2537,173 @@ function drawReceiptWrappedText(
   return y + lines.length * lineHeight;
 }
 
-async function createTransferReceiptImage(receipt: TransferReceiptData, reference: string) {
+export async function createTransferReceiptImage(receipt: TransferReceiptData, reference: string): Promise<File> {
   const canvas = document.createElement('canvas');
   const scale = 2;
-  const width = 636;
-  const height = 1024;
+  const width = 640;
+  const height = 980;
   canvas.width = width * scale;
   canvas.height = height * scale;
 
-  const context = canvas.getContext('2d');
-  if (!context) throw new Error('Receipt image could not be created');
-  context.scale(scale, scale);
-  context.fillStyle = '#F1F3F5';
-  context.fillRect(0, 0, width, height);
-  context.textBaseline = 'top';
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Receipt image could not be created');
+  ctx.scale(scale, scale);
 
-  const muted = '#7B7F84';
-  const ink = '#121416';
-  const teal = '#145D67';
-  const cardX = 26;
-  const cardWidth = width - cardX * 2;
-  const receiptLogo = await new Promise<HTMLImageElement | null>(resolve => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => resolve(null);
-    image.src = '/vexa-share-logo.png';
-  });
-  const receiptTopOffset = 0;
-  if (receiptLogo) {
-    context.globalAlpha = 0.95;
-    context.drawImage(receiptLogo, width / 2 - 150, 8, 300, 150);
-    context.globalAlpha = 1;
-  }
+  // Background
+  ctx.fillStyle = '#F4F6F9';
+  ctx.fillRect(0, 0, width, height);
 
-  context.fillStyle = ink;
-  context.textAlign = 'center';
-  context.font = '800 34px Inter, Arial, sans-serif';
-  context.fillText('Transfer Successful', width / 2, 187 + receiptTopOffset);
-  context.fillStyle = muted;
-  context.font = '400 21px Inter, Arial, sans-serif';
-  context.fillText('Your money has been sent securely', width / 2, 241 + receiptTopOffset);
+  // Card Container
+  const cardX = 24;
+  const cardY = 28;
+  const cardW = width - cardX * 2;
+  const cardH = height - cardY * 2;
 
-  context.textAlign = 'left';
-  const amountX = 26;
-  const amountY = 296 + receiptTopOffset;
-  const amountWidth = cardWidth;
-  const amountHeight = 239;
-  context.fillStyle = teal;
-  context.beginPath();
-  context.roundRect(amountX, amountY, amountWidth, amountHeight, 26);
-  context.fill();
-  if (receiptLogo) {
-    context.save();
-    context.beginPath();
-    context.roundRect(amountX, amountY, amountWidth, amountHeight, 26);
-    context.clip();
-    context.globalAlpha = 0.16;
-    const watermarkPositions = [
-      [50, 318], [182, 315], [335, 321], [488, 316],
-      [8, 390], [145, 402], [292, 392], [446, 401],
-      [66, 477], [214, 470], [375, 478], [520, 468],
-    ];
-    watermarkPositions.forEach(([x, y]) => context.drawImage(receiptLogo, x, y + receiptTopOffset, 94, 47));
-    context.restore();
-  }
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath();
+  ctx.roundRect(cardX, cardY, cardW, cardH, 24);
+  ctx.fill();
 
-  context.textAlign = 'center';
-  context.fillStyle = '#A9BCC1';
-  context.font = '400 17px Inter, Arial, sans-serif';
-  context.fillText('AMOUNT SENT', width / 2, 340 + receiptTopOffset);
-  context.fillStyle = '#FFFFFF';
-  context.font = '800 52px Inter, Arial, sans-serif';
-  context.fillText(`₦${receipt.transaction.amount}`, width / 2, 383 + receiptTopOffset);
-  context.fillStyle = '#0B766F';
-  context.beginPath();
-  context.roundRect(width / 2 - 73, 460 + receiptTopOffset, 146, 38, 19);
-  context.fill();
-  context.fillStyle = '#FFFFFF';
-  context.fillStyle = '#9FF2BB';
-  context.beginPath();
-  context.arc(width / 2 - 50, 479 + receiptTopOffset, 4, 0, Math.PI * 2);
-  context.fill();
-  context.fillStyle = '#A5F0C2';
-  context.font = '700 17px Inter, Arial, sans-serif';
-  context.fillText('Completed', width / 2 + 10, 470 + receiptTopOffset);
+  // Header Brand Bar
+  ctx.fillStyle = '#162353';
+  ctx.beginPath();
+  ctx.roundRect(cardX + 24, cardY + 24, 38, 38, 10);
+  ctx.fill();
 
-  const infoY = 562 + receiptTopOffset;
-  const infoHeight = 432;
-  context.textAlign = 'left';
-  context.fillStyle = '#FFFFFF';
-  context.beginPath();
-  context.roundRect(cardX, infoY, cardWidth, infoHeight, 26);
-  context.fill();
-  context.strokeStyle = '#E3E5E8';
-  context.lineWidth = 1;
-  context.stroke();
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = '900 20px Inter, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('V', cardX + 43, cardY + 43);
 
-  context.fillStyle = muted;
-  context.font = '700 16px Inter, Arial, sans-serif';
-  context.fillText('RECIPIENT', 57, 593 + receiptTopOffset);
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#162353';
+  ctx.font = '900 18px Inter, sans-serif';
+  ctx.fillText('VEXA BANK', cardX + 72, cardY + 36);
 
-  context.fillStyle = '#EEF2FF';
-  context.beginPath();
-  context.arc(92, 668 + receiptTopOffset, 35, 0, Math.PI * 2);
-  context.fill();
-  context.fillStyle = '#1B7282';
-  context.textAlign = 'center';
-  context.font = '700 27px Inter, Arial, sans-serif';
-  context.fillText((receipt.recipientName.trim()[0] || 'D').toUpperCase(), 92, 656 + receiptTopOffset);
+  ctx.fillStyle = '#8E9AA8';
+  ctx.font = '600 10px Inter, sans-serif';
+  ctx.fillText('LICENSED BY THE CBN · NDIC INSURED', cardX + 72, cardY + 52);
 
-  context.textAlign = 'left';
-  context.fillStyle = ink;
-  context.font = '700 22px Inter, Arial, sans-serif';
-  drawReceiptWrappedText(context, receipt.recipientName, 145, 641 + receiptTopOffset, 440, 27);
-  context.fillStyle = muted;
-  context.font = '400 20px Inter, Arial, sans-serif';
-  context.fillText(`Vexa · ${receipt.accountNumber}`, 145, 676 + receiptTopOffset);
+  // Official pill badge
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#E8F5E9';
+  ctx.beginPath();
+  ctx.roundRect(cardX + cardW - 110, cardY + 30, 86, 26, 6);
+  ctx.fill();
+  ctx.fillStyle = '#2E7D32';
+  ctx.font = '700 10px Inter, sans-serif';
+  ctx.fillText('OFFICIAL', cardX + cardW - 36, cardY + 43);
 
-  context.strokeStyle = '#E6E8EA';
-  context.lineWidth = 1;
-  context.beginPath();
-  context.moveTo(cardX, 726 + receiptTopOffset);
-  context.lineTo(cardX + cardWidth, 726 + receiptTopOffset);
-  context.stroke();
+  // Divider
+  ctx.strokeStyle = '#F1F3F5';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(cardX + 24, cardY + 76);
+  ctx.lineTo(cardX + cardW - 24, cardY + 76);
+  ctx.stroke();
 
-  const detailX = 57;
-  const valueX = width - 49;
-  const drawDetail = (label: string, value: string, y: number, maxWidth: number, color = ink) => {
-    context.fillStyle = muted;
-    context.textAlign = 'left';
-    context.font = '400 20px Inter, Arial, sans-serif';
-    context.fillText(label, detailX, y);
-    context.fillStyle = color;
-    context.textAlign = 'right';
-    context.font = '700 19px Inter, Arial, sans-serif';
-    drawReceiptWrappedText(context, value, valueX, y, maxWidth, 27);
+  // Success Circle
+  const checkY = cardY + 120;
+  ctx.fillStyle = '#E8F5E9';
+  ctx.beginPath();
+  ctx.arc(width / 2, checkY, 28, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#16A34A';
+  ctx.font = '900 24px Inter, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('✓', width / 2, checkY);
+
+  ctx.font = '800 13px Inter, sans-serif';
+  ctx.fillText('TRANSFER SUCCESSFUL', width / 2, checkY + 42);
+
+  // Amount
+  const amtNum = Number(receipt.transaction.raw_amount) || Number(receipt.transaction.amount.replace(/,/g, '')) || 0;
+  const formattedAmt = `₦${amtNum.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  ctx.fillStyle = '#111827';
+  ctx.font = '900 40px Inter, sans-serif';
+  ctx.fillText(formattedAmt, width / 2, checkY + 76);
+
+  ctx.fillStyle = '#6B7280';
+  ctx.font = '500 12px Inter, sans-serif';
+  const timeText = `${formatReceiptDate(receipt.transaction)} · ${formatReceiptTime(receipt.transaction)}`;
+  ctx.fillText(timeText, width / 2, checkY + 105);
+
+  // Perforated Dashed Line
+  const dashY = checkY + 130;
+  ctx.strokeStyle = '#E5E7EB';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 6]);
+  ctx.beginPath();
+  ctx.moveTo(cardX + 24, dashY);
+  ctx.lineTo(cardX + cardW - 24, dashY);
+  ctx.stroke();
+  ctx.setLineDash([]); // reset
+
+  // Notches
+  ctx.fillStyle = '#F4F6F9';
+  ctx.beginPath();
+  ctx.arc(cardX, dashY, 10, -Math.PI / 2, Math.PI / 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(cardX + cardW, dashY, 10, Math.PI / 2, -Math.PI / 2);
+  ctx.fill();
+
+  // Details Table
+  let currentY = dashY + 30;
+  const rowLeft = cardX + 28;
+  const rowRight = cardX + cardW - 28;
+  const rowH = 34;
+
+  const drawRow = (label: string, value: string, isBold = false, valColor = '#111827') => {
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#6B7280';
+    ctx.font = '500 13px Inter, sans-serif';
+    ctx.fillText(label, rowLeft, currentY);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = valColor;
+    ctx.font = isBold ? '800 13.5px Inter, sans-serif' : '600 13px Inter, sans-serif';
+    ctx.fillText(value, rowRight, currentY);
+
+    currentY += rowH;
   };
 
-  drawDetail('From', `${receipt.senderName} · ${receipt.senderAccountNumber}`, 758 + receiptTopOffset, 315);
-  drawDetail('Date', receipt.transaction.date, 834 + receiptTopOffset, 300);
-  drawDetail('Narration', receipt.transaction.note || 'Transfer', 882 + receiptTopOffset, 300);
+  drawRow('Recipient Name', receipt.recipientName.toUpperCase(), true);
+  drawRow('Recipient Bank', receipt.bank.toUpperCase(), true);
+  drawRow('Account Number', receipt.accountNumber, false, '#111827');
+  drawRow('Sender Name', (receipt.senderName || 'Account Holder').toUpperCase(), true);
+  drawRow('Sender Account', `Vexa · ${receipt.senderAccountNumber || 'Main'}`, false);
+  drawRow('Transaction Type', 'NIP Instant Electronic Transfer', false);
+  drawRow('Payment Amount', formattedAmt, false);
+  drawRow('Fee', receipt.transaction.fee ? `₦${receipt.transaction.fee.toFixed(2)}` : '₦0.00 (Waived)', false);
+  drawRow('Total Debit', formattedAmt, true, '#162353');
+  drawRow('Transaction Reference', reference, true, '#162353');
+  drawRow('Narration', receipt.transaction.note || `Transfer to ${receipt.recipientName}`, false);
+  drawRow('Payment Status', 'SUCCESSFUL', true, '#16A34A');
 
-  context.strokeStyle = '#E6E8EA';
-  context.beginPath();
-  context.moveTo(detailX, 921 + receiptTopOffset);
-  context.lineTo(valueX, 921 + receiptTopOffset);
-  context.stroke();
+  // Bottom Security Footer
+  ctx.strokeStyle = '#F1F3F5';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(cardX + 24, currentY + 10);
+  ctx.lineTo(cardX + cardW - 24, currentY + 10);
+  ctx.stroke();
 
-  drawDetail('Reference', reference, 947 + receiptTopOffset, 300, '#1B7282');
-  context.strokeStyle = '#1B7282';
-  context.lineWidth = 2;
-  context.beginPath();
-  context.roundRect(570, 948 + receiptTopOffset, 15, 17, 3);
-  context.moveTo(574, 948 + receiptTopOffset);
-  context.lineTo(574, 945 + receiptTopOffset);
-  context.lineTo(581, 945 + receiptTopOffset);
-  context.lineTo(585, 949 + receiptTopOffset);
-  context.stroke();
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#9CA3AF';
+  ctx.font = '700 10.5px Inter, sans-serif';
+  ctx.fillText('NIBSS INSTANT PAYMENT GUARANTEED · CENTRAL CLEARING HOUSE', width / 2, currentY + 30);
+
+  ctx.font = '400 9.5px Inter, sans-serif';
+  ctx.fillText('Generated by Vexa Core Banking. Conclusive proof of payment settled to the beneficiary.', width / 2, currentY + 46);
 
   const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
   if (!blob) throw new Error('Receipt image could not be created');
-  return new File([blob], `vexa-transfer-receipt-${reference}.png`, { type: 'image/png' });
+  return new File([blob], `vexa-receipt-${reference}.png`, { type: 'image/png' });
 }
 
 function storedSelectedBank(): PaystackBank | null {
@@ -3060,9 +3063,7 @@ function TransferPage() {
 
           {/* Recipient summary without outline */}
           <div className="bg-white rounded-2xl px-5 py-4 border-0 shadow-sm flex items-center gap-3 w-full min-w-0">
-            <div className="w-10 h-10 rounded-full bg-[#EEF2FF] flex items-center justify-center text-[#2563EB] font-bold text-[15px] shrink-0">
-              {resolvedName.charAt(0)}
-            </div>
+            <BankLogoBadge bankName={bank} bankLogo={bankLogo} size="md" fallbackInitial={resolvedName.charAt(0)} />
             <div className="min-w-0 flex-1">
               <p className="text-[14px] font-semibold text-[#111] truncate">{resolvedName}</p>
               <p className="text-[11px] text-[#888] truncate">{acctNo} · {bank}</p>
@@ -3266,259 +3267,15 @@ function TransferReceipt({
 }: {
   receipt: TransferReceiptData;
   onHome: () => void;
-  onTransferAgain: () => void;
+  onTransferAgain?: () => void;
 }) {
-  const [copied, setCopied] = useState(false);
-  const [receiptAction, setReceiptAction] = useState<'share' | 'download' | null>(null);
-  const [receiptActionMessage, setReceiptActionMessage] = useState('');
-  const { transaction, recipientName, bank, accountNumber, senderName, senderAccountNumber } = receipt;
-  const reference = `VX${transaction.id.replace(/-/g, '').slice(0, 10).toUpperCase()}`;
-  const amountValue = Number(transaction.raw_amount) || Number(transaction.amount.replace(/,/g, '')) || 0;
-  const balanceAfter = receipt.balanceAfter ?? 0;
-  const balanceBefore = receipt.balanceBefore ?? balanceAfter + amountValue;
-  const formatReceiptAmount = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-  async function shareReceipt() {
-    setReceiptAction('share');
-    setReceiptActionMessage('');
-    try {
-      const image = await createTransferReceiptImage(receipt, reference);
-      const shareData: ShareData = {
-        title: 'Vexa Transfer Receipt',
-        files: [image],
-      };
-      const shareNavigator = navigator as Navigator & {
-        canShare?: (data?: ShareData) => boolean;
-      };
-
-      if (navigator.share && (!shareNavigator.canShare || shareNavigator.canShare({ files: [image] }))) {
-        await navigator.share(shareData);
-        return;
-      }
-
-      const downloadUrl = URL.createObjectURL(image);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = image.name;
-      link.click();
-      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
-      setReceiptActionMessage('Receipt image saved to your device');
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') return;
-      setReceiptActionMessage('Could not create the receipt image. Please try again.');
-    } finally {
-      setReceiptAction(null);
-    }
-  }
-
-  async function downloadReceipt() {
-    setReceiptAction('download');
-    setReceiptActionMessage('');
-    try {
-      const image = await createTransferReceiptImage(receipt, reference);
-      const downloadUrl = URL.createObjectURL(image);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = image.name;
-      link.click();
-      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
-      setReceiptActionMessage('Receipt image saved to your device');
-    } catch {
-      setReceiptActionMessage('Could not download the receipt. Please try again.');
-    } finally {
-      setReceiptAction(null);
-    }
-  }
-
-  async function copyReference() {
-    await navigator.clipboard?.writeText(reference).catch(() => {});
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2000);
-  }
-
-  const progressSteps = [
-    { title: 'Request started', subtitle: 'Transfer accepted' },
-    { title: 'Transfer processed', subtitle: 'Funds debited' },
-    { title: 'Recipient notified', subtitle: `Sent to ${recipientName}` },
-  ];
-
   return (
-    <div className="fixed inset-0 flex flex-col bg-[#F6F6F6]" style={{ fontFamily: "'Inter', sans-serif" }}>
-      <style>{`
-        @media print {
-          body * { visibility: hidden !important; }
-          .vexa-receipt, .vexa-receipt * { visibility: visible !important; }
-          .vexa-receipt { position: absolute; inset: 0; background: white !important; }
-          .receipt-actions, .receipt-header-action { display: none !important; }
-        }
-      `}</style>
-
-      <div
-        className="receipt-header-action flex-none flex items-center justify-between px-5 pb-3 bg-[#F6F6F6]"
-        style={{ paddingTop: 'max(env(safe-area-inset-top), 16px)' }}
-      >
-        <button onClick={onHome} className="w-8 h-8 flex items-center justify-center" aria-label="Back to home">
-          <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#1266C4" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5M12 5l-7 7 7 7" />
-          </svg>
-        </button>
-        <span className="text-[16px] font-bold text-[#111]">Transfer Receipt</span>
-        <button onClick={() => window.print()} className="w-8 h-8 flex items-center justify-center" aria-label="Print receipt">
-          <FileText className="w-[17px] h-[17px] text-transparent" />
-        </button>
-      </div>
-
-      <div className="vexa-receipt flex-1 overflow-y-auto px-5 pt-6 pb-8" style={{ scrollbarWidth: 'none' }}>
-        <div className="max-w-md mx-auto">
-          <section className="relative overflow-hidden rounded-[24px] bg-[#162353] px-5 py-6 text-white shadow-[0_12px_30px_rgba(22,35,83,0.18)]">
-            <div className="absolute -right-10 -top-12 h-36 w-36 rounded-full border-[18px] border-white/5" />
-            <div className="absolute -bottom-20 -left-12 h-40 w-40 rounded-full border-[20px] border-[#3AA7B8]/10" />
-            <div className="relative">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#3AA7B8]/20">
-                    <ArrowUp className="h-4 w-4 text-[#87E1E5]" strokeWidth={2.5} />
-                  </span>
-                  <span className="text-[12px] font-semibold text-white/70">Bank transfer</span>
-                </div>
-                <span className="rounded-full bg-[#B6F2C3] px-2.5 py-1 text-[10px] font-bold text-[#167231]">COMPLETED</span>
-              </div>
-              <p className="mt-6 text-[12px] font-medium uppercase tracking-[0.16em] text-white/50">Amount sent</p>
-              <p className="mt-1 text-[36px] font-extrabold tracking-tight">₦{transaction.amount}</p>
-              <div className="mt-5 flex items-end justify-between gap-4 text-[11px]">
-                <div>
-                  <p className="text-white/45">Completed on</p>
-                  <p className="mt-1 font-medium text-white/85">{formatReceiptDate(transaction)}</p>
-                </div>
-                <button onClick={copyReference} className="text-right" title="Copy reference">
-                  <p className="text-white/45">Reference</p>
-                  <p className="mt-1 inline-flex items-center gap-1 font-semibold text-[#87E1E5]">
-                    {reference}
-                    <Copy className="h-3 w-3" />
-                  </p>
-                </button>
-              </div>
-            </div>
-          </section>
-
-          <section className="mt-4 rounded-[22px] border border-[#E7EAF2] bg-white px-5 py-5 shadow-[0_4px_18px_rgba(22,35,83,0.04)]">
-            <div className="mb-5 flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[14px] font-bold text-[#171717]">Transfer journey</p>
-                <p className="mt-1 text-[11px] text-[#929292]">Every step completed successfully</p>
-              </div>
-              <span className="inline-flex items-center gap-1 rounded-full bg-[#EAF8EE] px-2.5 py-1 text-[10px] font-bold text-[#218640]">
-                <BadgeCheck className="h-3.5 w-3.5" />
-                DONE
-              </span>
-            </div>
-            <div className="flex items-center gap-0">
-              {progressSteps.map((step, index) => (
-                <React.Fragment key={step.title}>
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-[3px] border-[#BCEFC6] bg-[#149B37] shadow-sm">
-                    <Check className="h-4 w-4 text-white" strokeWidth={3} />
-                  </div>
-                  {index < progressSteps.length - 1 && <div className="h-1 flex-1 bg-[#2FAA48]" />}
-                </React.Fragment>
-              ))}
-            </div>
-            <div className="mt-4 grid grid-cols-3 gap-2">
-              {progressSteps.map((step, index) => (
-                <div key={step.title} className={`${index === 1 ? 'text-center' : index === 2 ? 'text-right' : 'text-left'} min-w-0`}>
-                  <p className="text-[11px] font-bold leading-tight text-[#171717]">{step.title}</p>
-                  <p className="mt-1 break-words text-[10px] leading-relaxed text-[#888]">{step.subtitle}</p>
-                </div>
-              ))}
-            </div>
-            <p className="mt-4 border-t border-[#F0F1F4] pt-3 text-[12px] text-[#929292]">Last updated {formatReceiptTime(transaction)}</p>
-          </section>
-
-          <section className="mt-4 flex items-center gap-3 rounded-[20px] border border-[#E7EAF2] bg-white px-4 py-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#EAF2FF] text-[18px] font-bold text-[#1769C2]">
-              {recipientName.charAt(0).toUpperCase() || 'R'}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-[#929292]">Recipient</p>
-              <p className="mt-1 truncate text-[15px] font-bold text-[#151515]">{recipientName}</p>
-              <p className="mt-0.5 truncate text-[12px] text-[#858585]">{bank} · {accountNumber}</p>
-            </div>
-            <ChevronRight className="h-4 w-4 shrink-0 text-[#A5A9B2]" />
-          </section>
-
-          <button className="mt-4 flex w-full items-center gap-3 rounded-[18px] bg-white px-4 py-3.5 text-left">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#F0F6FF]">
-              <Info className="h-4 w-4 text-[#1469C7]" strokeWidth={2.5} />
-            </span>
-            <span className="text-[14px] font-medium text-[#1769C2]">Beneficiary Not Credited?</span>
-          </button>
-
-          {copied && <p className="text-center text-[11px] font-semibold text-green-600 mt-3">Copied to clipboard</p>}
-          {receiptActionMessage && <p className="text-center text-[11px] font-semibold text-[#1769C2] mt-3">{receiptActionMessage}</p>}
-
-          <div className="receipt-actions mt-4 grid grid-cols-3 gap-2">
-            <button onClick={shareReceipt} disabled={receiptAction !== null} className="flex h-[90px] flex-col items-center justify-center rounded-[15px] bg-white text-[12px] text-[#111] disabled:opacity-60">
-              <span className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-[#F0F6FF]">
-                <Share2 className="h-5 w-5 text-[#1469C7]" />
-              </span>
-              {receiptAction === 'share' ? 'Preparing…' : 'Share'}
-            </button>
-            <button onClick={downloadReceipt} disabled={receiptAction !== null} className="flex h-[90px] flex-col items-center justify-center rounded-[15px] bg-white text-[12px] text-[#111] disabled:opacity-60">
-              <span className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-[#F0F6FF]">
-                <ArrowDown className="h-5 w-5 text-[#1469C7]" strokeWidth={2.5} />
-              </span>
-              {receiptAction === 'download' ? 'Preparing…' : 'Download'}
-            </button>
-            <button onClick={onTransferAgain} className="flex h-[90px] flex-col items-center justify-center rounded-[15px] bg-white text-[12px] text-[#111]">
-              <span className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-[#F0F6FF]">
-                <ArrowUp className="h-5 w-5 rotate-45 text-[#1469C7]" strokeWidth={2.5} />
-              </span>
-              Send Again
-            </button>
-          </div>
-
-          <section className="mt-4 rounded-[20px] bg-white px-4 py-5">
-            <div className="rounded-xl border border-dashed border-[#E4E5E7] px-4 py-4">
-              <div className="grid grid-cols-[1fr_auto_1fr] items-center">
-                <div>
-                  <p className="text-[12px] text-[#969696]">Balance Before</p>
-                  <p className="mt-1 text-[16px] font-bold text-[#252525]">{formatReceiptAmount(balanceBefore)}</p>
-                </div>
-                <div className="mx-4 h-8 w-px bg-[#D3D5D7]" />
-                <div>
-                  <p className="text-[12px] text-[#969696]">Balance After</p>
-                  <p className="mt-1 text-[16px] font-bold text-[#252525]">{formatReceiptAmount(balanceAfter)}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-5 space-y-4 text-[13px]">
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-[#858585]">Amount</span>
-                <span className="font-medium text-[#777]">₦{transaction.amount.replace(/\.00$/, '')}</span>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="flex items-center gap-2 text-[#858585]">
-                  Our fee
-                  <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#858585] text-[9px] font-bold text-white">i</span>
-                </span>
-                <span className="font-medium text-[#777]">₦0</span>
-              </div>
-              <div className="border-t border-[#E8E8E8] pt-4 flex items-center justify-between gap-4 text-[15px] font-bold text-[#202020]">
-                <span>Total Debit</span>
-                <span>₦{transaction.amount.replace(/\.00$/, '')}</span>
-              </div>
-            </div>
-          </section>
-
-          <button className="receipt-actions mt-5 flex w-full items-center justify-between px-1 text-left text-[13px] text-[#666]">
-            <span>Other Details</span>
-            <ChevronUp className="h-4 w-4 text-[#1469C7]" />
-          </button>
-
-          <div className="receipt-actions mt-5 h-4 rounded-t-2xl bg-white" />
-        </div>
-      </div>
-    </div>
+    <BankingTransferReceipt
+      receipt={receipt}
+      onHome={onHome}
+      onTransferAgain={onTransferAgain}
+      createReceiptImageFn={createTransferReceiptImage}
+    />
   );
 }
 

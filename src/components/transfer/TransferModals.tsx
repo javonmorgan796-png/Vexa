@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Info, Plus, ChevronRight, Delete } from 'lucide-react';
 import { cleanBankName } from '@/pages/transfer/BankSelectionPage';
+import { BankLogoBadge } from '@/components/BankLogoBadge';
 
 interface TransferConfirmationModalProps {
   isOpen: boolean;
@@ -89,13 +90,7 @@ export function TransferConfirmationModal({
           <div className="flex items-center justify-between">
             <span className="text-gray-500">Bank</span>
             <div className="flex items-center gap-1.5 font-bold text-[#111] uppercase">
-              {bankLogo ? (
-                <img src={bankLogo} alt="" className="w-4 h-4 rounded object-contain shrink-0" />
-              ) : (
-                <span className="w-4 h-4 rounded bg-[#162353] text-white flex items-center justify-center text-[9px] font-extrabold shrink-0">
-                  {cleanBank.slice(0, 1)}
-                </span>
-              )}
+              <BankLogoBadge bankName={cleanBank} bankLogo={bankLogo} size="xs" />
               <span>{cleanBank}</span>
             </div>
           </div>

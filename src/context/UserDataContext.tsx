@@ -45,6 +45,7 @@ export interface AppTransaction {
   recipient_account?: string;
   sender_name?: string;
   sender_account?: string;
+  fee?: number;
 }
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
