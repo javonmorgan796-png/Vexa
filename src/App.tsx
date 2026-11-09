@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Route, Switch, Router as WouterRouter, useLocation, useRoute } from 'wouter';
 import {
   Headphones, Bell, Copy, EyeOff, Eye, Clock,
-  ArrowLeftRight, PhoneCall, Tablet, Target,
+  ArrowLeftRight, PhoneCall, Tablet,
   PiggyBank, BookOpen, FileText, LayoutGrid,
   Trophy, CreditCard, Home, ArrowDown, Settings,
   ArrowUp, ChevronRight, Shield, TriangleAlert, Fingerprint, BriefcaseBusiness,
@@ -224,11 +224,28 @@ function IconStatement({ size = 22 }: { size?: number }) {
 
 /* ─────────────────────────────────────────────────────────────────────── */
 
+function BettingBasketballIcon({
+  className = '',
+  size = 22,
+}: {
+  className?: string;
+  size?: number;
+  strokeWidth?: number;
+}) {
+  return (
+    <i
+      className={`fa-solid fa-basketball inline-flex items-center justify-center ${className}`}
+      style={{ fontSize: `${size}px`, lineHeight: 1 }}
+      aria-hidden="true"
+    />
+  );
+}
+
 const services = [
   { label: 'Transfer',  Icon: ArrowLeftRight },
   { label: 'Airtime',   Icon: PhoneCall       },
   { label: 'Data',      Icon: Tablet          },
-  { label: 'Betting',   Icon: Target          },
+  { label: 'Betting',   Icon: BettingBasketballIcon },
   { label: 'Savings',   Icon: PiggyBank       },
   { label: 'Investments', Icon: TrendingUp    },
   { label: 'Budget',    Icon: WalletCards     },
@@ -4587,7 +4604,7 @@ const MORE_SERVICES = [
   { label:'Transfer',  emoji:'↔️',  path:'/transfer'  },
   { label:'Airtime',   emoji:'📱',  path:'/airtime'   },
   { label:'Data',      emoji:'📶',  path:'/data'      },
-  { label:'Betting',   emoji:'🎯',  path:'/betting'   },
+  { label:'Betting',   Icon: BettingBasketballIcon, path:'/betting' },
   { label:'Savings',   emoji:'🐷',  path:'/savings'   },
   { label:'Investments', Icon: TrendingUp, path:'/investments' },
   { label:'Budget',    emoji:'📊',  path:'/budget'    },
@@ -4834,7 +4851,7 @@ const SERVICE_GROUPS = [
   { heading:'Top Up', items:[
     { label:'Airtime',   emoji:'📱',  path:'/airtime'   },
     { label:'Data',      emoji:'📶',  path:'/data'      },
-    { label:'Betting',   emoji:'🎯',  path:'/betting'   },
+    { label:'Betting',   Icon: BettingBasketballIcon, path:'/betting' },
   ]},
   { heading:'Lifestyle', items:[
     { label:'Education', emoji:'📚',  path:'/education' },

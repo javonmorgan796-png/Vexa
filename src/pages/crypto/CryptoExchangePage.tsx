@@ -135,7 +135,18 @@ function signedPercent(value: number) {
   return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
 }
 
-type DepositAddress = { asset: CryptoAsset; address: string; network: string; createdAt: string };
+type DepositAddress = {
+  asset: CryptoAsset;
+  address: string;
+  network: string;
+  createdAt: string;
+  provider?: 'tatum' | 'unconfigured';
+  networkMode?: 'mainnet' | 'testnet';
+  liveDepositEnabled?: boolean;
+  subscriptionStatus?: string;
+  subscriptionError?: string;
+  missingConfig?: string[];
+};
 type CryptoPageView = 'overview' | 'exchange' | 'transfer' | 'receive' | 'fund';
 
 export function generateDeterministicDepositAddress(userIdOrAccount: string, asset: CryptoAsset): DepositAddress {
@@ -414,32 +425,7 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
     }
 
     try {
-      // 1. Direct Supabase query check
-      if (user?.id) {
-        try {
-          const { data: directAddr } = await supabase
-            .from('crypto_deposit_addresses')
-            .select('asset, address, network, created_at')
-            .eq('user_id', user.id)
-            .eq('asset', targetAsset)
-            .maybeSingle();
-
-          if (directAddr?.address) {
-            setDepositAddress({
-              asset: directAddr.asset as CryptoAsset,
-              address: directAddr.address,
-              network: directAddr.network,
-              createdAt: directAddr.created_at,
-            });
-            setAddressLoading(false);
-            return;
-          }
-        } catch (directErr) {
-          console.warn('[Crypto] Direct Supabase check note:', directErr);
-        }
-      }
-
-      // 2. Query backend API
+      // 1. Always query backend API first so Tatum wallet & webhook subscription are synced
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const headers: Record<string, string> = { accept: 'application/json' };
@@ -461,23 +447,39 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
         console.warn('[Crypto] API address fetch note:', apiErr);
       }
 
-      // 3. Fallback: Deterministic vault address
-      setDepositAddress(fallbackAddr);
-
-      // Save to Supabase in background if authenticated
+      // 2. Fallback: read existing verified address from Supabase if API is temporarily unreachable
       if (user?.id) {
-        void supabase
-          .from('crypto_deposit_addresses')
-          .insert({
-            user_id: user.id,
-            asset: targetAsset,
-            address: fallbackAddr.address,
-            network: fallbackAddr.network,
-          });
+        try {
+          const { data: directAddr } = await supabase
+            .from('crypto_deposit_addresses')
+            .select('asset, address, network, created_at, tatum_subscription_id, tatum_subscription_status')
+            .eq('user_id', user.id)
+            .eq('asset', targetAsset)
+            .maybeSingle();
+
+          if (directAddr?.address) {
+            setDepositAddress({
+              asset: directAddr.asset as CryptoAsset,
+              address: directAddr.address,
+              network: directAddr.network,
+              createdAt: directAddr.created_at,
+              provider: directAddr.tatum_subscription_id ? 'tatum' : 'unconfigured',
+              liveDepositEnabled: directAddr.tatum_subscription_status === 'active',
+              subscriptionStatus: directAddr.tatum_subscription_status,
+            });
+            setAddressLoading(false);
+            return;
+          }
+        } catch (directErr) {
+          console.warn('[Crypto] Direct Supabase check note:', directErr);
+        }
       }
+
+      // 3. Preview fallback when offline / unconfigured (do not write synthetic address to DB)
+      setDepositAddress({ ...fallbackAddr, provider: 'unconfigured', liveDepositEnabled: false });
     } catch (addressError) {
       console.error('[Crypto] Deposit address error:', addressError);
-      setDepositAddress(fallbackAddr);
+      setDepositAddress({ ...fallbackAddr, provider: 'unconfigured', liveDepositEnabled: false });
     } finally {
       setAddressLoading(false);
     }
@@ -970,10 +972,17 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
                 </div>
                 <div className="mt-3 flex items-center justify-center gap-2">
                   <p className="text-[12px] font-bold text-[#111]">{depositAddress.network}</p>
-                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#159669] bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#159669]" />
-                    Custody Vault
-                  </span>
+                  {depositAddress.liveDepositEnabled ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#159669] bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#159669]" />
+                      Custody Vault
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                      Deposit Listener Inactive
+                    </span>
+                  )}
                 </div>
                 <p className="text-[10px] text-[#888] mt-1">Scan QR or copy address to receive {asset}</p>
                 <div className="mt-3 flex items-center gap-2 rounded-xl bg-white border border-[#E8EBF0] px-3 py-2 text-left">
@@ -991,6 +1000,28 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
                 </div>
                 {addressLoading && (
                   <p className="text-[10px] text-[#2563EB] mt-2 font-medium">Syncing custody vault verification…</p>
+                )}
+                {!addressLoading && (!depositAddress.liveDepositEnabled || depositAddress.networkMode === 'testnet' || depositAddress.subscriptionError) && (
+                  <div className="mt-3 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2.5 text-left text-[10.5px] text-amber-800 leading-relaxed">
+                    {!depositAddress.liveDepositEnabled ? (
+                      <>
+                        <b>Live blockchain deposits are not active yet.</b>{' '}
+                        {depositAddress.missingConfig && depositAddress.missingConfig.length > 0
+                          ? `Missing server secrets: ${depositAddress.missingConfig.join(', ')}. `
+                          : depositAddress.subscriptionError
+                            ? `${depositAddress.subscriptionError}. `
+                            : 'Tatum custody webhook subscription is pending. '}
+                      </>
+                    ) : depositAddress.networkMode === 'testnet' ? (
+                      <>
+                        <b>Testnet API Key Detected:</b> This wallet is connected to Tatum Testnet (for example, Bitcoin <code>tb1q...</code>). Mainnet coins cannot be sent to a testnet address. Switch to a Tatum Mainnet API key for real mainnet deposits.
+                      </>
+                    ) : (
+                      <>
+                        <b>Webhook Sync Note:</b> {depositAddress.subscriptionError}
+                      </>
+                    )}
+                  </div>
                 )}
                 <p className="text-[10px] text-amber-700 mt-3 leading-relaxed">
                   Only send <b>{asset}</b> on the <b>{depositAddress.network}</b> network. Sending another asset or using an incorrect network may result in loss of funds.
