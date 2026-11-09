@@ -7,6 +7,7 @@ interface TransferConfirmationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onProceedToPin: () => void;
+  onInsufficientFunds?: () => void;
   bankName: string;
   bankLogo?: string | null;
   accountNumber: string;
@@ -22,6 +23,7 @@ export function TransferConfirmationModal({
   isOpen,
   onClose,
   onProceedToPin,
+  onInsufficientFunds,
   bankName,
   bankLogo,
   accountNumber,
@@ -164,7 +166,16 @@ export function TransferConfirmationModal({
                 </div>
 
                 {isInsufficient && (
-                  <p className="text-[12px] text-rose-500 font-medium mt-1">Insufficient balance</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onInsufficientFunds) onInsufficientFunds();
+                      else if (onAddMoney) onAddMoney();
+                    }}
+                    className="text-[12px] text-rose-500 font-semibold mt-1 hover:underline text-left block"
+                  >
+                    Insufficient balance — Tap to fund account
+                  </button>
                 )}
 
                 {/* Dashed Divider */}
@@ -206,15 +217,17 @@ export function TransferConfirmationModal({
         <div className="mt-6">
           <button
             type="button"
-            onClick={onProceedToPin}
-            disabled={isInsufficient}
-            className={`w-full h-[52px] rounded-full text-[16px] font-extrabold transition-all shadow-sm active:scale-[0.99] flex items-center justify-center ${
-              isInsufficient
-                ? 'bg-[#F0B90B]/35 cursor-not-allowed text-[#181A20]/50'
-                : 'bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20]'
-            }`}
+            onClick={() => {
+              if (isInsufficient) {
+                if (onInsufficientFunds) onInsufficientFunds();
+                else if (onAddMoney) onAddMoney();
+              } else {
+                onProceedToPin();
+              }
+            }}
+            className="w-full h-[52px] rounded-full text-[16px] font-extrabold transition-all shadow-sm active:scale-[0.99] flex items-center justify-center bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20]"
           >
-            Pay
+            {isInsufficient ? 'Fund Account (Insufficient)' : 'Pay'}
           </button>
         </div>
       </div>

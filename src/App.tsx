@@ -35,6 +35,7 @@ import BankSelectionPage from '@/pages/transfer/BankSelectionPage';
 import { TransferConfirmationModal, PaymentPinModal } from '@/components/transfer/TransferModals';
 import { BankLogoBadge } from '@/components/BankLogoBadge';
 import { BankingTransferReceipt } from '@/components/transfer/BankingTransferReceipt';
+import { InsufficientFundsModal, TransferSuccessfulModal } from '@/components/common/BankingStatusModals';
 import { BusinessProvider } from '@/context/BusinessContext';
 import BusinessDashboard from '@/pages/business/BusinessDashboard';
 import BusinessOnboarding from '@/pages/business/BusinessOnboarding';
@@ -2741,6 +2742,8 @@ function TransferPage() {
   const [showConfirmPopup, setShowConfirmPopup] = useState(false);
   const [showPinPopup, setShowPinPopup]       = useState(false);
   const [pinModalError, setPinModalError]     = useState('');
+  const [showInsufficientPopup, setShowInsufficientPopup] = useState(false);
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
 
   // Resolve the destination account through the API server so Paystack's
   // secret key never reaches the browser.
@@ -2787,6 +2790,11 @@ function TransferPage() {
 
   async function submitPin() {
     if (pin.length < 4) return;
+    const amtValue = parseFloat(amount.replace(/,/g, '') || '0');
+    if (amtValue + 10.75 > balance) {
+      setShowInsufficientPopup(true);
+      return;
+    }
     // Validate against user's saved PIN
     if (pin !== (user?.pin ?? '')) {
       setPinError(true);
@@ -2795,7 +2803,6 @@ function TransferPage() {
     }
     setProcessing(true);
     setSubmitError('');
-    const amtValue = parseFloat(amount.replace(/,/g, '') || '0');
     const balanceBeforeTransfer = balance;
     const result = await completeBankTransfer({
       amount: amtValue,
@@ -2823,11 +2830,18 @@ function TransferPage() {
       balanceBefore: balanceBeforeTransfer,
       balanceAfter: Math.max(0, balanceBeforeTransfer - amtValue),
     });
-    setStep('success');
+    setShowSuccessPopup(true);
   }
 
   async function handleModalPin(enteredPin: string) {
     if (enteredPin.length < 4) return;
+    const amtValue = parseFloat(amount.replace(/,/g, '') || '0');
+    if (amtValue + 10.75 > balance) {
+      setShowPinPopup(false);
+      setShowConfirmPopup(false);
+      setShowInsufficientPopup(true);
+      return;
+    }
     if (user?.pin && user.pin !== '0000' && enteredPin !== user.pin) {
       setPinModalError('Incorrect PIN. Please try again.');
       return;
@@ -2835,7 +2849,6 @@ function TransferPage() {
     setPinModalError('');
     setProcessing(true);
     setSubmitError('');
-    const amtValue = parseFloat(amount.replace(/,/g, '') || '0');
     const balanceBeforeTransfer = balance;
     const result = await completeBankTransfer({
       amount: amtValue,
@@ -2863,7 +2876,7 @@ function TransferPage() {
       balanceBefore: balanceBeforeTransfer,
       balanceAfter: Math.max(0, balanceBeforeTransfer - amtValue),
     });
-    setStep('success');
+    setShowSuccessPopup(true);
   }
 
   const amtNum = parseFloat(amount.replace(/,/g, '') || '0');
@@ -3041,6 +3054,35 @@ function TransferPage() {
             </button>
           </div>
         </div>
+
+        {/* Insufficient Funds Modal matching user reference screenshot */}
+        <InsufficientFundsModal
+          isOpen={showInsufficientPopup}
+          onClose={() => setShowInsufficientPopup(false)}
+          amount={amtNum + 10.75}
+          action="send money"
+          accountNumber={user?.accountNumber || '9067212032'}
+          accountName={user?.name?.toUpperCase() || 'CHIBUZOR EMMANUEL DIKE'}
+          bankName="Moniepoint MFB"
+        />
+
+        {/* Transfer Successful Modal matching user reference screenshot */}
+        <TransferSuccessfulModal
+          isOpen={showSuccessPopup}
+          onClose={() => {
+            setShowSuccessPopup(false);
+            navigate('/');
+          }}
+          onViewReceipt={() => {
+            setShowSuccessPopup(false);
+            setStep('success');
+          }}
+          amount={amtNum}
+          recipientName={resolvedName}
+          recipientAccount={acctNo}
+          recipientBank={bank}
+          reference={receipt?.transaction?.id ? `VX${receipt.transaction.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 10).toUpperCase()}` : undefined}
+        />
       </div>
     );
   }
@@ -3115,6 +3157,10 @@ function TransferPage() {
           <button
             onClick={() => {
               if (amtNum > 0) {
+                if (amtNum + 10.75 > balance) {
+                  setShowInsufficientPopup(true);
+                  return;
+                }
                 if (user?.pin === '0000') {
                   setStep('create_pin');
                 } else {
@@ -3138,6 +3184,10 @@ function TransferPage() {
             setShowPinPopup(true);
             setPinModalError('');
           }}
+          onInsufficientFunds={() => {
+            setShowConfirmPopup(false);
+            setShowInsufficientPopup(true);
+          }}
           bankName={bank}
           bankLogo={bankLogo}
           accountNumber={acctNo}
@@ -3159,6 +3209,35 @@ function TransferPage() {
           bankName={bank}
           error={pinModalError}
           processing={processing}
+        />
+
+        {/* Insufficient Funds Modal matching user reference screenshot */}
+        <InsufficientFundsModal
+          isOpen={showInsufficientPopup}
+          onClose={() => setShowInsufficientPopup(false)}
+          amount={amtNum + 10.75}
+          action="send money"
+          accountNumber={user?.accountNumber || '9067212032'}
+          accountName={user?.name?.toUpperCase() || 'CHIBUZOR EMMANUEL DIKE'}
+          bankName="Moniepoint MFB"
+        />
+
+        {/* Transfer Successful Modal matching user reference screenshot */}
+        <TransferSuccessfulModal
+          isOpen={showSuccessPopup}
+          onClose={() => {
+            setShowSuccessPopup(false);
+            navigate('/');
+          }}
+          onViewReceipt={() => {
+            setShowSuccessPopup(false);
+            setStep('success');
+          }}
+          amount={amtNum}
+          recipientName={resolvedName}
+          recipientAccount={acctNo}
+          recipientBank={bank}
+          reference={receipt?.transaction?.id ? `VX${receipt.transaction.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 10).toUpperCase()}` : undefined}
         />
       </div>
     );
@@ -3347,17 +3426,25 @@ function PageShell({ title, back, children }: { title: string; back: string; chi
 }
 
 function PinModal({ amount, label, onSuccess, onClose }: { amount: string; label: string; onSuccess: () => void; onClose: () => void }) {
+  const { user } = useAuth();
   const { state: securityState } = useAccountSecurity();
   const [pin, setPin] = useState('');
   const [processing, setProcessing] = useState(false);
   const [blockedMessage, setBlockedMessage] = useState('');
+  const [showInsufficient, setShowInsufficient] = useState(false);
   const movementBlocked = securityState.sleepModeActive || securityState.freezeActive;
+  const numAmt = parseFloat(amount.replace(/,/g, '') || '0');
+
   function submit() {
     if (pin.length < 4) return;
     if (movementBlocked) {
       setBlockedMessage(securityState.freezeActive
         ? 'Freeze Account is active. Money movement is blocked.'
         : 'Sleep Mode is active. Money movement is blocked.');
+      return;
+    }
+    if (user && numAmt > (user.balance ?? 0)) {
+      setShowInsufficient(true);
       return;
     }
     setProcessing(true);
@@ -3400,6 +3487,16 @@ function PinModal({ amount, label, onSuccess, onClose }: { amount: string; label
           {movementBlocked ? 'Money movement blocked' : processing ? 'Processing…' : 'Pay Now'}
         </button>
       </div>
+
+      <InsufficientFundsModal
+        isOpen={showInsufficient}
+        onClose={() => setShowInsufficient(false)}
+        amount={amount}
+        action={label.toLowerCase()}
+        accountNumber={user?.accountNumber || '9067212032'}
+        accountName={user?.name?.toUpperCase() || 'CHIBUZOR EMMANUEL DIKE'}
+        bankName="Moniepoint MFB"
+      />
     </div>
   );
 }
@@ -3427,16 +3524,28 @@ const NETWORKS = [
 const AIRTIME_AMOUNTS = ['100','200','500','1,000','2,000','5,000'];
 
 function AirtimePage() {
+  const { user } = useAuth();
   const [, navigate] = useLocation();
   const [network, setNetwork] = useState('');
   const [phone, setPhone] = useState('');
   const [amount, setAmount] = useState('');
   const [showPin, setShowPin] = useState(false);
+  const [showInsufficient, setShowInsufficient] = useState(false);
   const [done, setDone] = useState(false);
 
   if (done) return <SuccessBanner title="Airtime Purchased!" sub={`₦${amount} airtime sent to ${phone}`} onHome={() => navigate('/')} />;
 
   const canProceed = network && phone.length >= 10 && amount;
+
+  const handleContinue = () => {
+    if (!canProceed) return;
+    const numAmt = parseFloat(amount.replace(/,/g, '') || '0');
+    if (user && numAmt > (user.balance ?? 0)) {
+      setShowInsufficient(true);
+      return;
+    }
+    setShowPin(true);
+  };
 
   return (
     <PageShell title="Buy Airtime" back="/">
@@ -3481,12 +3590,21 @@ function AirtimePage() {
         </div>
       </div>
       <div className="flex-none px-4 pb-6 pt-2">
-        <button onClick={() => canProceed && setShowPin(true)} disabled={!canProceed}
+        <button onClick={handleContinue} disabled={!canProceed}
           className={`w-full h-[50px] rounded-xl text-[14px] font-semibold text-white ${canProceed ? 'bg-[#162353]' : 'bg-[#162353]/40'}`}>
           Continue
         </button>
       </div>
       {showPin && <PinModal amount={amount} label={`Airtime for ${phone}`} onSuccess={() => { setShowPin(false); setDone(true); }} onClose={() => setShowPin(false)} />}
+      <InsufficientFundsModal
+        isOpen={showInsufficient}
+        onClose={() => setShowInsufficient(false)}
+        amount={amount}
+        action="buy airtime"
+        accountNumber={user?.accountNumber || '9067212032'}
+        accountName={user?.name?.toUpperCase() || 'CHIBUZOR EMMANUEL DIKE'}
+        bankName="Moniepoint MFB"
+      />
     </PageShell>
   );
 }
@@ -3500,11 +3618,13 @@ const DATA_PLANS: Record<string, {size:string; price:string; validity:string}[]>
 };
 
 function DataPage() {
+  const { user } = useAuth();
   const [, navigate] = useLocation();
   const [network, setNetwork] = useState('');
   const [phone, setPhone]     = useState('');
   const [plan, setPlan]       = useState('');
   const [showPin, setShowPin] = useState(false);
+  const [showInsufficient, setShowInsufficient] = useState(false);
   const [done, setDone]       = useState(false);
 
   if (done) return <SuccessBanner title="Data Activated!" sub={`${plan} sent to ${phone}`} onHome={() => navigate('/')} />;
@@ -3512,6 +3632,16 @@ function DataPage() {
   const plans = network ? DATA_PLANS[network] : [];
   const selectedPlan = plans.find(p => p.size === plan);
   const canProceed = network && phone.length >= 10 && plan;
+
+  const handleContinue = () => {
+    if (!canProceed || !selectedPlan) return;
+    const planPrice = parseFloat(selectedPlan.price.replace(/,/g, '') || '0');
+    if (user && planPrice > (user.balance ?? 0)) {
+      setShowInsufficient(true);
+      return;
+    }
+    setShowPin(true);
+  };
 
   return (
     <PageShell title="Buy Data" back="/">
@@ -3553,7 +3683,7 @@ function DataPage() {
         )}
       </div>
       <div className="flex-none px-4 pb-6 pt-2">
-        <button onClick={() => canProceed && setShowPin(true)} disabled={!canProceed}
+        <button onClick={handleContinue} disabled={!canProceed}
           className={`w-full h-[50px] rounded-xl text-[14px] font-semibold text-white ${canProceed ? 'bg-[#162353]' : 'bg-[#162353]/40'}`}>
           Continue
         </button>
@@ -3562,6 +3692,15 @@ function DataPage() {
         <PinModal amount={selectedPlan.price} label={`${plan} data for ${phone}`}
           onSuccess={() => { setShowPin(false); setDone(true); }} onClose={() => setShowPin(false)} />
       )}
+      <InsufficientFundsModal
+        isOpen={showInsufficient}
+        onClose={() => setShowInsufficient(false)}
+        amount={selectedPlan?.price || '0'}
+        action="buy data"
+        accountNumber={user?.accountNumber || '9067212032'}
+        accountName={user?.name?.toUpperCase() || 'CHIBUZOR EMMANUEL DIKE'}
+        bankName="Moniepoint MFB"
+      />
     </PageShell>
   );
 }
@@ -3577,16 +3716,28 @@ const BETTING_PLATFORMS = [
 ];
 
 function BettingPage() {
+  const { user } = useAuth();
   const [, navigate] = useLocation();
   const [platform, setPlatform] = useState('');
   const [userId, setUserId]     = useState('');
   const [amount, setAmount]     = useState('');
   const [showPin, setShowPin]   = useState(false);
+  const [showInsufficient, setShowInsufficient] = useState(false);
   const [done, setDone]         = useState(false);
 
   if (done) return <SuccessBanner title="Wallet Funded!" sub={`₦${amount} added to ${platform} account ${userId}`} onHome={() => navigate('/')} />;
 
   const canProceed = platform && userId && parseFloat(amount.replace(/,/g,'')) > 0;
+
+  const handleContinue = () => {
+    if (!canProceed) return;
+    const betAmt = parseFloat(amount.replace(/,/g, '') || '0');
+    if (user && betAmt > (user.balance ?? 0)) {
+      setShowInsufficient(true);
+      return;
+    }
+    setShowPin(true);
+  };
 
   return (
     <PageShell title="Betting" back="/">
@@ -3628,12 +3779,21 @@ function BettingPage() {
         </div>
       </div>
       <div className="flex-none px-4 pb-6 pt-2">
-        <button onClick={() => canProceed && setShowPin(true)} disabled={!canProceed}
+        <button onClick={handleContinue} disabled={!canProceed}
           className={`w-full h-[50px] rounded-xl text-[14px] font-semibold text-white ${canProceed ? 'bg-[#162353]' : 'bg-[#162353]/40'}`}>
           Fund Wallet
         </button>
       </div>
       {showPin && <PinModal amount={amount} label={`Fund ${platform} · ${userId}`} onSuccess={() => { setShowPin(false); setDone(true); }} onClose={() => setShowPin(false)} />}
+      <InsufficientFundsModal
+        isOpen={showInsufficient}
+        onClose={() => setShowInsufficient(false)}
+        amount={amount}
+        action="fund betting wallet"
+        accountNumber={user?.accountNumber || '9067212032'}
+        accountName={user?.name?.toUpperCase() || 'CHIBUZOR EMMANUEL DIKE'}
+        bankName="Moniepoint MFB"
+      />
     </PageShell>
   );
 }
