@@ -9,6 +9,16 @@ import {
   createHash,
   timingSafeEqual,
 } from "node:crypto";
+import {
+  getSystemSettings,
+  updateSystemSettings,
+  resolveEffectiveTatumWebhook,
+} from "../lib/systemSettings";
+import {
+  createTatumSubscription,
+  listTatumSubscriptions,
+  deleteTatumSubscription,
+} from "./crypto-wallet";
 
 const router: IRouter = Router();
 
@@ -451,22 +461,6 @@ let inMemoryWithdrawals: Array<{
   reviewedBy?: string;
   reviewedAt?: string;
 }> = [];
-
-let inMemorySystemSettings: Record<string, unknown> = {
-  maintenance_mode: false,
-  allow_new_signups: true,
-  allow_transfers: true,
-  allow_crypto_exchange: true,
-  allow_bill_payments: true,
-  tier1_daily_limit: 50000,
-  tier2_daily_limit: 500000,
-  tier3_daily_limit: 5000000,
-  transfer_fee_flat: 10.0,
-  instant_withdrawal_fee_pct: 0.5,
-  session_timeout_minutes: 30,
-  enforce_device_binding: true,
-  suspicious_amount_threshold: 1000000,
-};
 
 // Normalize Nigerian phone helper
 function normalizePhone(phone: string): string {
@@ -1480,7 +1474,7 @@ router.post("/admin/users/:id/adjust-balance", async (req: Request, res: Respons
         const currentBal = Number(rows[0]?.balance) || 0;
         const newBal = type === "credit" ? currentBal + numAmount : Math.max(0, currentBal - numAmount);
 
-        await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(id)}`, {
+        const patchResp = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(id)}`, {
           method: "PATCH",
           headers: {
             apikey: SUPABASE_SERVICE_ROLE_KEY,
@@ -1489,6 +1483,9 @@ router.post("/admin/users/:id/adjust-balance", async (req: Request, res: Respons
           },
           body: JSON.stringify({ balance: newBal }),
         });
+        if (!patchResp.ok) {
+          return res.status(502).json({ error: "Failed to update user balance in database." });
+        }
 
         await fetch(`${SUPABASE_URL}/rest/v1/transactions`, {
           method: "POST",
@@ -1499,13 +1496,26 @@ router.post("/admin/users/:id/adjust-balance", async (req: Request, res: Respons
           },
           body: JSON.stringify({
             user_id: id,
-            type: type === "credit" ? "deposit" : "withdrawal",
+            type: type === "credit" ? "in" : "out",
+            name: `Vexa Admin Adjustment (${type === "credit" ? "Credit" : "Debit"})`,
             amount: numAmount,
-            title: `Admin Adjustment (${type.toUpperCase()})`,
-            category: "adjustment",
-            status: "successful",
-            reference: adjustmentRef,
-            description: reason,
+            note: `${reason.trim()} · Ref ${adjustmentRef}`,
+          }),
+        });
+
+        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
+          method: "POST",
+          headers: {
+            apikey: SUPABASE_SERVICE_ROLE_KEY,
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            user_id: id,
+            type: type === "credit" ? "credit" : "debit",
+            title: type === "credit" ? "Account credited" : "Account debited",
+            body: `₦${numAmount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${type === "credit" ? "credited to" : "debited from"} your account (${reason.trim()}).`,
+            read: false,
           }),
         });
       }
@@ -2129,31 +2139,178 @@ router.get("/admin/audit-logs", (_req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// 14. System Settings
+// 14. System Settings (Persisted in Supabase public.system_settings)
 // ─────────────────────────────────────────────────────────────
-router.get("/admin/settings", (_req: Request, res: Response) => {
-  return res.json({ settings: inMemorySystemSettings });
+router.get("/admin/settings", async (req: Request, res: Response) => {
+  const { settings, persistedInDb } = await getSystemSettings(true);
+  const webhookInfo = await resolveEffectiveTatumWebhook(req);
+  return res.json({
+    settings,
+    persistedInDb,
+    effectiveTatumWebhookUrl: webhookInfo.url,
+    webhookSource: webhookInfo.source,
+    suggestedWebhookUrl: webhookInfo.suggestedUrl,
+  });
 });
 
-router.post("/admin/settings/update", (req: Request, res: Response) => {
-  const prev = { ...inMemorySystemSettings };
-  inMemorySystemSettings = {
-    ...inMemorySystemSettings,
-    ...req.body,
-  };
+router.post("/admin/settings/update", async (req: Request, res: Response) => {
+  const incoming = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+
+  if (incoming.tatum_webhook_url !== undefined) {
+    if (typeof incoming.tatum_webhook_url !== "string") {
+      return res.status(400).json({ error: "Invalid Tatum Webhook URL format." });
+    }
+    const candidate = incoming.tatum_webhook_url.trim();
+    if (candidate) {
+      try {
+        const parsed = new URL(candidate);
+        if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+          return res.status(400).json({ error: "Tatum Webhook URL must start with https:// or http://." });
+        }
+      } catch {
+        return res.status(400).json({ error: "Please enter a valid URL (e.g. https://your-domain.com/api/crypto/webhooks/tatum)." });
+      }
+    }
+  }
+
+  const { settings: prev } = await getSystemSettings();
+  const result = await updateSystemSettings(incoming, req.admin?.phone || "super_admin");
+  const webhookInfo = await resolveEffectiveTatumWebhook(req);
 
   logAdminAudit(
     req.admin!,
     "SYSTEM_SETTINGS_UPDATED",
     "system",
     "global",
-    { updatedKeys: Object.keys(req.body) },
+    {
+      updatedKeys: Object.keys(incoming),
+      persistedInDb: result.persistedInDb,
+      effectiveTatumWebhookUrl: webhookInfo.url,
+    },
     prev,
-    inMemorySystemSettings,
+    result.settings,
     req.ip,
   );
 
-  return res.json({ success: true, settings: inMemorySystemSettings });
+  return res.json({
+    success: true,
+    settings: result.settings,
+    persistedInDb: result.persistedInDb,
+    dbError: result.dbError,
+    effectiveTatumWebhookUrl: webhookInfo.url,
+    webhookSource: webhookInfo.source,
+    suggestedWebhookUrl: webhookInfo.suggestedUrl,
+  });
+});
+
+router.post("/admin/crypto/resync-webhooks", async (req: Request, res: Response) => {
+  const webhookInfo = await resolveEffectiveTatumWebhook(req);
+  if (!webhookInfo.url) {
+    return res.status(400).json({
+      success: false,
+      message: "No Tatum Webhook URL is configured. Save a valid HTTPS URL first.",
+    });
+  }
+  if (!process.env["TATUM_API_KEY"]) {
+    return res.status(400).json({
+      success: false,
+      message: "TATUM_API_KEY is missing in server environment.",
+    });
+  }
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    return res.status(503).json({
+      success: false,
+      message: "Supabase storage is not configured.",
+    });
+  }
+
+  try {
+    const resp = await fetch(
+      `${SUPABASE_URL}/rest/v1/crypto_deposit_addresses?select=id,user_id,asset,address,network,created_at,tatum_subscription_id,tatum_subscription_status&order=created_at.desc`,
+      {
+        headers: {
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+      },
+    );
+    if (!resp.ok) {
+      throw new Error(`Could not query crypto deposit addresses (${resp.status})`);
+    }
+    const rows = (await resp.json()) as Array<{
+      id: string;
+      user_id: string;
+      asset: "BTC" | "ETH" | "USDT";
+      address: string;
+      network: "Bitcoin" | "Ethereum" | "Tron (TRC-20)";
+      created_at: string;
+      tatum_subscription_id?: string | null;
+      tatum_subscription_status?: string | null;
+    }>;
+
+    const activeAddrs = new Set(rows.map((r) => r.address.toLowerCase()));
+    const tatumSubs = await listTatumSubscriptions();
+    for (const sub of tatumSubs) {
+      if (sub.type !== "ADDRESS_EVENT" || !sub.id) continue;
+      const addr = sub.attr?.address?.toLowerCase() || "";
+      const subUrl = (sub.attr?.url || "").replace(/\/$/, "");
+      if (!activeAddrs.has(addr) || (subUrl && subUrl !== webhookInfo.url)) {
+        await deleteTatumSubscription(sub.id);
+      }
+    }
+
+    let updated = 0;
+    const failures: Array<{ address: string; asset: string; error: string }> = [];
+
+    for (const row of rows) {
+      try {
+        await createTatumSubscription(row, webhookInfo.url);
+        updated += 1;
+      } catch (err) {
+        failures.push({
+          address: row.address,
+          asset: row.asset,
+          error: err instanceof Error ? err.message : "Subscription sync failed",
+        });
+      }
+    }
+
+    logAdminAudit(
+      req.admin!,
+      "TATUM_WEBHOOKS_RESYNCED",
+      "system",
+      "crypto_webhooks",
+      {
+        webhookUrl: webhookInfo.url,
+        source: webhookInfo.source,
+        totalAddresses: rows.length,
+        updated,
+        failed: failures.length,
+      },
+      undefined,
+      { webhookUrl: webhookInfo.url },
+      req.ip,
+    );
+
+    return res.json({
+      success: failures.length === 0,
+      webhookUrl: webhookInfo.url,
+      webhookSource: webhookInfo.source,
+      total: rows.length,
+      updated,
+      failed: failures.length,
+      failures,
+      message:
+        rows.length === 0
+          ? `Webhook URL active (${webhookInfo.url}). No existing deposit addresses needed updates.`
+          : `Synced ${updated} of ${rows.length} deposit address subscription(s) to ${webhookInfo.url}.`,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: err instanceof Error ? err.message : "Failed to resync Tatum subscriptions.",
+    });
+  }
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -2740,15 +2897,15 @@ router.get("/admin/integrations", async (_req: Request, res: Response) => {
       category: "Crypto & Blockchain",
       status: tatumKey ? "connected" : "disconnected",
       statusLabel: tatumKey ? "Connected · Nodes Synced" : "Disconnected · API Key Missing",
-      description: "Institutional blockchain gateway monitoring TRON (TRC-20 USDT), Bitcoin (BTC), Ethereum (ERC-20), and Solana wallet addresses with webhook events.",
-      endpoint: "https://api.tatum.io/v3",
+      description: "Institutional blockchain gateway monitoring TRON (TRC-20 USDT), Bitcoin (BTC), Ethereum (ERC-20), and Solana wallet addresses with dynamic webhook routing.",
+      endpoint: (await resolveEffectiveTatumWebhook(_req)).url || "https://api.tatum.io/v3",
       credentialStatus: maskSecret(tatumKey, 6, 4),
       envVar: "TATUM_API_KEY",
       latencyMs: tatumKey ? 96 : 0,
       lastChecked: new Date().toISOString(),
       docsUrl: "https://docs.tatum.io",
-      version: "v3.0 (Enterprise RPC)",
-      features: ["TRON TRC-20 USDT", "BTC UTXO Custody", "ERC-20 Tokens", "Deposit Webhooks"],
+      version: "v4 Subscriptions + v3 RPC",
+      features: ["TRON TRC-20 USDT", "BTC UTXO Custody", "ERC-20 Tokens", "Dynamic DB Webhooks"],
     },
     {
       id: "coingecko",

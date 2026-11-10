@@ -123,11 +123,11 @@ export const OverviewTab: React.FC = () => {
             <span>Refresh Ledger</span>
           </button>
           <button
-            onClick={() => setActiveTab('users')}
-            className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#F0B90B] hover:bg-[#d9a606] text-black shadow-sm flex items-center space-x-1.5 transition-colors"
+            onClick={() => setActiveTab('system-settings')}
+            className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#F0B90B] hover:bg-[#d9a606] text-black shadow-sm flex items-center space-x-1.5 transition-colors whitespace-nowrap shrink-0"
           >
             <Search className="w-3.5 h-3.5" />
-            <span>Search Customer</span>
+            <span>Webhook & Settings</span>
           </button>
         </div>
       </div>
@@ -225,7 +225,10 @@ export const OverviewTab: React.FC = () => {
         </div>
 
         {/* Registered Users */}
-        <div className={`p-5 rounded-2xl border ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-gray-200'}`}>
+        <div
+          onClick={() => setActiveTab('users')}
+          className={`p-5 rounded-2xl border cursor-pointer transition-all hover:border-[#F0B90B]/50 ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-gray-200'}`}
+        >
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-gray-400">Total Registered Users</span>
             <div className="p-2 rounded-xl bg-blue-500/10 text-blue-500">

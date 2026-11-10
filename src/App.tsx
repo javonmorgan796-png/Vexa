@@ -27,7 +27,6 @@ import ChangePinPage from '@/pages/settings/ChangePinPage';
 import ChangePasswordPage from '@/pages/settings/ChangePasswordPage';
 import TwoFactorSettingsPage from '@/pages/settings/TwoFactorSettingsPage';
 import TwoFactorChallenge from '@/pages/settings/TwoFactorChallenge';
-import ActiveDevicesPage from '@/pages/settings/ActiveDevicesPage';
 import CryptoExchangePage from '@/pages/crypto/CryptoExchangePage';
 import { IncomingCryptoPage, OutgoingCryptoPage } from '@/pages/crypto/CryptoHistoryPage';
 import VexaTransferPage from '@/pages/transfer/VexaTransferPage';
@@ -50,7 +49,6 @@ import { BusinessSecurityProvider, useBusinessSecurity } from '@/context/Busines
 import { UserDataProvider, useUserData } from '@/context/UserDataContext';
 import { VexaFinanceProvider } from '@/context/VexaFinanceContext';
 import { AccountSecurityProvider, useAccountSecurity } from '@/context/AccountSecurityContext';
-import { unlockNotificationSound } from '@/lib/notificationSound';
 import type { AppTransaction } from '@/context/UserDataContext';
 import BusinessSecurityScreen from '@/pages/business/BusinessSecurityScreen';
 import {
@@ -1155,7 +1153,6 @@ function SettingsPage() {
     const next = !notificationSound;
     setNotificationSound(next);
     localStorage.setItem('vexa.notificationSound', String(next));
-    if (next) unlockNotificationSound();
   }
 
   const userName = user?.name ?? 'Your account';
@@ -1192,7 +1189,6 @@ function SettingsPage() {
         { icon: <Lock className="w-5 h-5" />,        label: 'Change Transaction PIN', action: () => navigate('/change-pin') },
         { icon: <Fingerprint className="w-5 h-5" />, label: 'Biometric Login',        sub: biometrics ? 'On' : 'Off' },
         { icon: <Lock className="w-5 h-5" />,        label: 'Change Password',        action: () => navigate('/change-password') },
-         { icon: <Tablet className="w-5 h-5" />,      label: 'Active Devices',         sub: 'Manage signed-in sessions', action: () => navigate('/active-devices') },
          { icon: <Shield className="w-5 h-5" />,      label: 'Passcode on App Return', sub: passcodeOnReturn ? 'On · locks when you leave' : 'Off' },
          { icon: <i className="fa-solid fa-key text-[17px]" aria-hidden="true" />, label: 'Two-Factor Authentication', sub: user?.twoFactorEnabled ? 'Enabled via SMS' : 'Off', action: () => navigate('/two-factor') },
         { icon: <Lock className="w-5 h-5" />, label: 'Sleep Mode', sub: securityState.sleepModeActive ? 'Active · money movement blocked' : 'Pause all money movement', action: () => { setSecurityMessage(''); setSecurityAction('sleep_mode'); } },
@@ -2139,6 +2135,7 @@ function NotificationsPage() {
     markNotificationRead: markRead,
     markAllNotificationsRead: markAllRead,
   } = useUserData();
+  const [filter, setFilter] = useState<'all' | 'unread' | 'crypto'>('all');
 
   function dotColor(type: string) {
     switch (type) {
@@ -2146,82 +2143,147 @@ function NotificationsPage() {
       case 'debit':    return { bg: '#FEE2E2', stroke: '#DC2626' };
       case 'security': return { bg: '#FEF3C7', stroke: '#D97706' };
       case 'promo':    return { bg: '#F3E8FF', stroke: '#9333EA' };
+      case 'crypto':   return { bg: 'rgba(240, 185, 11, 0.18)', stroke: '#F0B90B' };
       default:         return { bg: '#EFF6FF', stroke: '#2563EB' };
     }
   }
 
+  function renderIcon(type: string, stroke: string) {
+    if (type === 'crypto') return <Coins className="w-5 h-5" style={{ color: stroke }} strokeWidth={1.9} />;
+    if (type === 'security') return <Shield className="w-5 h-5" style={{ color: stroke }} strokeWidth={1.9} />;
+    return <Bell className="w-5 h-5" style={{ color: stroke }} strokeWidth={1.8} />;
+  }
+
+  const cryptoCount = notifications.filter(n => n.type === 'crypto').length;
+  const visibleNotifications = notifications.filter(n => {
+    if (filter === 'unread') return !n.read;
+    if (filter === 'crypto') return n.type === 'crypto';
+    return true;
+  });
+  const unreadVisible = visibleNotifications.filter(n => !n.read);
+  const readVisible = visibleNotifications.filter(n => n.read);
+
   return (
-    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="theme-page fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
       {/* Header */}
-      <div className="flex-none flex items-center justify-between px-4 pb-3 bg-white border-b border-[#E8EBF0]"
+      <div className="theme-surface theme-border flex-none border-b border-[#E8EBF0] px-4 pb-3"
         style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/')} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
-          </button>
-          <span className="text-[16px] font-bold text-[#111]">Notifications</span>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button onClick={() => navigate('/')} className="theme-text-primary w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/5">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+            </button>
+            <span className="theme-text-primary text-[16px] font-bold">Notifications</span>
+            {unreadCount > 0 && (
+              <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">{unreadCount}</span>
+            )}
+          </div>
           {unreadCount > 0 && (
-            <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">{unreadCount}</span>
+            <button onClick={markAllRead} className="theme-brand-text text-[12px] font-semibold">Mark all read</button>
           )}
         </div>
-        {unreadCount > 0 && (
-          <button onClick={markAllRead} className="text-[12px] text-[#162353] font-semibold">Mark all read</button>
-        )}
+
+        {/* Filter pills */}
+        <div className="mt-3 flex items-center gap-2">
+          {([
+            { id: 'all', label: `All (${notifications.length})` },
+            { id: 'crypto', label: `Crypto (${cryptoCount})` },
+            { id: 'unread', label: `Unread (${unreadCount})` },
+          ] as const).map(tab => {
+            const active = filter === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setFilter(tab.id)}
+                className={`rounded-xl px-3 py-1.5 text-[11px] font-bold transition-colors ${
+                  active
+                    ? 'bg-[#F0B90B] text-[#181A20]'
+                    : 'theme-surface-alt theme-text-secondary border border-black/5'
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto py-4 px-4 space-y-3" style={{ scrollbarWidth: 'none' }}>
         {notificationsLoading && (
           <div className="flex justify-center py-16">
-            <svg className="animate-spin w-6 h-6 text-[#162353]" viewBox="0 0 24 24" fill="none">
+            <svg className="animate-spin w-6 h-6 text-[#F0B90B]" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40 20" />
             </svg>
           </div>
         )}
-        {!notificationsLoading && notifications.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-20 text-[#888]">
-            <Bell className="w-10 h-10 mb-3 opacity-20" />
-            <p className="text-[13px]">No notifications yet</p>
+        {!notificationsLoading && visibleNotifications.length === 0 && (
+          <div className="theme-text-secondary flex flex-col items-center justify-center py-20">
+            {filter === 'crypto'
+              ? <Coins className="w-10 h-10 mb-3 opacity-30 text-[#F0B90B]" />
+              : <Bell className="w-10 h-10 mb-3 opacity-20" />}
+            <p className="text-[13px]">
+              {filter === 'crypto'
+                ? 'No crypto notifications yet'
+                : filter === 'unread'
+                  ? 'No unread notifications'
+                  : 'No notifications yet'}
+            </p>
           </div>
         )}
-        {!notificationsLoading && unreadCount > 0 && (
-          <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide px-1">New</p>
+        {!notificationsLoading && unreadVisible.length > 0 && (
+          <p className="theme-text-secondary text-[11px] font-semibold uppercase tracking-wide px-1">New</p>
         )}
-        {notifications.filter(n => !n.read).map(n => {
+        {unreadVisible.map(n => {
           const c = dotColor(n.type);
           return (
             <button key={n.id} onClick={() => markRead(n.id)}
-              className="w-full bg-white rounded-2xl border border-[#E8F0FE] px-4 py-4 flex items-start gap-3 text-left hover:bg-[#F8F9FB] transition-colors shadow-sm">
+              className="theme-surface theme-border w-full rounded-2xl border px-4 py-4 flex items-start gap-3 text-left transition-colors shadow-sm">
               <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: c.bg }}>
-                <Bell className="w-5 h-5" style={{ color: c.stroke }} strokeWidth={1.8} />
+                {renderIcon(n.type, c.stroke)}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2 mb-0.5">
-                  <p className="text-[13px] font-bold text-[#111]">{n.title}</p>
-                  <span className="text-[10px] text-[#888] shrink-0">{n.time}</span>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <p className="theme-text-primary text-[13px] font-bold truncate">{n.title}</p>
+                    {n.type === 'crypto' && (
+                      <span className="shrink-0 rounded-md bg-[#F0B90B]/15 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-[#B7791F] dark:text-[#F0B90B]">
+                        Crypto
+                      </span>
+                    )}
+                  </div>
+                  <span className="theme-text-secondary text-[10px] shrink-0">{n.time}</span>
                 </div>
-                <p className="text-[12px] text-[#555] leading-relaxed">{n.body}</p>
+                <p className="theme-text-secondary text-[12px] leading-relaxed">{n.body}</p>
               </div>
               <span className="w-2 h-2 rounded-full bg-red-500 shrink-0 mt-1.5" />
             </button>
           );
         })}
 
-        {notifications.some(n => n.read) && (
-          <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide px-1 pt-1">Earlier</p>
+        {readVisible.length > 0 && (
+          <p className="theme-text-secondary text-[11px] font-semibold uppercase tracking-wide px-1 pt-1">Earlier</p>
         )}
-        {notifications.filter(n => n.read).map(n => {
+        {readVisible.map(n => {
           const c = dotColor(n.type);
           return (
-            <div key={n.id} className="bg-white rounded-2xl border border-[#F0F0F0] px-4 py-4 flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: c.bg + '80' }}>
-                <Bell className="w-5 h-5" style={{ color: c.stroke + '99' }} strokeWidth={1.8} />
+            <div key={n.id} className="theme-surface theme-border rounded-2xl border px-4 py-4 flex items-start gap-3 opacity-85">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: c.bg }}>
+                {renderIcon(n.type, c.stroke)}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2 mb-0.5">
-                  <p className="text-[13px] font-semibold text-[#666]">{n.title}</p>
-                  <span className="text-[10px] text-[#AAA] shrink-0">{n.time}</span>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <p className="theme-text-primary text-[13px] font-semibold truncate">{n.title}</p>
+                    {n.type === 'crypto' && (
+                      <span className="shrink-0 rounded-md bg-[#F0B90B]/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#B7791F] dark:text-[#F0B90B]">
+                        Crypto
+                      </span>
+                    )}
+                  </div>
+                  <span className="theme-text-secondary text-[10px] shrink-0">{n.time}</span>
                 </div>
-                <p className="text-[12px] text-[#888] leading-relaxed">{n.body}</p>
+                <p className="theme-text-secondary text-[12px] leading-relaxed">{n.body}</p>
               </div>
             </div>
           );
@@ -5288,9 +5350,6 @@ function Router() {
       <Route path="/admin/integrations">
         <AdminDashboardPage tab="integrations" />
       </Route>
-      <Route path="/admin/management">
-        <AdminDashboardPage tab="management" />
-      </Route>
       <Route path="/admin/audit-logs">
         <AdminDashboardPage tab="audit-logs" />
       </Route>
@@ -5305,7 +5364,6 @@ function Router() {
       <Route path="/limits" component={LimitsPage} />
       <Route path="/change-pin" component={ChangePinPage} />
       <Route path="/change-password" component={ChangePasswordPage} />
-      <Route path="/active-devices" component={ActiveDevicesPage} />
       <Route path="/two-factor" component={TwoFactorSettingsPage} />
       <Route path="/help-support" component={HelpSupportPage} />
       <Route path="/notifications" component={NotificationsPage} />

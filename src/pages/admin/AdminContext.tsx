@@ -1,14 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 
-export interface AdminUser {
-  id: string;
-  phone: string;
-  name: string;
-  role: 'super_admin' | 'admin' | 'finance_manager' | 'support_agent' | 'auditor';
-  permissions: string[];
-}
-
 export type AdminTab =
   | 'overview'
   | 'users'
@@ -22,10 +14,17 @@ export type AdminTab =
   | 'cards'
   | 'support'
   | 'security'
-  | 'management'
   | 'integrations'
   | 'audit-logs'
   | 'system-settings';
+
+export interface AdminUser {
+  id: string;
+  phone: string;
+  name: string;
+  role: 'super_admin' | 'admin' | 'finance_manager' | 'support_agent' | 'auditor';
+  permissions: string[];
+}
 
 export interface AdminBadgeCounts {
   kyc: number;
@@ -46,267 +45,268 @@ export interface AdminNotificationItem {
   severity: 'info' | 'warning' | 'critical';
 }
 
-interface AdminContextType {
+interface AdminContextValue {
   adminUser: AdminUser | null;
-  loading: boolean;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
+  loading: boolean;
   isElevated: boolean;
-  elevatedToken: string | null;
   elevateAdminSession: (token: string) => void;
-  lockAdminSession: () => Promise<void>;
+  lockAdminSession: () => void;
   activeTab: AdminTab;
   setActiveTab: (tab: AdminTab) => void;
-  hasPermission: (permission: string) => boolean;
-  isSuperAdmin: boolean;
   adminTheme: 'dark' | 'light';
   toggleAdminTheme: () => void;
-  refreshAdmin: () => Promise<void>;
-  fetchAdminApi: (path: string, options?: RequestInit) => Promise<any>;
+  hasPermission: (permission: string) => boolean;
+  fetchAdminApi: <T = any>(url: string, options?: RequestInit) => Promise<T>;
   badgeCounts: AdminBadgeCounts;
   adminNotifications: AdminNotificationItem[];
   refreshBadgeCounts: () => Promise<void>;
 }
 
-const AdminContext = createContext<AdminContextType | null>(null);
+const ADMIN_SESSION_STORAGE_KEY = 'vexa_admin_elevated_token';
+const ADMIN_THEME_STORAGE_KEY = 'vexa_admin_theme';
 
-const ADMIN_SESSION_TOKEN_KEY = 'vexa_admin_elevated_session';
+const EMPTY_BADGES: AdminBadgeCounts = {
+  kyc: 0,
+  withdrawals: 0,
+  deposits: 0,
+  support: 0,
+  security: 0,
+  total: 0,
+};
+
+const AdminContext = createContext<AdminContextValue | null>(null);
 
 export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { session, user } = useAuth();
+  const { user, session, loading: authLoading } = useAuth();
+
   const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [elevatedToken, setElevatedToken] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem(ADMIN_SESSION_STORAGE_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
+  const [isElevated, setIsElevated] = useState(false);
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [adminTheme, setAdminTheme] = useState<'dark' | 'light'>(() => {
-    return (localStorage.getItem('vexa_admin_theme') as 'dark' | 'light') || 'dark';
+    try {
+      const saved = localStorage.getItem(ADMIN_THEME_STORAGE_KEY);
+      if (saved === 'light' || saved === 'dark') return saved;
+      return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+    } catch {
+      return 'dark';
+    }
   });
-
-  const [badgeCounts, setBadgeCounts] = useState<AdminBadgeCounts>({
-    kyc: 0,
-    withdrawals: 0,
-    deposits: 0,
-    support: 0,
-    security: 0,
-    total: 0,
-  });
+  const [badgeCounts, setBadgeCounts] = useState<AdminBadgeCounts>(EMPTY_BADGES);
   const [adminNotifications, setAdminNotifications] = useState<AdminNotificationItem[]>([]);
-
-  const [elevatedToken, setElevatedToken] = useState<string | null>(() => {
-    return sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY);
-  });
-  const [isElevated, setIsElevated] = useState<boolean>(() => {
-    return Boolean(sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY));
-  });
 
   const toggleAdminTheme = useCallback(() => {
     setAdminTheme((prev) => {
       const next = prev === 'dark' ? 'light' : 'dark';
-      localStorage.setItem('vexa_admin_theme', next);
+      try {
+        localStorage.setItem(ADMIN_THEME_STORAGE_KEY, next);
+      } catch {
+        // Ignore storage error
+      }
       return next;
     });
   }, []);
 
-  // Synchronize document.documentElement class and colorScheme with adminTheme
+  const elevateAdminSession = useCallback((token: string) => {
+    try {
+      sessionStorage.setItem(ADMIN_SESSION_STORAGE_KEY, token);
+    } catch {
+      // Ignore storage error
+    }
+    setElevatedToken(token);
+    setIsElevated(true);
+    setIsAdmin(true);
+  }, []);
+
+  const lockAdminSession = useCallback(() => {
+    const token = elevatedToken;
+    try {
+      sessionStorage.removeItem(ADMIN_SESSION_STORAGE_KEY);
+    } catch {
+      // Ignore storage error
+    }
+    setElevatedToken('');
+    setIsElevated(false);
+    if (token) {
+      void fetch('/api/admin/auth/lock', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-session-token': token,
+        },
+        body: JSON.stringify({ token }),
+      }).catch(() => {});
+    }
+  }, [elevatedToken]);
+
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', adminTheme === 'dark');
-    document.documentElement.style.colorScheme = adminTheme;
+    if (authLoading) return;
+    let active = true;
+
+    async function verifyAdminAccess() {
+      setLoading(true);
+      try {
+        const headers: Record<string, string> = {};
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`;
+        }
+        if (user?.phone) {
+          headers['x-vexa-phone'] = user.phone;
+        }
+        if (elevatedToken) {
+          headers['x-admin-session-token'] = elevatedToken;
+        }
+
+        const resp = await fetch('/api/admin/auth/check', { headers });
+        const data = await resp.json().catch(() => ({ isAdmin: false, isElevated: false }));
+
+        if (!active) return;
+
+        if (data?.isAdmin) {
+          setIsAdmin(true);
+          setAdminUser({
+            id: data.id || 'admin-master-001',
+            phone: data.phone || user?.phone || '',
+            name: data.name || user?.name || 'Super Administrator',
+            role: data.role || 'super_admin',
+            permissions: Array.isArray(data.permissions) ? data.permissions : ['overview.view'],
+          });
+
+          if (elevatedToken && data.isElevated) {
+            setIsElevated(true);
+          } else if (elevatedToken) {
+            const elevRes = await fetch('/api/admin/auth/elevation-status', {
+              headers: { 'x-admin-session-token': elevatedToken },
+            });
+            const elevData = await elevRes.json().catch(() => ({ elevated: false }));
+            if (!active) return;
+            if (elevData?.elevated) {
+              setIsElevated(true);
+            } else {
+              try {
+                sessionStorage.removeItem(ADMIN_SESSION_STORAGE_KEY);
+              } catch {
+                // Ignore storage error
+              }
+              setElevatedToken('');
+              setIsElevated(false);
+            }
+          } else {
+            setIsElevated(false);
+          }
+        } else {
+          setIsAdmin(false);
+          setIsElevated(false);
+          setAdminUser(null);
+        }
+      } catch {
+        if (!active) return;
+        setIsAdmin(false);
+        setIsElevated(false);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    void verifyAdminAccess();
     return () => {
-      // When leaving admin section, restore user app theme preference
-      const storedUserTheme = localStorage.getItem('vexa_theme_mode');
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      const shouldBeDark = storedUserTheme === 'dark' || (storedUserTheme === 'system' && prefersDark);
-      document.documentElement.classList.toggle('dark', shouldBeDark);
-      document.documentElement.style.colorScheme = shouldBeDark ? 'dark' : 'light';
+      active = false;
     };
-  }, [adminTheme]);
+  }, [authLoading, user?.phone, user?.name, session?.access_token, elevatedToken]);
 
   const fetchAdminApi = useCallback(
-    async (path: string, options: RequestInit = {}) => {
-      const token = session?.access_token || '';
-      const phone = user?.phone || '09067212032';
-      const storedElevatedToken = elevatedToken || sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY) || '';
-
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'x-vexa-phone': phone,
-        ...(storedElevatedToken ? { 'x-admin-session-token': storedElevatedToken } : {}),
-        ...(options.headers as Record<string, string>),
-      };
-
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+    async <T = any>(url: string, options: RequestInit = {}): Promise<T> => {
+      const headers = new Headers(options.headers || {});
+      if (!headers.has('Content-Type') && options.body && typeof options.body === 'string') {
+        headers.set('Content-Type', 'application/json');
+      }
+      if (elevatedToken) {
+        headers.set('x-admin-session-token', elevatedToken);
+      }
+      if (session?.access_token) {
+        headers.set('Authorization', `Bearer ${session.access_token}`);
+      }
+      if (user?.phone) {
+        headers.set('x-vexa-phone', user.phone);
       }
 
-      const res = await fetch(path, {
+      const response = await fetch(url, {
         ...options,
         headers,
       });
 
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.message || errorData.error || `HTTP ${res.status}`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (response.status === 403 && payload?.error === 'Unauthorized' && elevatedToken) {
+          lockAdminSession();
+        }
+        throw new Error(payload?.message || payload?.error || `Request failed (${response.status})`);
       }
 
-      const jsonResult = await res.json();
-      if (options.method && options.method.toUpperCase() !== 'GET') {
-        setTimeout(() => {
-          window.dispatchEvent(new CustomEvent('vexa:admin-refresh'));
-        }, 80);
-      }
-      return jsonResult;
+      return payload as T;
     },
-    [session, user, elevatedToken]
+    [elevatedToken, session?.access_token, user?.phone, lockAdminSession],
   );
 
-  const checkAdminAuth = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await fetchAdminApi('/api/admin/auth/check');
-      if (data && data.isAdmin) {
-        setAdminUser({
-          id: data.id || 'admin-001',
-          phone: data.phone || user?.phone || '09067212032',
-          name: data.name || user?.name || 'Super Administrator',
-          role: data.role || 'super_admin',
-          permissions: data.permissions || ['overview.view'],
-        });
-      } else {
-        setAdminUser(null);
-      }
-
-      // Check elevation token validity
-      const stored = sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY);
-      if (stored) {
-        try {
-          const elevRes = await fetch(`/api/admin/auth/elevation-status?token=${stored}`);
-          const elevData = await elevRes.json();
-          if (elevData && elevData.elevated) {
-            setIsElevated(true);
-            setElevatedToken(stored);
-          } else {
-            sessionStorage.removeItem(ADMIN_SESSION_TOKEN_KEY);
-            setIsElevated(false);
-            setElevatedToken(null);
-          }
-        } catch {
-          // If server fails check, keep local session if present
-        }
-      }
-    } catch (err) {
-      console.error('[AdminContext] Auth check failed:', err);
-      if (user?.phone?.includes('9067212032') || user?.phone === '09067212032') {
-        setAdminUser({
-          id: 'admin-fallback-01',
-          phone: '09067212032',
-          name: user.name || 'Super Administrator',
-          role: 'super_admin',
-          permissions: [
-            'overview.view',
-            'users.view', 'users.manage', 'users.adjust_balance', 'users.suspend',
-            'kyc.view', 'kyc.manage',
-            'transactions.view', 'transactions.manage',
-            'deposits.view', 'deposits.manage',
-            'withdrawals.view', 'withdrawals.manage',
-            'cards.view', 'cards.manage',
-            'support.view', 'support.manage',
-            'security.view', 'security.manage',
-            'admins.view', 'admins.manage',
-            'audit.view',
-            'settings.view', 'settings.manage',
-          ],
-        });
-      } else {
-        setAdminUser(null);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchAdminApi, user]);
-
-  useEffect(() => {
-    checkAdminAuth();
-  }, [checkAdminAuth]);
-
-  const elevateAdminSession = useCallback((token: string) => {
-    sessionStorage.setItem(ADMIN_SESSION_TOKEN_KEY, token);
-    setElevatedToken(token);
-    setIsElevated(true);
-  }, []);
-
-  const lockAdminSession = useCallback(async () => {
-    try {
-      const stored = elevatedToken || sessionStorage.getItem(ADMIN_SESSION_TOKEN_KEY);
-      if (stored) {
-        await fetch('/api/admin/auth/lock', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-admin-session-token': stored },
-          body: JSON.stringify({ token: stored }),
-        });
-      }
-    } catch {
-      // Ignored
-    } finally {
-      sessionStorage.removeItem(ADMIN_SESSION_TOKEN_KEY);
-      setElevatedToken(null);
-      setIsElevated(false);
-    }
-  }, [elevatedToken]);
-
   const refreshBadgeCounts = useCallback(async () => {
+    if (!isAdmin || !isElevated) return;
     try {
-      const data = await fetchAdminApi('/api/admin/notifications/badge-counts');
-      if (data && data.counts) {
-        setBadgeCounts(data.counts);
-      }
-      if (data && Array.isArray(data.notifications)) {
-        setAdminNotifications(data.notifications);
-      }
+      const res = await fetchAdminApi<{
+        counts?: AdminBadgeCounts;
+        notifications?: AdminNotificationItem[];
+      }>('/api/admin/notifications/badge-counts');
+      if (res?.counts) setBadgeCounts(res.counts);
+      if (Array.isArray(res?.notifications)) setAdminNotifications(res.notifications);
     } catch {
-      // Ignored
+      // Ignore silent polling errors
     }
-  }, [fetchAdminApi]);
+  }, [isAdmin, isElevated, fetchAdminApi]);
 
   useEffect(() => {
-    if (!adminUser) return;
-    refreshBadgeCounts();
-    const interval = setInterval(() => {
-      refreshBadgeCounts();
-    }, 5000);
-    const handleRefresh = () => {
-      refreshBadgeCounts();
-    };
-    window.addEventListener('vexa:admin-refresh', handleRefresh);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('vexa:admin-refresh', handleRefresh);
-    };
-  }, [adminUser, refreshBadgeCounts]);
+    if (!isAdmin || !isElevated) return;
+    void refreshBadgeCounts();
+    const interval = window.setInterval(() => {
+      void refreshBadgeCounts();
+    }, 15000);
+    return () => window.clearInterval(interval);
+  }, [isAdmin, isElevated, refreshBadgeCounts]);
+
+  const isSuperAdmin = adminUser?.role === 'super_admin';
 
   const hasPermission = useCallback(
-    (perm: string) => {
+    (permission: string) => {
       if (!adminUser) return false;
       if (adminUser.role === 'super_admin') return true;
-      return adminUser.permissions.includes(perm);
+      return adminUser.permissions.includes(permission);
     },
-    [adminUser]
+    [adminUser],
   );
 
   return (
     <AdminContext.Provider
       value={{
         adminUser,
+        isAdmin,
+        isSuperAdmin,
         loading,
-        isAdmin: Boolean(adminUser),
         isElevated,
-        elevatedToken,
         elevateAdminSession,
         lockAdminSession,
         activeTab,
         setActiveTab,
-        hasPermission,
-        isSuperAdmin: adminUser?.role === 'super_admin',
         adminTheme,
         toggleAdminTheme,
-        refreshAdmin: checkAdminAuth,
+        hasPermission,
         fetchAdminApi,
         badgeCounts,
         adminNotifications,
@@ -318,10 +318,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   );
 };
 
-export function useAdmin() {
-  const context = useContext(AdminContext);
-  if (!context) {
+export function useAdmin(): AdminContextValue {
+  const ctx = useContext(AdminContext);
+  if (!ctx) {
     throw new Error('useAdmin must be used within an AdminProvider');
   }
-  return context;
+  return ctx;
 }

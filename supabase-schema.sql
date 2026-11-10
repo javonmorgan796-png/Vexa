@@ -47,6 +47,10 @@ ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS two_factor_enabled BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS two_factor_phone TEXT;
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS is_suspended BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS suspension_reason TEXT;
 
 -- ── Auto-create profile on signup (bypasses RLS) ──────────
 -- This trigger runs with SECURITY DEFINER (elevated privileges),
@@ -409,7 +413,15 @@ BEGIN
   INSERT INTO public.crypto_transactions (user_id, kind, asset, amount, naira_amount, note)
   VALUES (current_user_id, 'deposit', 'NGN', p_amount, p_amount, 'Funded from Vexa balance');
 
-  RETURN jsonb_build_object('naira_balance', wallet.naira_balance);
+  INSERT INTO public.notifications (user_id, type, title, body)
+  VALUES (
+    current_user_id,
+    'crypto',
+    'Exchange wallet funded',
+    '₦' || to_char(p_amount, 'FM999G999G999G990D00') || ' moved from your Vexa balance to your Exchange wallet.'
+  );
+
+  RETURN jsonb_build_object('naira_balance', wallet.naira_balance, 'notified', true);
 END;
 $$;
 
@@ -429,6 +441,8 @@ DECLARE
   wallet public.crypto_accounts;
   current_asset NUMERIC;
   crypto_amount NUMERIC;
+  formatted_crypto TEXT;
+  formatted_naira TEXT;
 BEGIN
   IF current_user_id IS NULL THEN RAISE EXCEPTION 'You must be signed in'; END IF;
   IF p_asset NOT IN ('BTC', 'ETH', 'USDT') THEN RAISE EXCEPTION 'Unsupported asset'; END IF;
@@ -467,8 +481,22 @@ BEGIN
   VALUES (current_user_id, p_side, p_asset, crypto_amount, p_naira_amount, p_rate,
     CASE WHEN p_side = 'buy' THEN 'Bought with exchange balance' ELSE 'Sold to exchange balance' END);
 
+  formatted_crypto := regexp_replace(to_char(ROUND(crypto_amount, 8), 'FM999G999G990.00000000'), '\.?0+$', '');
+  formatted_naira := to_char(p_naira_amount, 'FM999G999G999G990D00');
+
+  INSERT INTO public.notifications (user_id, type, title, body)
+  VALUES (
+    current_user_id,
+    'crypto',
+    CASE WHEN p_side = 'buy' THEN p_asset || ' purchase successful' ELSE p_asset || ' sale successful' END,
+    CASE
+      WHEN p_side = 'buy' THEN 'Bought ' || formatted_crypto || ' ' || p_asset || ' for ₦' || formatted_naira || '.'
+      ELSE 'Sold ' || formatted_crypto || ' ' || p_asset || ' for ₦' || formatted_naira || ' to your Exchange balance.'
+    END
+  );
+
   SELECT * INTO wallet FROM public.crypto_accounts WHERE user_id = current_user_id;
-  RETURN jsonb_build_object('asset_amount', crypto_amount, 'naira_balance', wallet.naira_balance);
+  RETURN jsonb_build_object('asset_amount', crypto_amount, 'naira_balance', wallet.naira_balance, 'notified', true);
 END;
 $$;
 
@@ -484,14 +512,17 @@ SET search_path = public
 AS $$
 DECLARE
   current_user_id UUID := auth.uid();
+  sender public.profiles;
   recipient public.profiles;
   current_asset NUMERIC;
   clean_account TEXT := trim(p_recipient_account);
+  formatted_crypto TEXT;
 BEGIN
   IF current_user_id IS NULL THEN RAISE EXCEPTION 'You must be signed in'; END IF;
   IF p_asset NOT IN ('BTC', 'ETH', 'USDT') THEN RAISE EXCEPTION 'Unsupported asset'; END IF;
   IF p_amount IS NULL OR p_amount <= 0 THEN RAISE EXCEPTION 'Enter a valid crypto amount'; END IF;
 
+  SELECT * INTO sender FROM public.profiles WHERE id = current_user_id;
   SELECT * INTO recipient FROM public.profiles WHERE account_number = clean_account FOR UPDATE;
   IF recipient.id IS NULL THEN RAISE EXCEPTION 'No Vexa user was found for that account number'; END IF;
   IF recipient.id = current_user_id THEN RAISE EXCEPTION 'You cannot transfer to your own account'; END IF;
@@ -515,10 +546,17 @@ BEGIN
   INSERT INTO public.crypto_transactions (user_id, kind, asset, amount, counterparty_account, note)
   VALUES
     (current_user_id, 'transfer_out', p_asset, p_amount, recipient.account_number, 'Crypto sent to Vexa user'),
-    (recipient.id, 'transfer_in', p_asset, p_amount,
-      (SELECT account_number FROM public.profiles WHERE id = current_user_id), 'Crypto received from Vexa user');
+    (recipient.id, 'transfer_in', p_asset, p_amount, sender.account_number, 'Crypto received from Vexa user');
 
-  RETURN jsonb_build_object('recipient_name', recipient.name, 'recipient_account', recipient.account_number);
+  formatted_crypto := regexp_replace(to_char(ROUND(p_amount, 8), 'FM999G999G990.00000000'), '\.?0+$', '');
+  INSERT INTO public.notifications (user_id, type, title, body)
+  VALUES
+    (current_user_id, 'crypto', p_asset || ' transfer sent',
+      formatted_crypto || ' ' || p_asset || ' sent to ' || recipient.name || ' (' || recipient.account_number || ').'),
+    (recipient.id, 'crypto', p_asset || ' received',
+      formatted_crypto || ' ' || p_asset || ' received from ' || COALESCE(sender.name, 'Vexa user') || '.');
+
+  RETURN jsonb_build_object('recipient_name', recipient.name, 'recipient_account', recipient.account_number, 'notified', true);
 END;
 $$;
 
@@ -583,6 +621,7 @@ SET search_path = public
 AS $$
 DECLARE
   deposit_event public.crypto_deposit_events;
+  formatted_crypto TEXT;
 BEGIN
   IF p_asset NOT IN ('BTC', 'ETH', 'USDT') OR p_amount IS NULL OR p_amount <= 0 THEN
     RAISE EXCEPTION 'Invalid crypto deposit';
@@ -604,14 +643,35 @@ BEGIN
   RETURNING * INTO deposit_event;
 
   IF deposit_event.status = 'credited' THEN
-    RETURN jsonb_build_object('status', 'already_processed');
+    RETURN jsonb_build_object('status', 'already_processed', 'notified', true);
   END IF;
 
+  formatted_crypto := regexp_replace(to_char(ROUND(deposit_event.amount, 8), 'FM999G999G990.00000000'), '\.?0+$', '');
+
   IF deposit_event.confirmations < deposit_event.required_confirmations THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM public.notifications
+      WHERE user_id = deposit_event.user_id
+        AND type = 'crypto'
+        AND title = deposit_event.asset || ' deposit incoming'
+        AND body LIKE '%' || LEFT(deposit_event.transaction_hash, 10) || '%'
+    ) THEN
+      INSERT INTO public.notifications (user_id, type, title, body)
+      VALUES (
+        deposit_event.user_id,
+        'crypto',
+        deposit_event.asset || ' deposit incoming',
+        formatted_crypto || ' ' || deposit_event.asset || ' detected on ' || deposit_event.network ||
+          ' (' || deposit_event.confirmations || '/' || deposit_event.required_confirmations ||
+          ' confirmations · Tx ' || LEFT(deposit_event.transaction_hash, 10) || '…).'
+      );
+    END IF;
+
     RETURN jsonb_build_object(
       'status', 'pending',
       'confirmations', deposit_event.confirmations,
-      'required_confirmations', deposit_event.required_confirmations
+      'required_confirmations', deposit_event.required_confirmations,
+      'notified', true
     );
   END IF;
 
@@ -636,7 +696,16 @@ BEGIN
   SET status = 'credited', credited_at = NOW()
   WHERE id = deposit_event.id;
 
-  RETURN jsonb_build_object('status', 'credited');
+  INSERT INTO public.notifications (user_id, type, title, body)
+  VALUES (
+    deposit_event.user_id,
+    'crypto',
+    deposit_event.asset || ' deposit received',
+    formatted_crypto || ' ' || deposit_event.asset || ' received on ' || deposit_event.network ||
+      ' and credited to your Exchange wallet (Tx ' || LEFT(deposit_event.transaction_hash, 10) || '…).'
+  );
+
+  RETURN jsonb_build_object('status', 'credited', 'notified', true);
 END;
 $$;
 
@@ -1155,7 +1224,8 @@ VALUES (
     'instant_withdrawal_fee_pct', 0.5,
     'session_timeout_minutes', 30,
     'enforce_device_binding', true,
-    'suspicious_amount_threshold', 1000000
+    'suspicious_amount_threshold', 1000000,
+    'tatum_webhook_url', ''
   ),
   'system'
 )

@@ -1,5 +1,10 @@
 import { createHmac, createHash, timingSafeEqual } from "node:crypto";
 import { Router, type IRouter, type Request } from "express";
+import {
+  normalizeWebhookUrl,
+  resolveEffectiveTatumWebhook,
+  resolveRequestBaseUrl,
+} from "../lib/systemSettings";
 
 const router: IRouter = Router();
 type Asset = "BTC" | "ETH" | "USDT";
@@ -8,10 +13,6 @@ const SUPABASE_URL = (process.env["SUPABASE_URL"] || process.env["VITE_SUPABASE_
 const SUPABASE_SERVICE_ROLE_KEY = process.env["SUPABASE_SERVICE_ROLE_KEY"] || process.env["SUPABASE_ANON_KEY"] || process.env["VITE_SUPABASE_ANON_KEY"] || "";
 const TATUM_API_KEY = process.env["TATUM_API_KEY"];
 const TATUM_WEBHOOK_SECRET = process.env["TATUM_WEBHOOK_SECRET"];
-const TATUM_WEBHOOK_PATH = "/api/crypto/webhooks/tatum";
-const DEFAULT_TATUM_WEBHOOK_URL = process.env["APP_URL"]
-  ? `${process.env["APP_URL"].replace(/\/$/, "")}${TATUM_WEBHOOK_PATH}`
-  : "";
 
 async function safeJson<T = any>(res: globalThis.Response): Promise<T | null> {
   try {
@@ -51,30 +52,6 @@ function generateDeterministicVaultAddress(userId: string, asset: Asset): string
   return tronAddr;
 }
 
-function normalizeWebhookUrl(value: string | undefined, fallbackBaseUrl?: string) {
-  const candidate = value?.trim() || (fallbackBaseUrl ? `${fallbackBaseUrl.replace(/\/$/, "")}${TATUM_WEBHOOK_PATH}` : DEFAULT_TATUM_WEBHOOK_URL);
-  if (!candidate) return "";
-  try {
-    const url = new URL(candidate);
-    if (url.pathname === "/" || !url.pathname) {
-      url.pathname = TATUM_WEBHOOK_PATH;
-    }
-    return url.toString().replace(/\/$/, "");
-  } catch {
-    return candidate;
-  }
-}
-
-function resolveRequestBaseUrl(req: Request): string {
-  if (process.env["APP_URL"]?.trim()) {
-    return process.env["APP_URL"].trim().replace(/\/$/, "");
-  }
-  const forwardedProto = req.header("x-forwarded-proto")?.split(",")[0]?.trim();
-  const protocol = forwardedProto || req.protocol || "https";
-  const host = req.header("x-forwarded-host")?.split(",")[0]?.trim() || req.get("host") || "";
-  return host ? `${protocol}://${host}` : "";
-}
-
 const IS_TATUM_TESTNET =
   process.env["TATUM_NETWORK"]?.toLowerCase() === "testnet" ||
   Boolean(TATUM_API_KEY?.startsWith("t-"));
@@ -85,8 +62,6 @@ function assetConfig(asset: Asset, isTestnet = IS_TATUM_TESTNET): {
   network: Network;
   tatumChain: string;
   confirmations: number;
-  finality?: "final";
-  templateId?: "enriched";
 } {
   if (asset === "BTC") {
     return {
@@ -104,8 +79,6 @@ function assetConfig(asset: Asset, isTestnet = IS_TATUM_TESTNET): {
       network: "Ethereum",
       tatumChain: isTestnet ? "ethereum-sepolia" : "ethereum-mainnet",
       confirmations: 12,
-      finality: "final",
-      templateId: "enriched",
     };
   }
   return {
@@ -114,8 +87,6 @@ function assetConfig(asset: Asset, isTestnet = IS_TATUM_TESTNET): {
     network: "Tron (TRC-20)",
     tatumChain: isTestnet ? "tron-testnet" : "tron-mainnet",
     confirmations: 20,
-    finality: "final",
-    templateId: "enriched",
   };
 }
 
@@ -168,18 +139,73 @@ type DepositAddressRow = {
 };
 
 async function findAddress(address: string) {
+  const selectFields = "id,user_id,asset,address,network,created_at,tatum_subscription_id,tatum_subscription_status";
   const response = await supabaseRequest(
-    `crypto_deposit_addresses?address=eq.${encodeURIComponent(address)}&select=id,user_id,asset,address,network,created_at,tatum_subscription_id,tatum_subscription_status&limit=1`,
+    `crypto_deposit_addresses?address=eq.${encodeURIComponent(address)}&select=${selectFields}&limit=1`,
   );
   if (!response.ok) throw new Error("Could not read deposit address storage");
   const rows = (await response.json()) as DepositAddressRow[];
-  return rows[0] ?? null;
+  if (rows[0]) return rows[0];
+
+  if (/^(0x|bc1|tb1)/i.test(address)) {
+    const ciResponse = await supabaseRequest(
+      `crypto_deposit_addresses?address=ilike.${encodeURIComponent(address)}&select=${selectFields}&limit=1`,
+    );
+    if (ciResponse.ok) {
+      const ciRows = (await ciResponse.json()) as DepositAddressRow[];
+      if (ciRows[0]) return ciRows[0];
+    }
+  }
+  return null;
 }
 
-async function createTatumSubscription(row: DepositAddressRow, requestBaseUrl?: string) {
+export interface TatumSubscriptionRecord {
+  id: string;
+  type?: string;
+  attr?: {
+    chain?: string;
+    address?: string;
+    url?: string;
+  };
+}
+
+export async function listTatumSubscriptions(): Promise<TatumSubscriptionRecord[]> {
+  if (!TATUM_API_KEY) return [];
+  try {
+    const resp = await fetch("https://api.tatum.io/v4/subscription?pageSize=50", {
+      headers: { accept: "application/json", "x-api-key": TATUM_API_KEY },
+    });
+    if (!resp.ok) return [];
+    const data = await resp.json().catch(() => null);
+    return Array.isArray(data) ? (data as TatumSubscriptionRecord[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function deleteTatumSubscription(subscriptionId: string): Promise<boolean> {
+  if (!TATUM_API_KEY || !subscriptionId) return false;
+  try {
+    const resp = await fetch(`https://api.tatum.io/v4/subscription/${encodeURIComponent(subscriptionId)}`, {
+      method: "DELETE",
+      headers: { accept: "application/json", "x-api-key": TATUM_API_KEY },
+    });
+    return resp.ok || resp.status === 404;
+  } catch {
+    return false;
+  }
+}
+
+export async function createTatumSubscription(row: DepositAddressRow, reqOrWebhookUrl?: Request | string) {
   if (!TATUM_API_KEY) throw new Error("Tatum wallet provider is not configured");
-  const targetWebhookUrl = normalizeWebhookUrl(process.env["TATUM_WEBHOOK_URL"], requestBaseUrl);
-  if (!targetWebhookUrl) throw new Error("TATUM_WEBHOOK_URL or APP_URL is not configured");
+  let targetWebhookUrl = "";
+  if (typeof reqOrWebhookUrl === "string" && reqOrWebhookUrl.trim()) {
+    targetWebhookUrl = normalizeWebhookUrl(reqOrWebhookUrl);
+  } else {
+    const resolved = await resolveEffectiveTatumWebhook(typeof reqOrWebhookUrl === "string" ? undefined : reqOrWebhookUrl);
+    targetWebhookUrl = resolved.url;
+  }
+  if (!targetWebhookUrl) throw new Error("Tatum webhook URL is not configured");
   const addressLooksTestnet = row.asset === "BTC" && /^(tb1|[mn2])/i.test(row.address);
   const config = assetConfig(row.asset, IS_TATUM_TESTNET || addressLooksTestnet);
   if (row.tatum_subscription_id) {
@@ -200,12 +226,9 @@ async function createTatumSubscription(row: DepositAddressRow, requestBaseUrl?: 
 
       if (isCurrent) return row.tatum_subscription_id;
 
-      const deleted = await fetch(
-        `https://api.tatum.io/v4/subscription/${encodeURIComponent(row.tatum_subscription_id)}`,
-        { method: "DELETE", headers: { accept: "application/json", "x-api-key": TATUM_API_KEY } },
-      );
-      if (!deleted.ok && deleted.status !== 404) {
-        throw new Error(`Could not replace the stale Tatum subscription (${deleted.status})`);
+      const deleted = await deleteTatumSubscription(row.tatum_subscription_id);
+      if (!deleted) {
+        throw new Error("Could not replace the stale Tatum subscription");
       }
 
       const cleared = await supabaseRequest(`crypto_deposit_addresses?id=eq.${encodeURIComponent(row.id)}`, {
@@ -227,18 +250,40 @@ async function createTatumSubscription(row: DepositAddressRow, requestBaseUrl?: 
       });
       if (!cleared.ok) throw new Error("Could not clear the stale Tatum subscription");
     }
+  } else {
+    // Check if Tatum already has an active subscription for this address/chain so we don't consume extra quota slots
+    const existingList = await listTatumSubscriptions();
+    const matching = existingList.filter(
+      (sub) =>
+        sub.type === "ADDRESS_EVENT" &&
+        sub.attr?.address?.toLowerCase() === row.address.toLowerCase() &&
+        (!sub.attr?.chain || sub.attr.chain === config.tatumChain),
+    );
+    const exactMatch = matching.find((sub) => sub.attr?.url && normalizeWebhookUrl(sub.attr.url) === targetWebhookUrl);
+    if (exactMatch?.id) {
+      await supabaseRequest(`crypto_deposit_addresses?id=eq.${encodeURIComponent(row.id)}`, {
+        method: "PATCH",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({ tatum_subscription_id: exactMatch.id, tatum_subscription_status: "active" }),
+      });
+      return exactMatch.id;
+    }
+    for (const stale of matching) {
+      if (stale.id) await deleteTatumSubscription(stale.id);
+    }
   }
 
   // Claim the row before calling Tatum. This prevents two simultaneous
   // address requests from creating two subscriptions for the same address.
-  const claim = await supabaseRequest(
-    `crypto_deposit_addresses?id=eq.${encodeURIComponent(row.id)}&tatum_subscription_id=is.null&or=(tatum_subscription_status.is.null,tatum_subscription_status.eq.pending)`,
-    {
-      method: "PATCH",
-      headers: { Prefer: "return=representation" },
-      body: JSON.stringify({ tatum_subscription_status: "creating" }),
-    },
-  );
+  const claimFilter =
+    typeof reqOrWebhookUrl === "string"
+      ? `crypto_deposit_addresses?id=eq.${encodeURIComponent(row.id)}&tatum_subscription_id=is.null`
+      : `crypto_deposit_addresses?id=eq.${encodeURIComponent(row.id)}&tatum_subscription_id=is.null&or=(tatum_subscription_status.is.null,tatum_subscription_status.eq.pending)`;
+  const claim = await supabaseRequest(claimFilter, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ tatum_subscription_status: "creating" }),
+  });
   if (!claim.ok) throw new Error("Could not reserve the Tatum subscription");
   const claimedRows = (await claim.json()) as DepositAddressRow[];
   if (!claimedRows[0]) {
@@ -257,8 +302,6 @@ async function createTatumSubscription(row: DepositAddressRow, requestBaseUrl?: 
           chain: config.tatumChain,
           address: row.address,
           url: targetWebhookUrl,
-          ...(config.finality ? { finality: config.finality } : {}),
-          ...(config.templateId ? { templateId: config.templateId } : {}),
         },
       }),
     });
@@ -271,6 +314,11 @@ async function createTatumSubscription(row: DepositAddressRow, requestBaseUrl?: 
     }
     if (!response.ok) {
       const providerCode = typeof responseBody.errorCode === "string" ? responseBody.errorCode : "";
+      if (providerCode === "subscription.plan.exceeded") {
+        throw new Error(
+          "Tatum Free plan supports up to 5 active webhook subscriptions total. Upgrade your Tatum plan or remove unused subscriptions to add more deposit addresses.",
+        );
+      }
       const providerMessage = typeof responseBody.message === "string" ? responseBody.message : responseText.trim();
       const providerData =
         responseBody.data === undefined
@@ -371,6 +419,44 @@ function chainMatchesAsset(asset: Asset, chain: string | null) {
   return normalized.includes("tron") || normalized === "trx";
 }
 
+const KNOWN_TRON_USDT_CONTRACTS = new Set(
+  [
+    "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", // Tron Mainnet USDT (TRC-20)
+    "TG3XXyExBkPp9nED72x684uK8a8eX9t9mD", // Tron Shasta Testnet USDT
+    "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf", // Tron Nile Testnet USDT
+    process.env["TATUM_TRON_USDT_CONTRACT"] || "",
+  ]
+    .map((v) => v.trim().toUpperCase())
+    .filter(Boolean),
+);
+
+function eventMatchesDepositAsset(depositAsset: Asset, event: Record<string, unknown>): boolean {
+  const eventType = (stringValue(event.type) ?? "").toLowerCase();
+  const eventAsset = (stringValue(event.asset) ?? stringValue(event.tokenSymbol) ?? "").trim();
+  const contractAddress = (stringValue(event.contractAddress) ?? "").trim();
+
+  if (depositAsset === "BTC") {
+    if (eventType && !["native", "utxo", "incoming", "coin"].includes(eventType)) return false;
+    if (eventAsset && !["btc", "bitcoin", "tbtc"].includes(eventAsset.toLowerCase())) return false;
+    return true;
+  }
+
+  if (depositAsset === "ETH") {
+    if (["token", "erc20", "trc20", "bep20", "nft", "erc721", "erc1155"].includes(eventType)) return false;
+    if (contractAddress) return false;
+    if (eventAsset && !["eth", "ethereum", "seth"].includes(eventAsset.toLowerCase())) return false;
+    return true;
+  }
+
+  // USDT on Tron (TRC-20)
+  if (eventType === "native" || eventAsset.toUpperCase() === "TRX") return false;
+  const candidateContract = contractAddress || eventAsset;
+  if (!candidateContract) return true;
+  const upper = candidateContract.toUpperCase();
+  if (upper === "USDT" || upper === "USDT_TRON") return true;
+  return KNOWN_TRON_USDT_CONTRACTS.has(upper);
+}
+
 router.get("/crypto/deposit-address", async (req, res) => {
   res.setHeader("Content-Type", "application/json");
   const asset = String(req.query.asset ?? "").toUpperCase() as Asset;
@@ -386,7 +472,8 @@ router.get("/crypto/deposit-address", async (req, res) => {
     const effectiveUserId = userId || "vexa_custody_customer";
 
     const requestBaseUrl = resolveRequestBaseUrl(req);
-    const webhookUrl = normalizeWebhookUrl(process.env["TATUM_WEBHOOK_URL"], requestBaseUrl);
+    const webhookConfig = await resolveEffectiveTatumWebhook(req);
+    const webhookUrl = webhookConfig.url;
     const missingConfig: string[] = [];
     if (!TATUM_API_KEY) missingConfig.push("TATUM_API_KEY");
     if (!TATUM_WEBHOOK_SECRET) missingConfig.push("TATUM_WEBHOOK_SECRET");
@@ -409,7 +496,7 @@ router.get("/crypto/deposit-address", async (req, res) => {
             let subscriptionError: string | undefined;
             if (TATUM_API_KEY) {
               try {
-                activeSubId = await createTatumSubscription(rows[0], requestBaseUrl);
+                activeSubId = await createTatumSubscription(rows[0], webhookUrl || req);
                 subscriptionStatus = "active";
               } catch (subErr) {
                 subscriptionError = subErr instanceof Error ? subErr.message : "Tatum subscription failed";
@@ -428,6 +515,7 @@ router.get("/crypto/deposit-address", async (req, res) => {
               subscriptionStatus,
               subscriptionError,
               webhookUrl: webhookUrl || undefined,
+              webhookSource: webhookConfig.source,
               missingConfig,
             });
           }
@@ -493,12 +581,20 @@ router.get("/crypto/deposit-address", async (req, res) => {
     let subscriptionError: string | undefined;
     if (savedRow && TATUM_API_KEY) {
       try {
-        await createTatumSubscription(savedRow, requestBaseUrl);
+        await createTatumSubscription(savedRow, webhookUrl || req);
         subscriptionStatus = "active";
       } catch (subErr) {
         subscriptionError = subErr instanceof Error ? subErr.message : "Tatum subscription failed";
         req.log?.warn?.({ err: subErr }, "Tatum subscription creation note");
       }
+    }
+    if (savedRow && userId) {
+      await insertCryptoNotification(
+        userId,
+        `${asset} receive address ready`,
+        `Your ${config.network} receive address (${generatedAddress.slice(0, 8)}…${generatedAddress.slice(-6)}) is ready for incoming ${asset} deposits.`,
+        config.network,
+      );
     }
 
     const isTestnetAddr = IS_TATUM_TESTNET || (asset === "BTC" && /^(tb1|[mn2])/i.test(generatedAddress));
@@ -513,6 +609,7 @@ router.get("/crypto/deposit-address", async (req, res) => {
       subscriptionStatus,
       subscriptionError,
       webhookUrl: webhookUrl || undefined,
+      webhookSource: webhookConfig.source,
       missingConfig,
     });
   } catch (error) {
@@ -520,6 +617,94 @@ router.get("/crypto/deposit-address", async (req, res) => {
     return res.status(500).json({
       message: error instanceof Error ? error.message : "Deposit wallet is temporarily unavailable",
     });
+  }
+});
+
+async function insertCryptoNotification(
+  userId: string,
+  title: string,
+  body: string,
+  dedupeFragment?: string,
+) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !userId) return;
+  try {
+    if (dedupeFragment) {
+      const checkRes = await supabaseRequest(
+        `notifications?user_id=eq.${encodeURIComponent(userId)}&type=eq.crypto&title=eq.${encodeURIComponent(title)}&body=ilike.*${encodeURIComponent(dedupeFragment)}*&select=id&limit=1`,
+      );
+      if (checkRes.ok) {
+        const existing = (await safeJson<Array<{ id: string }>>(checkRes)) ?? [];
+        if (existing.length > 0) return;
+      }
+    }
+    await supabaseRequest("notifications", {
+      method: "POST",
+      body: JSON.stringify({
+        user_id: userId,
+        type: "crypto",
+        title,
+        body,
+        read: false,
+      }),
+    });
+  } catch {
+    // Non-blocking: do not break webhook or transfer settlement if notification write fails
+  }
+}
+
+function formatCryptoAmountDisplay(raw: string | number) {
+  const num = Number(raw);
+  if (!Number.isFinite(num)) return String(raw);
+  return num.toLocaleString("en-US", { maximumFractionDigits: 8 });
+}
+
+router.post("/crypto/notify-transfer-recipient", async (req, res) => {
+  try {
+    const token = bearer(req);
+    const senderId = await getUserId(token);
+    if (!senderId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    const body = (req.body ?? {}) as { recipientAccount?: string; asset?: string; amount?: number | string };
+    const recipientAccount = String(body.recipientAccount ?? "").trim();
+    const asset = String(body.asset ?? "").trim().toUpperCase();
+    const amount = Number(body.amount);
+    if (!recipientAccount || !["BTC", "ETH", "USDT"].includes(asset) || !Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ message: "Invalid notification payload" });
+    }
+
+    const txRes = await supabaseRequest(
+      `crypto_transactions?user_id=eq.${encodeURIComponent(senderId)}&kind=eq.transfer_out&asset=eq.${encodeURIComponent(asset)}&counterparty_account=eq.${encodeURIComponent(recipientAccount)}&order=created_at.desc&limit=1`,
+    );
+    if (!txRes.ok) return res.status(200).json({ ok: false });
+    const txs = (await safeJson<Array<{ id: string; amount: number; created_at: string }>>(txRes)) ?? [];
+    const latestTx = txs[0];
+    if (!latestTx || Date.now() - new Date(latestTx.created_at).getTime() > 5 * 60 * 1000) {
+      return res.status(200).json({ ok: false });
+    }
+
+    const [senderRes, recipientRes] = await Promise.all([
+      supabaseRequest(`profiles?id=eq.${encodeURIComponent(senderId)}&select=id,name,account_number&limit=1`),
+      supabaseRequest(`profiles?account_number=eq.${encodeURIComponent(recipientAccount)}&select=id,name,account_number&limit=1`),
+    ]);
+    const senders = senderRes.ok ? (await safeJson<Array<{ id: string; name?: string; account_number?: string }>>(senderRes)) ?? [] : [];
+    const recipients = recipientRes.ok ? (await safeJson<Array<{ id: string; name?: string; account_number?: string }>>(recipientRes)) ?? [] : [];
+    const sender = senders[0];
+    const recipient = recipients[0];
+    if (!recipient?.id) return res.status(200).json({ ok: false });
+
+    const displayAmt = formatCryptoAmountDisplay(latestTx.amount ?? amount);
+    const refTag = latestTx.id.slice(0, 8);
+    await insertCryptoNotification(
+      recipient.id,
+      `${asset} received`,
+      `${displayAmt} ${asset} received from ${sender?.name || "Vexa user"} (Ref ${refTag}).`,
+      refTag,
+    );
+    return res.status(200).json({ ok: true });
+  } catch (error) {
+    req.log?.warn?.({ err: error }, "Transfer recipient notification fallback note");
+    return res.status(200).json({ ok: false });
   }
 });
 
@@ -542,8 +727,22 @@ router.post("/crypto/webhooks/tatum", async (req, res) => {
       stringValue(event.amount) ??
       stringValue(event.value) ??
       (numberValue(event.amount)?.toString() ?? numberValue(event.value)?.toString() ?? null);
-    if (!address || !txHash || !amount || Number(amount) <= 0) {
+    if (!address || !txHash || !amount) {
       res.status(400).json({ message: "Webhook is missing transaction details" });
+      return;
+    }
+
+    const numericAmount = Number(amount);
+    const direction = (stringValue(event.direction) ?? "").toLowerCase();
+    const fromAddr = stringValue(event.from);
+    const toAddr = stringValue(event.to) ?? stringValue(event.destinationAddress);
+    if (
+      !Number.isFinite(numericAmount) ||
+      numericAmount <= 0 ||
+      direction === "outgoing" ||
+      (fromAddr && toAddr && fromAddr.toLowerCase() === address.toLowerCase() && toAddr.toLowerCase() !== address.toLowerCase())
+    ) {
+      res.status(200).json({ received: true, ignored: true, reason: "non_incoming_transfer" });
       return;
     }
 
@@ -558,6 +757,14 @@ router.post("/crypto/webhooks/tatum", async (req, res) => {
     if (!chainMatchesAsset(depositAddress.asset, chain)) {
       req.log.warn({ address, chain, asset: depositAddress.asset }, "Tatum webhook chain does not match deposit address");
       res.status(400).json({ message: "Webhook chain does not match deposit address" });
+      return;
+    }
+    if (!eventMatchesDepositAsset(depositAddress.asset, event)) {
+      req.log.warn(
+        { address, asset: depositAddress.asset, eventAsset: event.asset, eventType: event.type },
+        "Tatum webhook asset/token does not match deposit address",
+      );
+      res.status(200).json({ received: true, ignored: true, reason: "asset_mismatch" });
       return;
     }
     const finality = stringValue(event.finality) ?? stringValue(event.status);
@@ -583,7 +790,33 @@ router.post("/crypto/webhooks/tatum", async (req, res) => {
       p_required_confirmations: config.confirmations,
     });
     if (!result.ok) throw new Error(`Deposit processing failed (${result.status})`);
-    const body = (await result.json()) as { status?: string };
+    const body = (await result.json()) as {
+      status?: string;
+      confirmations?: number;
+      required_confirmations?: number;
+      notified?: boolean;
+    };
+
+    if (!body.notified) {
+      const txShort = txHash.slice(0, 10);
+      const displayAmount = formatCryptoAmountDisplay(amount);
+      if (body.status === "pending") {
+        await insertCryptoNotification(
+          depositAddress.user_id,
+          `${depositAddress.asset} deposit incoming`,
+          `${displayAmount} ${depositAddress.asset} detected on ${depositAddress.network} (${body.confirmations ?? 0}/${body.required_confirmations ?? config.confirmations} confirmations · Tx ${txShort}…).`,
+          txShort,
+        );
+      } else if (body.status === "credited") {
+        await insertCryptoNotification(
+          depositAddress.user_id,
+          `${depositAddress.asset} deposit received`,
+          `${displayAmount} ${depositAddress.asset} received on ${depositAddress.network} and credited to your Exchange wallet (Tx ${txShort}…).`,
+          txShort,
+        );
+      }
+    }
+
     res.status(200).json({ received: true, status: body.status ?? "processed" });
   } catch (error) {
     req.log.error({ err: error }, "Tatum webhook processing failed");

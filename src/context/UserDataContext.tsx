@@ -1,7 +1,27 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { playNotificationSound } from '@/lib/notificationSound';
+
+function playNotificationSound() {
+  try {
+    if (localStorage.getItem('vexa.notificationSound') === 'false') return;
+    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    gain.gain.setValueAtTime(0.05, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.18);
+  } catch {
+    // Audio playback unavailable or blocked
+  }
+}
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 
@@ -25,7 +45,7 @@ export interface Referral {
 
 export interface AppNotification {
   id: string;
-  type: 'credit' | 'debit' | 'security' | 'promo' | 'info';
+  type: 'credit' | 'debit' | 'security' | 'promo' | 'info' | 'crypto';
   title: string;
   body: string;
   read: boolean;
@@ -397,9 +417,12 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
         id: data.id, type: data.type, title: data.title,
         body: data.body, read: false, time: 'Just now',
       } as AppNotification;
-      setNotifications(prev => [notification, ...prev]);
-      notificationIdsRef.current?.add(notification.id);
-      playNotificationSound();
+      setNotifications(prev => {
+        if (prev.some(item => item.id === notification.id)) return prev;
+        playNotificationSound();
+        notificationIdsRef.current?.add(notification.id);
+        return [notification, ...prev];
+      });
     }
   };
 

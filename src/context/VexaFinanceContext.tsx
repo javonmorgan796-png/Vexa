@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { useUserData } from '@/context/UserDataContext';
 
 export type CryptoAsset = 'BTC' | 'ETH' | 'USDT';
 export type CryptoTransactionKind = 'deposit' | 'buy' | 'sell' | 'transfer_in' | 'transfer_out';
@@ -43,8 +44,17 @@ function rpcError(error: { message?: string } | null, fallback: string) {
   return message.replace(/^.*?:\s*/, '').replace(/\.$/, '');
 }
 
+function fmtNaira(value: number) {
+  return `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function fmtCryptoQty(value: number) {
+  return value.toLocaleString('en-NG', { maximumFractionDigits: 8 });
+}
+
 export function VexaFinanceProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const { addNotification, refreshAll } = useUserData();
   const [exchangeNaira, setExchangeNaira] = useState(0);
   const [cryptoBalances, setCryptoBalances] = useState<CryptoBalance[]>([]);
   const [cryptoTransactions, setCryptoTransactions] = useState<CryptoTransaction[]>([]);
@@ -110,7 +120,10 @@ export function VexaFinanceProvider({ children }: { children: React.ReactNode })
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'crypto_transactions', filter: `user_id=eq.${user.id}` },
-        () => { void refreshFinance({ silent: true }); },
+        () => {
+          void refreshFinance({ silent: true });
+          refreshAll();
+        },
       )
       .subscribe();
 
@@ -122,7 +135,7 @@ export function VexaFinanceProvider({ children }: { children: React.ReactNode })
       window.clearInterval(interval);
       void supabase.removeChannel(channel);
     };
-  }, [user?.id, refreshFinance]);
+  }, [user?.id, refreshFinance, refreshAll]);
 
   const transferVexaMoney = async (accountNumber: string, amount: number, note: string, pin: string) => {
     const { data, error: rpcErr } = await supabase.rpc('transfer_vexa_money', {
@@ -133,6 +146,7 @@ export function VexaFinanceProvider({ children }: { children: React.ReactNode })
     });
     if (rpcErr || !data) return { success: false, error: rpcError(rpcErr, 'Transfer failed') };
     await refreshFinance();
+    refreshAll();
     return {
       success: true,
       transactionId: data.transaction_id as string,
@@ -141,14 +155,22 @@ export function VexaFinanceProvider({ children }: { children: React.ReactNode })
   };
 
   const depositToExchange = async (amount: number) => {
-    const { error: rpcErr } = await supabase.rpc('deposit_to_crypto', { p_amount: amount });
+    const { data, error: rpcErr } = await supabase.rpc('deposit_to_crypto', { p_amount: amount });
     if (rpcErr) return { success: false, error: rpcError(rpcErr, 'Deposit failed') };
     await refreshFinance();
+    if (!data?.notified) {
+      await addNotification({
+        type: 'crypto',
+        title: 'Exchange wallet funded',
+        body: `${fmtNaira(amount)} moved from your Vexa balance to your Exchange wallet.`,
+      });
+    }
+    refreshAll();
     return { success: true };
   };
 
   const exchangeCrypto = async (asset: CryptoAsset, side: 'buy' | 'sell', nairaAmount: number, rate: number) => {
-    const { error: rpcErr } = await supabase.rpc('exchange_crypto', {
+    const { data, error: rpcErr } = await supabase.rpc('exchange_crypto', {
       p_asset: asset,
       p_side: side,
       p_naira_amount: nairaAmount,
@@ -156,6 +178,17 @@ export function VexaFinanceProvider({ children }: { children: React.ReactNode })
     });
     if (rpcErr) return { success: false, error: rpcError(rpcErr, 'Exchange failed') };
     await refreshFinance();
+    if (!data?.notified) {
+      const assetQty = Number(data?.asset_amount ?? (rate > 0 ? nairaAmount / rate : 0));
+      await addNotification({
+        type: 'crypto',
+        title: side === 'buy' ? `${asset} purchase successful` : `${asset} sale successful`,
+        body: side === 'buy'
+          ? `Bought ${fmtCryptoQty(assetQty)} ${asset} for ${fmtNaira(nairaAmount)}.`
+          : `Sold ${fmtCryptoQty(assetQty)} ${asset} for ${fmtNaira(nairaAmount)} to your Exchange balance.`,
+      });
+    }
+    refreshAll();
     return { success: true };
   };
 
@@ -167,6 +200,27 @@ export function VexaFinanceProvider({ children }: { children: React.ReactNode })
     });
     if (rpcErr || !data) return { success: false, error: rpcError(rpcErr, 'Crypto transfer failed') };
     await refreshFinance();
+    if (!data.notified) {
+      await addNotification({
+        type: 'crypto',
+        title: `${asset} transfer sent`,
+        body: `${fmtCryptoQty(amount)} ${asset} sent to ${String(data.recipient_name ?? 'Vexa user')} (${String(data.recipient_account ?? accountNumber)}).`,
+      });
+      // Notify recipient via backend service-role fallback if live RPC isn't updated yet
+      void supabase.auth.getSession().then(({ data: sessionData }) => {
+        const token = sessionData.session?.access_token;
+        if (!token) return;
+        return fetch('/api/crypto/notify-transfer-recipient', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ recipientAccount: accountNumber, asset, amount }),
+        }).catch(() => {});
+      });
+    }
+    refreshAll();
     return { success: true, recipientName: data.recipient_name as string };
   };
 

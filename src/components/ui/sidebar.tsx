@@ -3,7 +3,6 @@
 import * as React from 'react';
 import { Slot } from '@radix-ui/react-slot';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import {
   Sheet,
@@ -321,12 +320,15 @@ function SidebarInset({ className, ...props }: React.ComponentProps<'main'>) {
 function SidebarInput({
   className,
   ...props
-}: React.ComponentProps<typeof Input>) {
+}: React.ComponentProps<'input'>) {
   return (
-    <Input
+    <input
       data-slot="sidebar-input"
       data-sidebar="input"
-      className={cn('bg-background h-8 w-full shadow-none', className)}
+      className={cn(
+        'bg-background border-input h-8 w-full rounded-md border px-3 py-1 text-sm shadow-none outline-none focus-visible:ring-1',
+        className,
+      )}
       {...props}
     />
   );

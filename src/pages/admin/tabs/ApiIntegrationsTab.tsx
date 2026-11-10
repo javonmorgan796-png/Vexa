@@ -45,7 +45,7 @@ interface IntegrationApi {
 }
 
 export const ApiIntegrationsTab: React.FC = () => {
-  const { fetchAdminApi, adminTheme } = useAdmin();
+  const { fetchAdminApi, adminTheme, setActiveTab } = useAdmin();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [testingId, setTestingId] = useState<string | null>(null);
@@ -179,9 +179,16 @@ export const ApiIntegrationsTab: React.FC = () => {
 
         <div className="flex items-center space-x-3 self-start lg:self-auto">
           <button
+            onClick={() => setActiveTab('system-settings')}
+            className="px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center space-x-2 bg-[#F0B90B] hover:bg-[#d9a606] text-black transition-colors shadow-sm whitespace-nowrap shrink-0"
+          >
+            <Sliders className="w-3.5 h-3.5" />
+            <span>Configure Webhook URL</span>
+          </button>
+          <button
             onClick={loadIntegrations}
             disabled={loading}
-            className={`px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center space-x-2 border transition-colors ${
+            className={`px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center space-x-2 border transition-colors whitespace-nowrap shrink-0 ${
               isDark
                 ? 'bg-gray-800/60 hover:bg-gray-800 text-gray-200 border-gray-700'
                 : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300 shadow-sm'

@@ -3,7 +3,6 @@ import { useLocation } from 'wouter';
 import { useAdmin, AdminTab } from './AdminContext';
 import {
   LayoutDashboard,
-  Users,
   FileCheck2,
   ArrowLeftRight,
   ArrowDownLeft,
@@ -11,16 +10,13 @@ import {
   CreditCard,
   Headphones,
   ShieldAlert,
-  UserCog,
   History,
   Settings,
   Sun,
   Moon,
-  LogOut,
   ArrowLeft,
   Menu,
   X,
-  Search,
   Bell,
   CheckCircle2,
   Lock,
@@ -29,6 +25,7 @@ import {
   Gift,
   Radio,
   RotateCw,
+  Users,
 } from 'lucide-react';
 
 import { OverviewTab } from './tabs/OverviewTab';
@@ -43,7 +40,6 @@ import { WithdrawalsTab } from './tabs/WithdrawalsTab';
 import { CardManagementTab } from './tabs/CardManagementTab';
 import { CustomerSupportTab } from './tabs/CustomerSupportTab';
 import { SecurityFraudTab } from './tabs/SecurityFraudTab';
-import { AdminManagementTab } from './tabs/AdminManagementTab';
 import { ApiIntegrationsTab } from './tabs/ApiIntegrationsTab';
 import { AuditLogsTab } from './tabs/AuditLogsTab';
 import { SystemSettingsTab } from './tabs/SystemSettingsTab';
@@ -105,7 +101,6 @@ export const AdminLayout: React.FC = () => {
     { id: 'support', label: 'Customer Support', icon: <Headphones className="w-4 h-4" />, badge: badgeCounts.support, permission: 'support.view' },
     { id: 'security', label: 'Security & Fraud', icon: <ShieldAlert className="w-4 h-4 text-rose-400" />, badge: badgeCounts.security, permission: 'security.view' },
     { id: 'integrations', label: 'API Integrations Hub', icon: <Radio className="w-4 h-4 text-cyan-400" />, permission: 'settings.view' },
-    { id: 'management', label: 'Admin Management', icon: <UserCog className="w-4 h-4" />, permission: 'admins.view' },
     { id: 'audit-logs', label: 'Audit Logs', icon: <History className="w-4 h-4" />, permission: 'audit.view' },
     { id: 'system-settings', label: 'System Settings', icon: <Settings className="w-4 h-4" />, permission: 'settings.view' },
   ];
@@ -140,8 +135,6 @@ export const AdminLayout: React.FC = () => {
         return <SecurityFraudTab />;
       case 'integrations':
         return <ApiIntegrationsTab />;
-      case 'management':
-        return <AdminManagementTab />;
       case 'audit-logs':
         return <AuditLogsTab />;
       case 'system-settings':
