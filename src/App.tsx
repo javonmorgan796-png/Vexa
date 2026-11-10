@@ -137,7 +137,7 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
     <div
       className="fixed inset-0 flex items-center justify-center z-50"
       style={{
-        backgroundColor: '#0f4f5c',
+        background: 'radial-gradient(circle at 50% 42%, #22262F 0%, #181A20 58%, #0B0E11 100%)',
         transition: 'opacity 0.6s ease',
         opacity: fadeOut ? 0 : 1,
         pointerEvents: fadeOut ? 'none' : 'auto',
@@ -152,8 +152,8 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
           100% { transform: scale(1);   opacity: 1; }
         }
         @keyframes vexaGlow {
-          0%, 100% { filter: drop-shadow(0 0 0px #0e7490); }
-          50%       { filter: drop-shadow(0 0 22px #0e7490) drop-shadow(0 0 40px #0f4f5c88); }
+          0%, 100% { filter: drop-shadow(0 0 0px rgba(240, 185, 11, 0)); }
+          50%       { filter: drop-shadow(0 0 22px rgba(240, 185, 11, 0.35)) drop-shadow(0 0 40px rgba(240, 185, 11, 0.16)); }
         }
         @keyframes vexaShimmer {
           0%   { background-position: -200% center; }
@@ -164,8 +164,7 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
                      vexaGlow   2s ease-in-out 0.8s infinite;
         }
         .vexa-tagline {
-          animation: vexaPulse 1s cubic-bezier(.22,.61,.36,1) 0.3s both;
-          background: linear-gradient(90deg, #ffffff 0%, #0e7490 40%, #ffffff 60%, #ffffff 100%);
+          background: linear-gradient(90deg, #EAECEF 0%, #F0B90B 40%, #EAECEF 60%, #EAECEF 100%);
           background-size: 200% auto;
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
@@ -176,9 +175,9 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
 
       <div className="flex flex-col items-center gap-5">
         <img
-          src="/vexa-logo.png"
+          src="/assets/aistudio/c4e1e122-cd74-4d18-b5b5-37dafb3a53f6_e2d23c37.png"
           alt="Vexa"
-          className="vexa-logo w-[140px] sm:w-[160px] max-w-[45vw]"
+          className="vexa-logo w-[210px] sm:w-[240px] max-w-[65vw] object-contain"
         />
       </div>
     </div>
@@ -1039,7 +1038,7 @@ function HistoryPage() {
         <div className="flex gap-2 px-4 pb-3">
           {(['all','in','out'] as TxFilter[]).map(f => (
             <button key={f} onClick={() => setFilter(f)}
-              className={`px-4 py-1.5 rounded-full text-[12px] font-semibold transition-all ${filter === f ? 'bg-[#162353] text-white' : 'bg-[#F2F3F5] text-[#555]'}`}>
+              className={`px-4 py-1.5 rounded-full text-[12px] font-semibold transition-all ${filter === f ? 'bg-[#F0B90B] text-[#181A20] shadow-xs' : 'bg-[#F2F3F5] text-[#555]'}`}>
               {f === 'all' ? 'All' : f === 'in' ? 'Money In' : 'Money Out'}
             </button>
           ))}
@@ -1296,7 +1295,7 @@ function SettingsPage() {
                        {item.sub && <p className="theme-text-secondary text-[11px] mt-0.5 truncate">{item.sub}</p>}
                     </div>
                     {isToggle ? (
-                      <div className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${toggleState ? 'bg-[#162353]' : 'bg-[#D1D5DB]'}`}>
+                      <div className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${toggleState ? 'bg-[#F0B90B]' : 'bg-[#D1D5DB] dark:bg-[#3A4556]'}`}>
                         <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${toggleState ? 'left-5' : 'left-0.5'}`} />
                       </div>
                     ) : !item.danger ? (
@@ -1354,7 +1353,7 @@ function SettingsPage() {
                     type="button"
                     disabled={securityBusy}
                     onClick={() => void requestUnlockCode().then(result => { if (result.success) setCodeSent(true); })}
-                    className="shrink-0 rounded-xl border border-[#162353] px-3 text-[11px] font-bold text-[#162353] disabled:opacity-50"
+                    className="theme-control theme-brand-text shrink-0 rounded-xl border border-[#162353] px-3 text-[11px] font-bold disabled:opacity-50"
                   >
                     {codeSent ? 'Resend code' : 'Send code'}
                   </button>
@@ -1372,7 +1371,7 @@ function SettingsPage() {
                       setCodeSent(false);
                     }
                   })}
-                  className="w-full rounded-xl bg-[#162353] py-3.5 text-[13px] font-bold text-white disabled:opacity-50"
+                  className="w-full rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] py-3.5 text-[13px] font-bold text-[#181A20] shadow-sm disabled:opacity-45 transition-all"
                 >
                   {securityBusy ? 'Verifying…' : 'Remove lock'}
                 </button>
@@ -1388,7 +1387,7 @@ function SettingsPage() {
                     if (result.success) setSecurityAction(null);
                     else setSecurityMessage(result.error ?? 'Could not update account security');
                   })}
-                  className={`w-full rounded-xl py-3.5 text-[13px] font-bold text-white disabled:opacity-50 ${securityAction === 'freeze_account' ? 'bg-red-600' : 'bg-[#162353]'}`}
+                  className={`w-full rounded-xl py-3.5 text-[13px] font-bold shadow-sm disabled:opacity-45 transition-all ${securityAction === 'freeze_account' ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20]'}`}
                 >
                   {securityBusy ? 'Updating…' : securityAction === 'freeze_account' ? 'Freeze account' : 'Activate Sleep Mode'}
                 </button>
@@ -1938,11 +1937,11 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
           onClick={() => setShowAttachMenu(v => !v)}
           className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border transition-colors ${
             showAttachMenu
-              ? 'bg-[#162353] border-[#162353]'
-              : 'bg-[#F8F9FB] border-[#E8EBF0] active:bg-[#EEF2F7]'
+              ? 'bg-[#F0B90B] border-[#F0B90B]'
+              : 'theme-control border-[#E8EBF0] active:bg-[#EEF2F7]'
           }`}
         >
-          <Paperclip className={`w-4 h-4 ${showAttachMenu ? 'text-white' : 'text-[#64748B]'}`} />
+          <Paperclip className={`w-4 h-4 ${showAttachMenu ? 'text-[#181A20]' : 'text-[#64748B]'}`} />
         </button>
 
         {/* Text input */}
@@ -1962,9 +1961,9 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
         <button
           onClick={() => handleSend()}
           disabled={!inputText.trim()}
-          className="w-10 h-10 rounded-full bg-[#162353] flex items-center justify-center flex-shrink-0 transition-opacity disabled:opacity-40 active:opacity-70"
+          className="w-10 h-10 rounded-full bg-[#F0B90B] hover:bg-[#FCD535] flex items-center justify-center flex-shrink-0 transition-opacity disabled:opacity-40 active:opacity-70"
         >
-          <Send className="w-4 h-4 text-white" />
+          <Send className="w-4 h-4 text-[#181A20]" />
         </button>
       </div>
 
@@ -2327,7 +2326,7 @@ function AboutVexaPage() {
 
         {/* Brand card */}
         <div className="bg-[#162353] rounded-2xl px-5 py-6 flex flex-col items-center text-center">
-          <img src="/vexa-logo.png" alt="Vexa" className="h-12 object-contain mb-3" />
+          <img src="/assets/aistudio/c4e1e122-cd74-4d18-b5b5-37dafb3a53f6_e2d23c37.png" alt="Vexa" className="h-12 object-contain mb-3" />
           <p className="text-white font-bold text-[18px]">Vexa Bank</p>
           <p className="text-white/60 text-[12px] mt-1">Your money, your way</p>
           <div className="flex items-center gap-2 mt-3">
@@ -2454,7 +2453,7 @@ function DepositPage() {
               <p className="text-[11px] text-[#888] mb-0.5">Bank</p>
               <p className="text-[14px] font-semibold text-[#111]">{bankName}</p>
             </div>
-            <img src="/vexa-icon.png" alt="Vexa" className="w-8 h-8 rounded-full object-cover" />
+            <img src="/assets/aistudio/fe78fa28-9eb7-49b5-a568-6e1afbae67cb_ac4d9ede.png" alt="Vexa" className="w-8 h-8 rounded-lg object-contain" />
           </div>
 
           <div className="h-px bg-[#F0F0F0] mb-4" />
@@ -2516,7 +2515,7 @@ function DepositPage() {
               alert('Account details copied to clipboard!');
             }
           }}
-          className="w-full bg-[#162353] rounded-xl h-[50px] flex items-center justify-center gap-2 text-[14px] font-semibold text-white active:opacity-80 transition-opacity"
+          className="w-full bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] rounded-xl h-[50px] flex items-center justify-center gap-2 text-[14px] font-bold text-[#181A20] shadow-sm transition-all"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
@@ -2643,19 +2642,29 @@ export async function createTransferReceiptImage(receipt: TransferReceiptData, r
   ctx.fill();
 
   // Header Brand Bar
-  ctx.fillStyle = '#162353';
+  ctx.fillStyle = '#181A20';
   ctx.beginPath();
   ctx.roundRect(cardX + 24, cardY + 24, 38, 38, 10);
   ctx.fill();
 
-  ctx.fillStyle = '#FFFFFF';
-  ctx.font = '900 20px Inter, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('V', cardX + 43, cardY + 43);
+  try {
+    const logoImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = '/assets/aistudio/fe78fa28-9eb7-49b5-a568-6e1afbae67cb_ac4d9ede.png';
+    });
+    ctx.drawImage(logoImg, cardX + 28, cardY + 29, 30, 28);
+  } catch {
+    ctx.fillStyle = '#F0B90B';
+    ctx.font = '900 20px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('V', cardX + 43, cardY + 43);
+  }
 
   ctx.textAlign = 'left';
-  ctx.fillStyle = '#162353';
+  ctx.fillStyle = '#181A20';
   ctx.font = '900 18px Inter, sans-serif';
   ctx.fillText('VEXA BANK', cardX + 72, cardY + 36);
 
@@ -3050,12 +3059,12 @@ function TransferPage() {
                 setCreatePinError(res.error ?? 'Failed to save PIN. Try again.');
               }
             }}
-            className="w-full h-[50px] rounded-xl bg-[#162353] text-white text-[14px] font-semibold disabled:opacity-50 transition-opacity active:opacity-80"
+            className="w-full h-[50px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[14px] font-bold shadow-sm disabled:opacity-45 transition-all"
           >
             {savingPin ? (
               <span className="flex items-center justify-center gap-2">
                 <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="3" strokeDasharray="40 20" />
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40 20" />
                 </svg>
                 Saving…
               </span>
@@ -3207,7 +3216,7 @@ function TransferPage() {
             <div className="flex gap-2 mt-3 flex-wrap w-full">
               {['1,000','5,000','10,000','20,000','50,000'].map(q => (
                 <button key={q} onClick={() => setAmount(q)}
-                  className={`px-3.5 py-1.5 rounded-full text-[12px] font-semibold transition-all border-0 outline-none ring-0 ${amount === q ? 'bg-[#162353] text-white shadow-xs' : 'bg-[#F2F4F7] text-[#444] hover:bg-[#E5E7EB]'}`}>
+                  className={`px-3.5 py-1.5 rounded-full text-[12px] font-semibold transition-all border-0 outline-none ring-0 ${amount === q ? 'bg-[#F0B90B] text-[#181A20] shadow-xs' : 'bg-[#F2F4F7] text-[#444] hover:bg-[#E5E7EB]'}`}>
                   ₦{q}
                 </button>
               ))}
@@ -3460,7 +3469,7 @@ function TransactionReceiptPage() {
         </div>
         <p className="text-[18px] font-bold text-[#111]">Receipt not found</p>
         <p className="text-[13px] text-[#888] mt-2 mb-6">This transaction is not available in your account history.</p>
-        <button onClick={() => navigate('/history')} className="w-full max-w-xs h-[48px] rounded-xl bg-[#162353] text-white text-[14px] font-semibold">
+        <button onClick={() => navigate('/history')} className="w-full max-w-xs h-[48px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[14px] font-bold shadow-sm transition-all">
           Back to History
         </button>
       </div>
@@ -3545,7 +3554,7 @@ function PinModal({ amount, label, onSuccess, onClose }: { amount: string; label
         {blockedMessage && <p className="mb-4 rounded-xl bg-red-50 px-3 py-2.5 text-center text-[12px] font-semibold text-red-600">{blockedMessage}</p>}
         <div className="flex justify-center gap-5 mb-6">
           {[0,1,2,3].map(i => (
-            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${i < pin.length ? 'bg-[#162353] border-[#162353]' : 'border-[#CBD5E1]'}`} />
+            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${i < pin.length ? 'bg-[#F0B90B] border-[#F0B90B] scale-110' : 'border-[#CBD5E1] dark:border-[#3A4556]'}`} />
           ))}
         </div>
         <div className="grid grid-cols-3 gap-3 mb-4">
@@ -3562,7 +3571,7 @@ function PinModal({ amount, label, onSuccess, onClose }: { amount: string; label
           </button>
         </div>
         <button onClick={submit} disabled={pin.length < 4 || processing || movementBlocked}
-          className={`w-full h-[50px] rounded-xl text-[14px] font-semibold text-white ${pin.length === 4 && !processing ? 'bg-[#162353]' : 'bg-[#162353]/40'}`}>
+          className={`w-full h-[50px] rounded-xl text-[14px] font-bold transition-all shadow-sm ${pin.length === 4 && !processing && !movementBlocked ? 'bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20]' : 'bg-[#F0B90B]/40 text-[#181A20]/50'}`}>
           {movementBlocked ? 'Money movement blocked' : processing ? 'Processing…' : 'Pay Now'}
         </button>
       </div>
@@ -3588,7 +3597,7 @@ function SuccessBanner({ title, sub, onHome }: { title: string; sub: string; onH
       </div>
       <p className="text-[20px] font-bold text-[#111] mb-1">{title}</p>
       <p className="text-[13px] text-[#888] text-center mb-8">{sub}</p>
-      <button onClick={onHome} className="w-full max-w-xs bg-[#162353] rounded-xl h-[50px] text-[14px] font-semibold text-white">Back to Home</button>
+      <button onClick={onHome} className="w-full max-w-xs bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] rounded-xl h-[50px] text-[14px] font-bold text-[#181A20] shadow-sm transition-all">Back to Home</button>
     </div>
   );
 }
@@ -3635,7 +3644,7 @@ function AirtimePage() {
           <div className="grid grid-cols-4 gap-2">
             {NETWORKS.map(n => (
               <button key={n.id} onClick={() => setNetwork(n.id)}
-                className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 transition-all ${network === n.id ? 'border-[#162353]' : 'border-[#F0F0F0]'}`}>
+                className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 transition-all ${network === n.id ? 'theme-selected-control border-[#162353]' : 'border-[#F0F0F0]'}`}>
                 <div className="w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-black" style={{ background: n.color, color: n.text }}>{n.name.slice(0,3)}</div>
                 <span className="text-[10px] text-[#555] font-medium">{n.name}</span>
               </button>
@@ -3661,7 +3670,7 @@ function AirtimePage() {
           <div className="grid grid-cols-3 gap-2">
             {AIRTIME_AMOUNTS.map(a => (
               <button key={a} onClick={() => setAmount(a)}
-                className={`py-2 rounded-xl text-[12px] font-semibold border transition-all ${amount===a ? 'bg-[#162353] text-white border-[#162353]' : 'border-[#E0E0E0] text-[#444]'}`}>
+                className={`py-2 rounded-xl text-[12px] font-semibold border transition-all ${amount===a ? 'bg-[#F0B90B] text-[#181A20] border-[#F0B90B] shadow-xs' : 'border-[#E0E0E0] text-[#444]'}`}>
                 ₦{a}
               </button>
             ))}
@@ -3670,7 +3679,7 @@ function AirtimePage() {
       </div>
       <div className="flex-none px-4 pb-6 pt-2">
         <button onClick={handleContinue} disabled={!canProceed}
-          className={`w-full h-[50px] rounded-xl text-[14px] font-semibold text-white ${canProceed ? 'bg-[#162353]' : 'bg-[#162353]/40'}`}>
+          className={`w-full h-[50px] rounded-xl text-[14px] font-bold transition-all shadow-sm ${canProceed ? 'bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20]' : 'bg-[#F0B90B]/40 text-[#181A20]/50'}`}>
           Continue
         </button>
       </div>
@@ -3730,7 +3739,7 @@ function DataPage() {
           <div className="grid grid-cols-4 gap-2">
             {NETWORKS.map(n => (
               <button key={n.id} onClick={() => { setNetwork(n.id); setPlan(''); }}
-                className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 transition-all ${network===n.id ? 'border-[#162353]' : 'border-[#F0F0F0]'}`}>
+                className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 transition-all ${network===n.id ? 'theme-selected-control border-[#162353]' : 'border-[#F0F0F0]'}`}>
                 <div className="w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-black" style={{ background: n.color, color: n.text }}>{n.name.slice(0,3)}</div>
                 <span className="text-[10px] text-[#555] font-medium">{n.name}</span>
               </button>
@@ -3763,7 +3772,7 @@ function DataPage() {
       </div>
       <div className="flex-none px-4 pb-6 pt-2">
         <button onClick={handleContinue} disabled={!canProceed}
-          className={`w-full h-[50px] rounded-xl text-[14px] font-semibold text-white ${canProceed ? 'bg-[#162353]' : 'bg-[#162353]/40'}`}>
+          className={`w-full h-[50px] rounded-xl text-[14px] font-bold transition-all shadow-sm ${canProceed ? 'bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20]' : 'bg-[#F0B90B]/40 text-[#181A20]/50'}`}>
           Continue
         </button>
       </div>
@@ -3826,7 +3835,7 @@ function BettingPage() {
           <div className="grid grid-cols-3 gap-2">
             {BETTING_PLATFORMS.map(b => (
               <button key={b.id} onClick={() => setPlatform(b.name)}
-                className={`py-3 rounded-xl border-2 text-[12px] font-bold transition-all ${platform===b.name ? 'border-[#162353]' : 'border-[#F0F0F0]'}`}
+                className={`py-3 rounded-xl border-2 text-[12px] font-bold transition-all ${platform===b.name ? 'theme-selected-control border-[#162353]' : 'border-[#F0F0F0]'}`}
                 style={{ color: b.color }}>
                 {b.name}
               </button>
@@ -3850,7 +3859,7 @@ function BettingPage() {
           <div className="flex gap-2 flex-wrap">
             {['500','1,000','2,000','5,000','10,000'].map(a => (
               <button key={a} onClick={() => setAmount(a)}
-                className={`px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-all ${amount===a ? 'bg-[#162353] text-white border-[#162353]' : 'border-[#E0E0E0] text-[#444]'}`}>
+                className={`px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-all ${amount===a ? 'bg-[#F0B90B] text-[#181A20] border-[#F0B90B] shadow-xs' : 'border-[#E0E0E0] text-[#444]'}`}>
                 ₦{a}
               </button>
             ))}
@@ -3859,7 +3868,7 @@ function BettingPage() {
       </div>
       <div className="flex-none px-4 pb-6 pt-2">
         <button onClick={handleContinue} disabled={!canProceed}
-          className={`w-full h-[50px] rounded-xl text-[14px] font-semibold text-white ${canProceed ? 'bg-[#162353]' : 'bg-[#162353]/40'}`}>
+          className={`w-full h-[50px] rounded-xl text-[14px] font-bold transition-all shadow-sm ${canProceed ? 'bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20]' : 'bg-[#F0B90B]/40 text-[#181A20]/50'}`}>
           Fund Wallet
         </button>
       </div>
@@ -4054,7 +4063,7 @@ function SavingsPage() {
                   <div className="flex gap-2">
                     {['Daily','Weekly','Monthly'].map(f => (
                       <button key={f} type="button" onClick={() => setFreq(f)}
-                        className={`flex-1 py-2.5 rounded-xl text-[11px] font-semibold border transition-colors ${frequency===f ? 'bg-[#0f4f5c] text-white border-[#0f4f5c]' : 'theme-border theme-text-secondary'}`}>
+                        className={`flex-1 py-2.5 rounded-xl text-[11px] font-semibold border transition-colors ${frequency===f ? 'bg-[#F0B90B] text-[#181A20] border-[#F0B90B]' : 'theme-border theme-text-secondary'}`}>
                         {f}
                       </button>
                     ))}
@@ -4067,7 +4076,7 @@ function SavingsPage() {
                   </div>
                   <button type="button" data-testid="toggle-goal-auto-save" role="switch" aria-checked={autoSave} aria-label="Schedule reminder preference"
                     onClick={() => setAutoSave(v=>!v)}
-                    className={`w-11 h-6 shrink-0 rounded-full transition-colors relative ${autoSave ? 'bg-[#0f766e]' : 'bg-[#87939A]'}`}>
+                    className={`w-11 h-6 shrink-0 rounded-full transition-colors relative ${autoSave ? 'bg-[#F0B90B]' : 'bg-[#87939A]'}`}>
                     <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${autoSave ? 'left-5' : 'left-0.5'}`} />
                   </button>
                 </div>
@@ -4093,7 +4102,7 @@ function SavingsPage() {
                     setShowCreate(false);
                     setNotice(`“${goalName.trim()}” was added to your local savings tracker.`);
                     setGoalName(''); setGoalAmt(''); setDueDate(''); setAutoSave(false); setFreq('Monthly');
-                  }} className="flex-1 h-11 rounded-xl bg-[#0f4f5c] disabled:opacity-45 text-[12px] font-semibold text-white">
+                  }} className="flex-1 h-11 rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] disabled:opacity-45 text-[12px] font-bold text-[#181A20]">
                     Create Goal
                   </button>
                 </div>
@@ -4189,7 +4198,7 @@ function SavingsPage() {
                 setTopUpGoalId(null);
                 setNotice(`₦${num.toLocaleString('en-NG')} recorded in your local savings tracker.`);
                 setTopUpAmt('');
-              }} className="flex-1 h-12 rounded-xl bg-[#0f4f5c] disabled:opacity-45 text-[12px] font-semibold text-white">
+              }} className="flex-1 h-12 rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] disabled:opacity-45 text-[12px] font-bold text-[#181A20]">
                 Update tracker
               </button>
             </div>
@@ -4307,7 +4316,7 @@ function EducationPage() {
       </div>
       <div className="flex-none px-4 pb-6 pt-2">
         <button onClick={() => canProceed && setShowPin(true)} disabled={!canProceed}
-          className={`w-full h-[50px] rounded-xl text-[14px] font-semibold text-white ${canProceed ? 'bg-[#162353]' : 'bg-[#162353]/40'}`}>
+          className={`w-full h-[50px] rounded-xl text-[14px] font-bold transition-all shadow-sm ${canProceed ? 'bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20]' : 'bg-[#F0B90B]/40 text-[#181A20]/50'}`}>
           Pay School Fees
         </button>
       </div>
@@ -4362,7 +4371,7 @@ function StatementPage() {
           <div className="flex gap-2">
             {['PDF','Excel','CSV'].map(f => (
               <button key={f} onClick={() => setFormat(f)}
-                className={`flex-1 py-3 rounded-xl text-[13px] font-semibold border-2 transition-all ${format===f ? 'bg-[#162353] text-white border-[#162353]' : 'border-[#E0E0E0] text-[#444]'}`}>
+                className={`flex-1 py-3 rounded-xl text-[13px] font-semibold border-2 transition-all ${format===f ? 'bg-[#F0B90B] text-[#181A20] border-[#F0B90B]' : 'border-[#E0E0E0] text-[#444]'}`}>
                 {f}
               </button>
             ))}
@@ -4392,7 +4401,7 @@ function StatementPage() {
       </div>
       <div className="flex-none px-4 pb-6 pt-2">
         <button onClick={generate} disabled={generating}
-          className="w-full h-[50px] rounded-xl text-[14px] font-semibold text-white bg-[#162353] disabled:opacity-60">
+          className="w-full h-[50px] rounded-xl text-[14px] font-bold text-[#181A20] bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] shadow-sm disabled:opacity-45 transition-all">
           {generating ? 'Generating…' : 'Generate Statement'}
         </button>
       </div>
@@ -4592,7 +4601,7 @@ function BudgetPage() {
             </div>
             <div className="flex justify-end gap-2 mt-3">
               <button onClick={() => setShowAdd(false)} className="px-3 py-2 text-[12px] font-semibold text-[#888]">Cancel</button>
-              <button onClick={addCategory} className="px-4 py-2 rounded-xl bg-[#162353] text-white text-[12px] font-bold">Add category</button>
+              <button onClick={addCategory} className="px-4 py-2 rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] text-[#181A20] text-[12px] font-bold shadow-xs">Add category</button>
             </div>
           </div>
         )}
@@ -5006,7 +5015,7 @@ function CashbackPage() {
         <div className="w-20 h-20 rounded-full bg-yellow-50 flex items-center justify-center mb-5 text-[36px]">🪙</div>
         <p className="text-[20px] font-bold text-[#111] mb-1">Cashback Redeemed!</p>
         <p className="text-[13px] text-[#888] text-center mb-8">₦{redeemable.toLocaleString('en-NG')}.00 has been added to your Vexa wallet.</p>
-        <button onClick={() => navigate('/')} className="w-full max-w-xs bg-[#162353] rounded-xl h-[50px] text-[14px] font-semibold text-white">Back to Home</button>
+        <button onClick={() => navigate('/')} className="w-full max-w-xs bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] rounded-xl h-[50px] text-[14px] font-bold text-[#181A20] shadow-sm transition-all">Back to Home</button>
       </div>
     );
   }

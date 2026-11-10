@@ -154,8 +154,8 @@ export function TransferConfirmationModal({
           <div className="rounded-2xl border-0 bg-white p-4 shadow-sm">
             <div className="flex items-start gap-2.5">
               {/* Radio Indicator */}
-              <div className="mt-0.5 w-4 h-4 rounded-full border-2 border-[#162353] flex items-center justify-center shrink-0">
-                <div className="w-2 h-2 rounded-full bg-[#162353]" />
+              <div className="mt-0.5 w-4 h-4 rounded-full border-2 border-[#F0B90B] flex items-center justify-center shrink-0">
+                <div className="w-2 h-2 rounded-full bg-[#F0B90B]" />
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-1.5">

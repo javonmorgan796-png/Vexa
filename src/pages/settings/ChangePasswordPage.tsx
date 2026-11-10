@@ -47,7 +47,7 @@ export default function ChangePasswordPage() {
           Your password has been changed successfully.<br/>Use the new password next time you sign in.
         </p>
         <button onClick={() => navigate('/settings')}
-          className="w-full max-w-xs bg-[#162353] rounded-xl h-[52px] text-[15px] font-bold text-white">
+          className="w-full max-w-xs bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] rounded-xl h-[52px] text-[15px] font-bold shadow-sm transition-all">
           Back to Settings
         </button>
       </div>
@@ -155,11 +155,11 @@ export default function ChangePasswordPage() {
           </div>
 
           <button type="submit" disabled={loading}
-            className="w-full h-[52px] rounded-xl bg-[#162353] text-white text-[15px] font-bold mt-2 disabled:opacity-60 transition-opacity">
+            className="w-full h-[52px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[15px] font-bold mt-2 shadow-sm disabled:opacity-45 transition-all">
             {loading ? (
               <span className="flex items-center justify-center gap-2">
                 <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="3" strokeDasharray="40 20" />
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40 20" />
                 </svg>
                 Updating…
               </span>

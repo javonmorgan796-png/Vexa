@@ -69,12 +69,12 @@ export default function TwoFactorSettingsPage() {
             <div className="flex-1"><p className="text-[14px] font-bold text-[#111]">SMS verification</p><p className="text-[12px] text-[#777] mt-1">Codes will be sent to <b>{user?.phone || 'your saved phone number'}</b>.</p></div>
             <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${user?.twoFactorEnabled ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{user?.twoFactorEnabled ? 'On' : 'Off'}</span>
           </div>
-          {!user?.twoFactorEnabled && step === 'idle' && <button disabled={busy} onClick={() => void enable()} className="w-full mt-5 rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold disabled:opacity-50">{busy ? 'Sending code…' : 'Enable SMS 2FA'}</button>}
+          {!user?.twoFactorEnabled && step === 'idle' && <button disabled={busy} onClick={() => void enable()} className="w-full mt-5 rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] py-3.5 text-[13px] font-bold shadow-sm disabled:opacity-45 transition-all">{busy ? 'Sending code…' : 'Enable SMS 2FA'}</button>}
           {!user?.twoFactorEnabled && step === 'code' && (
             <div className="mt-5 space-y-3">
               <div className="flex items-center gap-2"><LockKeyhole className="w-4 h-4 text-[#2563EB]" /><p className="text-[12px] font-semibold text-[#444]">Enter the 6-digit code</p></div>
               <input value={code} onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoFocus placeholder="000000" className="w-full text-center tracking-[0.5em] text-[22px] font-bold border border-[#E0E0E0] rounded-xl px-4 py-3 outline-none focus:border-[#162353]" />
-              <button disabled={busy || code.length !== 6} onClick={() => void verify()} className="w-full rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold disabled:opacity-50">{busy ? 'Verifying…' : 'Verify and enable'}</button>
+              <button disabled={busy || code.length !== 6} onClick={() => void verify()} className="w-full rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] py-3.5 text-[13px] font-bold shadow-sm disabled:opacity-45 transition-all">{busy ? 'Verifying…' : 'Verify and enable'}</button>
               <button disabled={busy} onClick={() => void enable()} className="w-full text-[#2563EB] text-[12px] font-semibold">Resend code</button>
             </div>
           )}

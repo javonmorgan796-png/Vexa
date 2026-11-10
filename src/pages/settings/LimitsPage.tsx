@@ -146,7 +146,7 @@ export default function LimitsPage() {
               {/* Upgrade CTA for next level */}
               {!isUnlocked && (
                 <div className="px-4 pb-4">
-                  <button className="w-full h-[42px] rounded-xl border-2 border-[#162353] text-[13px] font-semibold text-[#162353]">
+                  <button className="theme-control theme-brand-text w-full h-[42px] rounded-xl text-[13px] font-bold transition-colors">
                     Upgrade to Level {tier.level}
                   </button>
                 </div>

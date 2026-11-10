@@ -181,21 +181,27 @@ export function BankingTransferReceipt({
           {/* Official Bank Receipt Card */}
           <div className="printable-receipt bg-white rounded-3xl shadow-md border-0 p-6 relative overflow-hidden">
             {/* Watermark Logo in Background */}
-            <div className="absolute right-[-20px] top-[-20px] opacity-[0.03] pointer-events-none select-none">
-              <svg width="260" height="260" viewBox="0 0 100 100" fill="none">
-                <circle cx="50" cy="50" r="45" stroke="#162353" strokeWidth="6" />
-                <path d="M30 35L50 65L70 35" stroke="#162353" strokeWidth="8" strokeLinecap="round" />
-              </svg>
+            <div className="absolute right-[-20px] top-[-20px] opacity-[0.05] pointer-events-none select-none">
+              <img
+                src="/assets/aistudio/fe78fa28-9eb7-49b5-a568-6e1afbae67cb_ac4d9ede.png"
+                alt=""
+                aria-hidden="true"
+                className="w-56 h-56 object-contain"
+              />
             </div>
 
             {/* Receipt Header Banner */}
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-[#162353] flex items-center justify-center shadow-xs">
-                  <span className="text-white font-extrabold text-[15px] tracking-wider">V</span>
+                <div className="w-9 h-9 rounded-xl bg-[#181A20] flex items-center justify-center p-1 shadow-xs">
+                  <img
+                    src="/assets/aistudio/fe78fa28-9eb7-49b5-a568-6e1afbae67cb_ac4d9ede.png"
+                    alt="Vexa"
+                    className="w-full h-full object-contain"
+                  />
                 </div>
                 <div>
-                  <p className="text-[14px] font-extrabold text-[#162353] tracking-tight leading-none">VEXA BANK</p>
+                  <p className="text-[14px] font-extrabold text-[#181A20] tracking-tight leading-none">VEXA BANK</p>
                   <p className="text-[9.5px] font-semibold text-slate-400 uppercase tracking-widest mt-0.5">
                     Licensed by the CBN · NDIC Insured
                   </p>
@@ -373,7 +379,7 @@ export function BankingTransferReceipt({
               type="button"
               onClick={handleShare}
               disabled={busyAction !== null}
-              className="w-full h-[52px] rounded-2xl bg-[#162353] hover:bg-[#111c43] active:bg-[#0c1432] text-white font-bold text-[15px] shadow-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+              className="w-full h-[52px] rounded-2xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] font-bold text-[15px] shadow-sm flex items-center justify-center gap-2 transition-all disabled:opacity-45"
             >
               <Share2 className="w-4 h-4" />
               <span>{busyAction === 'share' ? 'Preparing Receipt…' : 'Share Receipt'}</span>

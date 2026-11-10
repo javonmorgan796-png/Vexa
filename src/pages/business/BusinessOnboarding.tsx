@@ -122,8 +122,8 @@ export default function BusinessOnboarding() {
                   {BUSINESS_TYPES.map(bt => (
                     <button key={bt.value} type="button" onClick={() => { setBusinessType(bt.value); setError(''); }}
                       className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 text-left transition-all ${businessType === bt.value ? 'border-[#162353] bg-[#F0F4FF]' : 'border-[#E2E8F0] bg-[#F8F9FB]'}`}>
-                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${businessType === bt.value ? 'border-[#162353]' : 'border-[#CCC]'}`}>
-                        {businessType === bt.value && <div className="w-2 h-2 rounded-full bg-[#162353]" />}
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${businessType === bt.value ? 'border-[#F0B90B]' : 'border-[#CCC] dark:border-[#3A4556]'}`}>
+                        {businessType === bt.value && <div className="w-2 h-2 rounded-full bg-[#F0B90B]" />}
                       </div>
                       <div>
                         <p className="text-[13px] font-semibold text-[#111]">{bt.label}</p>
@@ -196,10 +196,10 @@ export default function BusinessOnboarding() {
 
           {/* CTA */}
           <button onClick={nextStep} disabled={loading}
-            className="w-full h-[52px] rounded-xl bg-[#162353] text-white text-[15px] font-bold mt-8 disabled:opacity-60 transition-opacity active:scale-[0.98]">
+            className="w-full h-[52px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[15px] font-bold mt-8 shadow-sm disabled:opacity-45 transition-all active:scale-[0.98]">
             {loading ? (
               <span className="flex items-center justify-center gap-2">
-                <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="white" strokeWidth="3" strokeDasharray="40 20"/></svg>
+                <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40 20"/></svg>
                 Creating account…
               </span>
             ) : step === totalSteps ? 'Create Business Account' : 'Continue'}

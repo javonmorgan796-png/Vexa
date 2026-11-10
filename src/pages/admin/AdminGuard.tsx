@@ -235,8 +235,8 @@ export const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }
       <div className={`min-h-screen w-full flex flex-col justify-between transition-colors ${isDark ? 'bg-[#0B0E14] text-white' : 'bg-slate-50 text-slate-900'}`}>
         <header className={`h-16 px-6 sm:px-10 border-b flex items-center justify-between ${isDark ? 'border-gray-800 bg-[#0B0E14]' : 'border-slate-200 bg-white shadow-xs'}`}>
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#F0B90B] to-[#FCD535] flex items-center justify-center text-black font-extrabold text-sm shadow-md">
-              V
+            <div className="w-8 h-8 rounded-xl bg-[#181A20] border border-[#F0B90B]/30 flex items-center justify-center p-1 shadow-md shrink-0">
+              <img src="/assets/aistudio/fe78fa28-9eb7-49b5-a568-6e1afbae67cb_ac4d9ede.png" alt="Vexa" className="w-full h-full object-contain" />
             </div>
             <span className="font-bold text-sm tracking-tight">VEXA INSTITUTIONAL</span>
           </div>
@@ -303,8 +303,8 @@ export const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }
         >
           {/* Brand Mark */}
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#F0B90B] to-[#FCD535] flex items-center justify-center text-black font-extrabold text-sm shadow-md">
-              V
+            <div className="w-8 h-8 rounded-xl bg-[#181A20] border border-[#F0B90B]/30 flex items-center justify-center p-1 shadow-md shrink-0">
+              <img src="/assets/aistudio/fe78fa28-9eb7-49b5-a568-6e1afbae67cb_ac4d9ede.png" alt="Vexa" className="w-full h-full object-contain" />
             </div>
             <div className="flex items-center space-x-2">
               <span className="font-bold text-sm tracking-tight">VEXA</span>

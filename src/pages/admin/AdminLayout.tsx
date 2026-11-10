@@ -169,8 +169,8 @@ export const AdminLayout: React.FC = () => {
         {/* Brand Header */}
         <div className={`h-16 px-5 border-b flex items-center justify-between ${isDark ? 'border-gray-800/60' : 'border-slate-200'}`}>
           <div className="flex items-center space-x-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#F0B90B] to-[#FCD535] flex items-center justify-center text-black font-extrabold text-sm shadow-md">
-              V
+            <div className="w-8 h-8 rounded-xl bg-[#181A20] border border-[#F0B90B]/30 flex items-center justify-center p-1 shadow-md shrink-0">
+              <img src="/assets/aistudio/fe78fa28-9eb7-49b5-a568-6e1afbae67cb_ac4d9ede.png" alt="Vexa" className="w-full h-full object-contain" />
             </div>
             <div>
               <div className={`font-bold text-sm tracking-tight flex items-center space-x-1.5 ${isDark ? 'text-white' : 'text-slate-900'}`}>

@@ -317,7 +317,7 @@ export default function BusinessTransfers() {
                         <p className="text-[13px] font-semibold text-[#111]">{e.name}</p>
                         <p className="text-[10px] text-[#888]">{e.bankName} · {e.accountNumber}</p>
                       </div>
-                      {selectedEmpId === e.id && <div className="w-4 h-4 rounded-full bg-[#162353] flex items-center justify-center"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>}
+                      {selectedEmpId === e.id && <div className="w-4 h-4 rounded-full bg-[#F0B90B] flex items-center justify-center"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#181A20" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>}
                     </button>
                   ))}
                 </div>
@@ -390,7 +390,7 @@ export default function BusinessTransfers() {
                 className="w-full h-[48px] rounded-xl border border-[#E2E8F0] bg-white px-4 text-[14px] text-[#111] placeholder-[#C0C8D4] focus:outline-none focus:border-[#162353] transition-colors" />
             </div>
 
-            <button onClick={handleSend} className="w-full h-[52px] rounded-xl bg-[#162353] text-white text-[15px] font-bold mt-2">
+            <button onClick={handleSend} className="w-full h-[52px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[15px] font-bold mt-2 shadow-sm transition-all">
               Continue
             </button>
           </div>
@@ -421,7 +421,7 @@ export default function BusinessTransfers() {
             </div>
             <div className="flex gap-3">
               <button onClick={() => setStep('form')} className="flex-1 h-[52px] rounded-xl border-2 border-[#E2E8F0] text-[#555] text-[14px] font-semibold">Back</button>
-              <button onClick={() => setStep('pin')} className="flex-1 h-[52px] rounded-xl bg-[#162353] text-white text-[15px] font-bold">Enter PIN</button>
+              <button onClick={() => setStep('pin')} className="flex-1 h-[52px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[15px] font-bold shadow-sm transition-all">Enter PIN</button>
             </div>
           </div>
         )}
@@ -445,7 +445,7 @@ export default function BusinessTransfers() {
             <p className="text-[22px] font-extrabold text-[#111] mb-2">Transfer Successful!</p>
             <p className="text-[13px] text-[#888] mb-1">{fmt(sendAmount)} sent successfully</p>
             <p className="text-[12px] text-[#888] mb-8">New balance: {fmt(business.balance)}</p>
-            <button onClick={reset} className="w-full h-[52px] rounded-xl bg-[#162353] text-white text-[15px] font-bold">Make Another Transfer</button>
+            <button onClick={reset} className="w-full h-[52px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[15px] font-bold shadow-sm transition-all">Make Another Transfer</button>
             <button onClick={() => navigate('/business')} className="w-full h-[48px] rounded-xl border-2 border-[#E2E8F0] text-[#555] text-[14px] font-semibold mt-3">Back to Dashboard</button>
           </div>
         )}

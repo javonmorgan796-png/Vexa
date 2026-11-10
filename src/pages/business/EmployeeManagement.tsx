@@ -76,8 +76,8 @@ export default function EmployeeManagement() {
               <p className="text-[11px] text-[#888]">{employees.filter(e => e.active).length} active members</p>
             </div>
           </div>
-          <button onClick={openAdd} className="h-9 px-4 bg-[#162353] text-white text-[12px] font-bold rounded-xl flex items-center gap-1.5">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <button onClick={openAdd} className="h-9 px-4 bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[12px] font-bold rounded-xl flex items-center gap-1.5 shadow-xs transition-all">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Add
           </button>
         </div>
@@ -95,7 +95,7 @@ export default function EmployeeManagement() {
         <div className="flex gap-2 px-4 pb-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
           {departments.map(d => (
             <button key={d} onClick={() => setDeptFilter(d)}
-              className={`px-3 py-1.5 rounded-full text-[11px] font-semibold whitespace-nowrap transition-all ${deptFilter === d ? 'bg-[#162353] text-white' : 'bg-[#F2F3F5] text-[#555]'}`}>
+              className={`px-3 py-1.5 rounded-full text-[11px] font-semibold whitespace-nowrap transition-all ${deptFilter === d ? 'bg-[#F0B90B] text-[#181A20] shadow-xs' : 'bg-[#F2F3F5] text-[#555]'}`}>
               {d}
             </button>
           ))}
@@ -174,7 +174,7 @@ export default function EmployeeManagement() {
                 <div className="flex flex-wrap gap-1.5">
                   {DEPARTMENTS.map(d => (
                     <button key={d} type="button" onClick={() => { setForm(p => ({ ...p, department: d })); setError(''); }}
-                      className={`px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all ${form.department === d ? 'bg-[#162353] text-white' : 'bg-[#F2F3F5] text-[#555]'}`}>
+                      className={`px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all ${form.department === d ? 'bg-[#F0B90B] text-[#181A20]' : 'bg-[#F2F3F5] text-[#555]'}`}>
                       {d}
                     </button>
                   ))}
@@ -185,7 +185,7 @@ export default function EmployeeManagement() {
                 <div className="flex flex-wrap gap-1.5">
                   {BANKS.map(b => (
                     <button key={b} type="button" onClick={() => setForm(p => ({ ...p, bankName: b }))}
-                      className={`px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all ${form.bankName === b ? 'bg-[#162353] text-white' : 'bg-[#F2F3F5] text-[#555]'}`}>
+                      className={`px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all ${form.bankName === b ? 'bg-[#F0B90B] text-[#181A20]' : 'bg-[#F2F3F5] text-[#555]'}`}>
                       {b}
                     </button>
                   ))}
@@ -209,14 +209,14 @@ export default function EmployeeManagement() {
                   <p className="text-[11px] text-[#888]">Include in payroll runs</p>
                 </div>
                 <button type="button" onClick={() => setForm(p => ({ ...p, active: !p.active }))}
-                  className={`w-11 h-6 rounded-full transition-colors ${form.active ? 'bg-[#162353]' : 'bg-[#CCC]'}`}>
+                  className={`w-11 h-6 rounded-full transition-colors ${form.active ? 'bg-[#F0B90B]' : 'bg-[#CCC] dark:bg-[#3A4556]'}`}>
                   <div className={`w-4 h-4 bg-white rounded-full mx-1 transition-transform ${form.active ? 'translate-x-5' : 'translate-x-0'}`} />
                 </button>
               </div>
             </div>
             <div className="flex gap-3 mt-6">
               <button onClick={() => setModal(null)} className="flex-1 h-[48px] rounded-xl border-2 border-[#E2E8F0] text-[#555] text-[14px] font-semibold">Cancel</button>
-              <button onClick={handleSave} className="flex-1 h-[48px] rounded-xl bg-[#162353] text-white text-[14px] font-bold">{modal === 'add' ? 'Add Employee' : 'Save Changes'}</button>
+              <button onClick={handleSave} className="flex-1 h-[48px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[14px] font-bold shadow-sm transition-all">{modal === 'add' ? 'Add Employee' : 'Save Changes'}</button>
             </div>
           </div>
         </div>

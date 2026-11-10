@@ -69,7 +69,7 @@ export default function BusinessTransactionHistory() {
         <div className="flex gap-2 px-4 pb-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
           {CATEGORIES.map(c => (
             <button key={c} onClick={() => setFilter(c)}
-              className={`px-3 py-1.5 rounded-full text-[11px] font-semibold whitespace-nowrap transition-all ${filter === c ? 'bg-[#162353] text-white' : 'bg-[#F2F3F5] text-[#555]'}`}>
+              className={`px-3 py-1.5 rounded-full text-[11px] font-semibold whitespace-nowrap transition-all ${filter === c ? 'bg-[#F0B90B] text-[#181A20] shadow-xs' : 'bg-[#F2F3F5] text-[#555]'}`}>
               {catLabels[c]}
             </button>
           ))}

@@ -210,7 +210,7 @@ export default function SignUpPage() {
           Welcome to Vexa, {name.split(' ')[0]}!<br/>Your account is ready to use.
         </p>
         <button onClick={() => navigate('/')}
-          className="w-full max-w-xs bg-[#162353] rounded-xl h-[52px] text-[15px] font-bold text-white">
+          className="w-full max-w-xs bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] rounded-xl h-[52px] text-[15px] font-bold shadow-sm transition-all active:scale-[0.98]">
           Go to Dashboard
         </button>
       </div>
@@ -227,7 +227,7 @@ export default function SignUpPage() {
             className="absolute left-4 top-12 w-9 h-9 flex items-center justify-center rounded-full bg-white/10">
             <ChevronLeft className="w-5 h-5 text-white" />
           </button>
-          <img src="/vexa-logo.png" alt="Vexa" className="h-20 mb-3 object-contain" />
+          <img src="/assets/aistudio/c4e1e122-cd74-4d18-b5b5-37dafb3a53f6_e2d23c37.png" alt="Vexa" className="h-16 sm:h-20 mb-3 object-contain drop-shadow-lg" />
           <p className="text-white/70 text-[13px]">Phone Verification</p>
         </div>
 
@@ -256,11 +256,11 @@ export default function SignUpPage() {
             </div>
 
             <button type="submit" disabled={otpLoading || otp.some(d => d === '')}
-              className="w-full h-[52px] rounded-xl bg-[#162353] text-white text-[15px] font-bold disabled:opacity-60 transition-opacity active:scale-[0.98]">
+              className="w-full h-[52px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[15px] font-bold shadow-sm disabled:opacity-45 transition-all active:scale-[0.98]">
               {otpLoading ? (
                 <span className="flex items-center justify-center gap-2">
                   <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                    <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="3" strokeDasharray="40 20" />
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40 20" />
                   </svg>
                   Verifying…
                 </span>
@@ -295,7 +295,7 @@ export default function SignUpPage() {
           className="absolute left-4 top-12 w-9 h-9 flex items-center justify-center rounded-full bg-white/10">
           <ChevronLeft className="w-5 h-5 text-white" />
         </button>
-        <img src="/vexa-logo.png" alt="Vexa" className="h-20 mb-3 object-contain" />
+        <img src="/assets/aistudio/c4e1e122-cd74-4d18-b5b5-37dafb3a53f6_e2d23c37.png" alt="Vexa" className="h-16 sm:h-20 mb-3 object-contain drop-shadow-lg" />
         <p className="text-white/70 text-[13px]">Create your account</p>
       </div>
 
@@ -375,11 +375,11 @@ export default function SignUpPage() {
 
           {/* CTA */}
           <button type="submit" disabled={loading}
-            className="w-full h-[52px] rounded-xl bg-[#162353] text-white text-[15px] font-bold mt-1 disabled:opacity-60 transition-opacity active:scale-[0.98]">
+            className="w-full h-[52px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[15px] font-bold mt-1 shadow-sm disabled:opacity-45 transition-all active:scale-[0.98]">
             {loading ? (
               <span className="flex items-center justify-center gap-2">
                 <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="3" strokeDasharray="40 20" />
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40 20" />
                 </svg>
                 Sending OTP…
               </span>

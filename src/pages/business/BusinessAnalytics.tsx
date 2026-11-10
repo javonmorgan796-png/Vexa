@@ -105,7 +105,7 @@ export default function BusinessAnalytics() {
               </div>
 
               <div className="flex items-center gap-4 mt-3">
-                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-[#162353]" /><span className="text-[10px] text-[#888]">Income</span></div>
+                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-[#0e7490]" /><span className="text-[10px] text-[#888]">Income</span></div>
                 <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-[#EF4444]" /><span className="text-[10px] text-[#888]">Expenses</span></div>
               </div>
             </div>

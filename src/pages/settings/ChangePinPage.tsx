@@ -60,7 +60,7 @@ export default function ChangePinPage() {
           Your transaction PIN has been updated successfully.
         </p>
         <button onClick={() => navigate('/settings')}
-          className="w-full max-w-xs bg-[#162353] rounded-xl h-[52px] text-[15px] font-bold text-white">
+          className="w-full max-w-xs bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] rounded-xl h-[52px] text-[15px] font-bold shadow-sm transition-all">
           Back to Settings
         </button>
       </div>
@@ -88,7 +88,7 @@ export default function ChangePinPage() {
         {/* Progress dots */}
         <div className="flex justify-center gap-2 mb-8">
           {[0, 1, 2].map(i => (
-            <div key={i} className={`h-2 rounded-full transition-all ${i === stepIndex ? 'w-6 bg-[#162353]' : i < stepIndex ? 'w-2 bg-[#162353]/40' : 'w-2 bg-[#E2E8F0]'}`} />
+            <div key={i} className={`h-2 rounded-full transition-all ${i === stepIndex ? 'w-6 bg-[#F0B90B]' : i < stepIndex ? 'w-2 bg-[#F0B90B]/45' : 'w-2 bg-[#E2E8F0] dark:bg-[#2B313A]'}`} />
           ))}
         </div>
 
@@ -98,7 +98,7 @@ export default function ChangePinPage() {
         {/* PIN dots */}
         <div className="flex justify-center gap-5 mb-4">
           {[0, 1, 2, 3].map(i => (
-            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${i < activePin.length ? 'bg-[#162353] border-[#162353]' : 'border-[#CBD5E1]'}`} />
+            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${i < activePin.length ? 'bg-[#F0B90B] border-[#F0B90B] scale-110' : 'border-[#CBD5E1] dark:border-[#3A4556]'}`} />
           ))}
         </div>
 
@@ -129,11 +129,11 @@ export default function ChangePinPage() {
 
         <button onClick={handleNext}
           disabled={activePin.length < 4 || processing}
-          className="w-full h-[52px] rounded-xl bg-[#162353] text-white text-[15px] font-bold mb-6 disabled:opacity-40 transition-opacity">
+          className="w-full h-[52px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[15px] font-bold mb-6 shadow-sm disabled:opacity-40 transition-all">
           {processing ? (
             <span className="flex items-center justify-center gap-2">
               <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="3" strokeDasharray="40 20" />
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40 20" />
               </svg>
               Updating…
             </span>

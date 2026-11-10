@@ -101,7 +101,7 @@ export default function BusinessBills() {
                   <button key={p} onClick={() => setProvider(p)}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-left transition-all ${provider === p ? 'border-[#162353] bg-[#F0F4FF]' : 'border-[#E2E8F0] bg-white'}`}>
                     <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${provider === p ? 'border-[#162353]' : 'border-[#CCC]'}`}>
-                      {provider === p && <div className="w-2 h-2 rounded-full bg-[#162353]" />}
+                      {provider === p && <div className="w-2 h-2 rounded-full bg-[#F0B90B]" />}
                     </div>
                     <span className="text-[13px] font-semibold text-[#111]">{p}</span>
                   </button>
@@ -128,7 +128,7 @@ export default function BusinessBills() {
               </div>
             </div>
 
-            <button onClick={handlePay} className="w-full h-[52px] rounded-xl bg-[#162353] text-white text-[15px] font-bold">Proceed</button>
+            <button onClick={handlePay} className="w-full h-[52px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[15px] font-bold shadow-sm transition-all">Proceed</button>
           </div>
         )}
 
@@ -156,8 +156,8 @@ export default function BusinessBills() {
             </div>
             <div className="flex gap-3">
               <button onClick={() => setStep('details')} className="flex-1 h-[52px] rounded-xl border-2 border-[#E2E8F0] text-[#555] text-[14px] font-semibold">Back</button>
-              <button onClick={handleConfirm} disabled={processing} className="flex-1 h-[52px] rounded-xl bg-[#162353] text-white text-[14px] font-bold disabled:opacity-60">
-                {processing ? <span className="flex items-center justify-center gap-2"><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="white" strokeWidth="3" strokeDasharray="40 20"/></svg>Processing…</span> : 'Pay Now'}
+              <button onClick={handleConfirm} disabled={processing} className="flex-1 h-[52px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[14px] font-bold shadow-sm disabled:opacity-45 transition-all">
+                {processing ? <span className="flex items-center justify-center gap-2"><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40 20"/></svg>Processing…</span> : 'Pay Now'}
               </button>
             </div>
           </div>
@@ -170,7 +170,7 @@ export default function BusinessBills() {
             </div>
             <p className="text-[22px] font-extrabold text-[#111] mb-2">Payment Successful!</p>
             <p className="text-[13px] text-[#888] mb-8">{selectedCat?.label} via {provider} paid successfully</p>
-            <button onClick={reset} className="w-full h-[52px] rounded-xl bg-[#162353] text-white text-[15px] font-bold">Pay Another Bill</button>
+            <button onClick={reset} className="w-full h-[52px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[15px] font-bold shadow-sm transition-all">Pay Another Bill</button>
             <button onClick={() => navigate('/business')} className="w-full h-[48px] rounded-xl border-2 border-[#E2E8F0] text-[#555] text-[14px] font-semibold mt-3">Back to Dashboard</button>
           </div>
         )}

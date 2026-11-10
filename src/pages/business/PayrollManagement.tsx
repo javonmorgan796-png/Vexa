@@ -99,8 +99,8 @@ export default function PayrollManagement() {
         {/* SCHEDULES TAB */}
         {tab === 'schedules' && (
           <>
-            <button onClick={() => setShowNewSchedule(true)} className="w-full h-[50px] rounded-xl bg-[#162353] text-white text-[14px] font-bold flex items-center justify-center gap-2">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <button onClick={() => setShowNewSchedule(true)} className="w-full h-[50px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[14px] font-bold flex items-center justify-center gap-2 shadow-sm transition-all">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               New Payroll Schedule
             </button>
 
@@ -169,8 +169,8 @@ export default function PayrollManagement() {
             {activeEmployees.map(e => (
               <button key={e.id} onClick={() => toggleBulk(e.id)}
                 className={`w-full bg-white rounded-2xl border-2 px-4 py-3.5 flex items-center gap-3 text-left transition-all ${bulkSelected.includes(e.id) ? 'border-[#162353] bg-[#F0F4FF]' : 'border-[#F0F0F0]'}`}>
-                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${bulkSelected.includes(e.id) ? 'border-[#162353] bg-[#162353]' : 'border-[#CCC]'}`}>
-                  {bulkSelected.includes(e.id) && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${bulkSelected.includes(e.id) ? 'border-[#F0B90B] bg-[#F0B90B]' : 'border-[#CCC]'}`}>
+                  {bulkSelected.includes(e.id) && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#181A20" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
                 </div>
                 <div className="w-9 h-9 rounded-full bg-[#EFF6FF] flex items-center justify-center text-[12px] font-bold text-[#2563EB] shrink-0">
                   {e.name.split(' ').map(p => p[0]).slice(0, 2).join('')}
@@ -190,10 +190,10 @@ export default function PayrollManagement() {
                   <span className="text-[13px] font-bold text-[#111]">{fmt(activeEmployees.filter(e => bulkSelected.includes(e.id)).reduce((s, e) => s + e.salary, 0))}</span>
                 </div>
                 <button onClick={handleBulkPay} disabled={bulkRunning}
-                  className="w-full h-[48px] rounded-xl bg-[#162353] text-white text-[14px] font-bold disabled:opacity-60">
+                  className="w-full h-[48px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[14px] font-bold shadow-sm disabled:opacity-45 transition-all">
                   {bulkRunning ? (
                     <span className="flex items-center justify-center gap-2">
-                      <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="white" strokeWidth="3" strokeDasharray="40 20"/></svg>
+                      <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40 20"/></svg>
                       Processing…
                     </span>
                   ) : `Pay ${bulkSelected.length} Employee${bulkSelected.length !== 1 ? 's' : ''}`}
@@ -264,8 +264,8 @@ export default function PayrollManagement() {
                   {employees.filter(e => e.active).map(e => (
                     <button key={e.id} onClick={() => toggleEmp(e.id)}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 text-left transition-all ${selectedEmpIds.includes(e.id) ? 'border-[#162353] bg-[#F0F4FF]' : 'border-[#E2E8F0]'}`}>
-                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${selectedEmpIds.includes(e.id) ? 'border-[#162353] bg-[#162353]' : 'border-[#CCC]'}`}>
-                        {selectedEmpIds.includes(e.id) && <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${selectedEmpIds.includes(e.id) ? 'border-[#F0B90B] bg-[#F0B90B]' : 'border-[#CCC]'}`}>
+                        {selectedEmpIds.includes(e.id) && <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#181A20" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
                       </div>
                       <span className="text-[12px] font-semibold text-[#111]">{e.name}</span>
                       <span className="ml-auto text-[11px] text-[#888]">{fmt(e.salary)}</span>
@@ -276,7 +276,7 @@ export default function PayrollManagement() {
             </div>
             <div className="flex gap-3 mt-5">
               <button onClick={() => setShowNewSchedule(false)} className="flex-1 h-[48px] rounded-xl border-2 border-[#E2E8F0] text-[#555] text-[14px] font-semibold">Cancel</button>
-              <button onClick={handleAddSchedule} className="flex-1 h-[48px] rounded-xl bg-[#162353] text-white text-[14px] font-bold">Create Schedule</button>
+              <button onClick={handleAddSchedule} className="flex-1 h-[48px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[14px] font-bold shadow-sm transition-all">Create Schedule</button>
             </div>
           </div>
         </div>

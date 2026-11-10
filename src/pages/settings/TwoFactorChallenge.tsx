@@ -31,7 +31,7 @@ export default function TwoFactorChallenge() {
         <p className="text-[13px] text-[#777] mt-2 leading-relaxed">{status || 'SMS delivery is not configured for this account.'}</p>
         {error && <div className="mt-4 rounded-xl bg-red-50 border border-red-200 px-3 py-2.5 text-[12px] text-red-600">{error}</div>}
         <div className="mt-5 flex items-center gap-2 border border-[#E0E0E0] rounded-xl px-3 focus-within:border-[#162353]"><LockKeyhole className="w-4 h-4 text-[#999]" /><input value={code} onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder="6-digit code" className="w-full py-3.5 text-[16px] tracking-[0.35em] font-bold outline-none" /></div>
-        <button disabled={busy || code.length !== 6} onClick={() => void verify()} className="w-full mt-4 rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold disabled:opacity-50">{busy ? 'Checking…' : 'Continue securely'}</button>
+        <button disabled={busy || code.length !== 6} onClick={() => void verify()} className="w-full mt-4 rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] py-3.5 text-[13px] font-bold shadow-sm disabled:opacity-45 transition-all">{busy ? 'Checking…' : 'Continue securely'}</button>
         <button onClick={() => void signOut()} className="w-full mt-3 text-[#777] text-[12px] font-semibold">Sign out</button>
       </div>
     </div>

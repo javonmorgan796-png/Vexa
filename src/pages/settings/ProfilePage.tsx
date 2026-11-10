@@ -202,11 +202,11 @@ export default function ProfilePage() {
             />
             <div className="flex gap-3">
               <button onClick={() => setEditing(null)}
-                className="flex-1 h-[50px] rounded-xl border border-[#E2E8F0] text-[14px] font-semibold text-[#444]">
+                className="theme-control theme-text-primary flex-1 h-[50px] rounded-xl text-[14px] font-semibold">
                 Cancel
               </button>
               <button onClick={saveEdit}
-                className="flex-1 h-[50px] rounded-xl bg-[#162353] text-[14px] font-semibold text-white">
+                className="flex-1 h-[50px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[14px] font-bold text-[#181A20] shadow-sm transition-all">
                 Save
               </button>
             </div>

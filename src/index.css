@@ -509,6 +509,11 @@ body {
   border-color: var(--business-brand) !important;
 }
 
+.dark [class*="text-[#162353]"],
+.dark .business-brand-scope [class*="text-[#162353]"] {
+  color: var(--theme-brand-text) !important;
+}
+
 /* Keep legacy utility-heavy screens in sync with the selected app theme. */
 .dark [class~="bg-white"],
 .dark [class~="bg-gray-50"],

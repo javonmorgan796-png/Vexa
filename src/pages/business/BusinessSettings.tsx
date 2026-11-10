@@ -94,7 +94,7 @@ export default function BusinessSettings() {
                 <textarea value={bizAddress} onChange={e => setBizAddress(e.target.value)} rows={2}
                   className="w-full rounded-xl border border-[#E2E8F0] bg-[#F8F9FB] px-4 py-3 text-[13px] text-[#111] focus:outline-none focus:border-[#162353] transition-colors resize-none" />
               </div>
-              <button onClick={saveProfile} className="w-full h-[48px] rounded-xl bg-[#162353] text-white text-[14px] font-bold">Save Changes</button>
+              <button onClick={saveProfile} className="w-full h-[48px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[14px] font-bold shadow-sm transition-all">Save Changes</button>
             </div>
 
             <div className="bg-white rounded-2xl border border-[#F0F0F0] p-4 space-y-3">
@@ -211,7 +211,7 @@ export default function BusinessSettings() {
                     <p className="text-[11px] text-[#888]">{item.desc}</p>
                   </div>
                   <button onClick={item.onChange}
-                    className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${item.value ? 'bg-[#162353]' : 'bg-[#E2E8F0]'}`}>
+                    className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${item.value ? 'bg-[#F0B90B]' : 'bg-[#E2E8F0] dark:bg-[#3A4556]'}`}>
                     <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${item.value ? 'left-6' : 'left-1'}`} />
                   </button>
                 </div>
@@ -225,7 +225,7 @@ export default function BusinessSettings() {
               <input type="number" value={txLimitInput} onChange={e => setTxLimitInput(e.target.value)}
                 className="w-full h-[48px] rounded-xl border border-[#E2E8F0] bg-[#F8F9FB] px-4 text-[14px] font-bold text-[#111] focus:outline-none focus:border-[#162353] transition-colors" />
               <button onClick={() => { updateBusiness({ transactionLimit: Number(txLimitInput) }); showSaved(); }}
-                className="w-full h-[48px] rounded-xl bg-[#162353] text-white text-[14px] font-bold mt-3">Update Limit</button>
+                className="w-full h-[48px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[14px] font-bold mt-3 shadow-sm transition-all">Update Limit</button>
             </div>
 
             <div className="bg-white rounded-2xl border border-[#F0F0F0] p-4">
@@ -257,7 +257,7 @@ export default function BusinessSettings() {
                   <p className="text-[11px] text-[#888]">{item.desc}</p>
                 </div>
                 <button onClick={() => { updateBusiness({ notificationsEnabled: !business.notificationsEnabled }); showSaved(); }}
-                  className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${business.notificationsEnabled ? 'bg-[#162353]' : 'bg-[#E2E8F0]'}`}>
+                  className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${business.notificationsEnabled ? 'bg-[#F0B90B]' : 'bg-[#E2E8F0] dark:bg-[#3A4556]'}`}>
                   <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${business.notificationsEnabled ? 'left-6' : 'left-1'}`} />
                 </button>
               </div>

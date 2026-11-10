@@ -454,7 +454,7 @@ export default function VexaTransferPage() {
           <CheckCircle2 className="w-16 h-16 text-[#16A34A]" />
           <p className="text-[22px] font-extrabold text-[#111] mt-5">Money sent</p>
           <p className="text-[14px] text-[#666] mt-2">₦{success.amount.toLocaleString('en-NG', { minimumFractionDigits: 2 })} was delivered to {success.name}.</p>
-          <button onClick={() => { setSuccess(null); setAccountNumber(''); setAmount(''); setNote(''); setPinDigits(['', '', '', '']); setScanMessage(''); setRecipientName(''); setTransferStep('amount'); }} className="w-full max-w-sm mt-8 rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold">Send another transfer</button>
+          <button onClick={() => { setSuccess(null); setAccountNumber(''); setAmount(''); setNote(''); setPinDigits(['', '', '', '']); setScanMessage(''); setRecipientName(''); setTransferStep('amount'); }} className="w-full max-w-sm mt-8 rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] py-3.5 text-[13px] font-bold shadow-sm transition-all">Send another transfer</button>
           <button onClick={() => navigate('/')} className="mt-3 text-[#2563EB] text-[13px] font-semibold">Back to home</button>
         </div>
       </div>
@@ -603,7 +603,7 @@ export default function VexaTransferPage() {
               {accountNumber.length === 10 && (
                 <button
                   onClick={() => setScanComplete(true)}
-                  className="rounded-xl bg-[#162353] hover:bg-[#0f1938] text-white px-4 py-2.5 text-[12px] font-bold shrink-0 transition-colors"
+                  className="rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] px-4 py-2.5 text-[12px] font-bold shrink-0 shadow-sm transition-colors"
                 >
                   Continue
                 </button>
@@ -716,7 +716,7 @@ export default function VexaTransferPage() {
         </div>
 
         <div className="flex-none border-t border-[#E8EBF0] bg-white px-5 pb-6 pt-3" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
-          <button disabled={busy} onClick={() => void submit()} className="mx-auto block w-full max-w-md rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold disabled:opacity-50">
+          <button disabled={busy} onClick={() => void submit()} className="mx-auto block w-full max-w-md rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] py-3.5 text-[13px] font-bold shadow-sm disabled:opacity-45 transition-all">
             <span className="inline-flex items-center gap-2">{busy ? 'Sending…' : <><Send className="w-4 h-4" /> Send ₦{Number(amount || 0).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</>}</span>
           </button>
         </div>
@@ -780,7 +780,7 @@ export default function VexaTransferPage() {
         </div>
 
         <div className="flex-none border-t-0 shadow-xs bg-white px-5 pb-6 pt-3" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
-          <button onClick={continueToPin} className="mx-auto flex w-full max-w-md items-center justify-center gap-2 rounded-xl bg-[#162353] text-white py-3.5 text-[13px] font-bold">
+          <button onClick={continueToPin} className="mx-auto flex w-full max-w-md items-center justify-center gap-2 rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] py-3.5 text-[13px] font-bold shadow-sm transition-all">
             Continue <ChevronRight className="w-4 h-4" />
           </button>
         </div>
@@ -836,10 +836,10 @@ export default function VexaTransferPage() {
         </div>
 
         <div className="bg-white rounded-2xl border border-[#E8EBF0] p-1.5 flex gap-1">
-          <button onClick={() => { stopCamera(); setMode('scan'); }} className={`flex-1 rounded-xl py-3 text-[12px] font-bold flex items-center justify-center gap-2 ${mode === 'scan' ? 'bg-[#162353] text-white' : 'text-[#64748B]'}`}>
+          <button onClick={() => { stopCamera(); setMode('scan'); }} className={`flex-1 rounded-xl py-3 text-[12px] font-bold flex items-center justify-center gap-2 transition-colors ${mode === 'scan' ? 'bg-[#F0B90B] text-[#181A20] shadow-xs' : 'text-[#64748B]'}`}>
             <ScanLine className="w-4 h-4" /> Scan QR
           </button>
-          <button onClick={() => { stopCamera(); setMode('my-qr'); setScannerError(''); }} className={`flex-1 rounded-xl py-3 text-[12px] font-bold flex items-center justify-center gap-2 ${mode === 'my-qr' ? 'bg-[#162353] text-white' : 'text-[#64748B]'}`}>
+          <button onClick={() => { stopCamera(); setMode('my-qr'); setScannerError(''); }} className={`flex-1 rounded-xl py-3 text-[12px] font-bold flex items-center justify-center gap-2 transition-colors ${mode === 'my-qr' ? 'bg-[#F0B90B] text-[#181A20] shadow-xs' : 'text-[#64748B]'}`}>
             <QrCode className="w-4 h-4" /> My QR code
           </button>
         </div>
@@ -873,8 +873,8 @@ export default function VexaTransferPage() {
                 <p className="text-[15px] font-bold text-[#111] mt-4">{user?.name}</p>
                 <p className="text-[13px] tracking-[0.14em] text-[#64748B] mt-1">{user?.accountNumber}</p>
                 <div className="flex gap-2 mt-4 w-full">
-                  <button onClick={() => void copyMyQrDetails()} className="flex-1 rounded-xl border border-[#DCE3EE] py-3 text-[12px] font-bold text-[#162353] flex items-center justify-center gap-2">{copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}{copied ? 'Copied' : 'Copy number'}</button>
-                  <button onClick={() => void shareMyQr()} className="flex-1 rounded-xl bg-[#162353] py-3 text-[12px] font-bold text-white flex items-center justify-center gap-2"><Share2 className="w-4 h-4" /> Share QR</button>
+                  <button onClick={() => void copyMyQrDetails()} className="theme-control theme-brand-text flex-1 rounded-xl border border-[#DCE3EE] py-3 text-[12px] font-bold flex items-center justify-center gap-2">{copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}{copied ? 'Copied' : 'Copy number'}</button>
+                  <button onClick={() => void shareMyQr()} className="flex-1 rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] py-3 text-[12px] font-bold text-[#181A20] shadow-sm flex items-center justify-center gap-2 transition-all"><Share2 className="w-4 h-4" /> Share QR</button>
                 </div>
               </div>
             ) : <p className="mt-5 text-[12px] text-[#888]">Your Vexa account number is not available yet.</p>}
