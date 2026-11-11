@@ -1,4 +1,4 @@
-import { createHmac, createHash, timingSafeEqual } from "node:crypto";
+import { createHmac, createHash, timingSafeEqual, randomUUID } from "node:crypto";
 import { Router, type IRouter, type Request } from "express";
 import {
   normalizeWebhookUrl,
@@ -1194,17 +1194,228 @@ router.post("/crypto/sync-deposits", async (req, res) => {
   }
 });
 
-router.post("/crypto/webhooks/tatum", async (req, res) => {
-  const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from("");
+export type CryptoWebhookOutcome =
+  | "credited"
+  | "pending"
+  | "already_processed"
+  | "ignored"
+  | "rejected_signature"
+  | "invalid_payload"
+  | "error";
+
+export interface CryptoWebhookLogEntry {
+  id: string;
+  receivedAt: string;
+  method: string;
+  path: string;
+  sourceIp: string;
+  contentType: string;
+  headers: Record<string, string>;
+  hasPayloadHash: boolean;
+  signatureValid: boolean | null;
+  verifiedOnChain: boolean;
+  httpStatus: number;
+  outcome: CryptoWebhookOutcome;
+  outcomeReason: string;
+  durationMs: number;
+  parsed: {
+    asset: string | null;
+    chain: string | null;
+    address: string | null;
+    txHash: string | null;
+    amount: string | null;
+    confirmations: number | null;
+    type: string | null;
+    subscriptionType: string | null;
+    userId: string | null;
+  };
+  rawBody: string;
+  rawJson: Record<string, unknown> | null;
+  responsePayload: Record<string, unknown>;
+}
+
+const MAX_IN_MEMORY_WEBHOOK_LOGS = 200;
+const MAX_PERSISTED_WEBHOOK_LOGS = 100;
+const WEBHOOK_LOGS_SETTING_ID = "crypto_webhook_logs";
+
+let webhookLogsMemory: CryptoWebhookLogEntry[] = [];
+let webhookLogsLoadedFromDb = false;
+
+async function persistWebhookLogsToDb(entries: CryptoWebhookLogEntry[]) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return;
   try {
-    const payload = JSON.parse(rawBody.toString("utf8")) as Record<string, unknown>;
-    const event = nestedWebhookEvent(payload);
-    if (!event) {
-      res.status(400).json({ message: "Webhook payload is empty" });
-      return;
+    await fetch(`${SUPABASE_URL}/rest/v1/system_settings?on_conflict=id`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: JSON.stringify({
+        id: WEBHOOK_LOGS_SETTING_ID,
+        settings: { logs: entries.slice(0, MAX_PERSISTED_WEBHOOK_LOGS) },
+        updated_by: "tatum_webhook",
+        updated_at: new Date().toISOString(),
+      }),
+    });
+  } catch {
+    // Non-blocking persistence failure
+  }
+}
+
+async function ensureWebhookLogsLoaded() {
+  if (webhookLogsLoadedFromDb) return;
+  webhookLogsLoadedFromDb = true;
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return;
+  try {
+    const resp = await supabaseRequest(
+      `system_settings?id=eq.${encodeURIComponent(WEBHOOK_LOGS_SETTING_ID)}&select=settings&limit=1`,
+    );
+    if (!resp.ok) return;
+    const rows = (await resp.json().catch(() => null)) as Array<{ settings?: { logs?: CryptoWebhookLogEntry[] } }> | null;
+    const storedLogs = rows?.[0]?.settings?.logs;
+    if (Array.isArray(storedLogs) && storedLogs.length > 0) {
+      const existingIds = new Set(webhookLogsMemory.map((item) => item.id));
+      const merged = [...webhookLogsMemory, ...storedLogs.filter((item) => item?.id && !existingIds.has(item.id))];
+      merged.sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime());
+      webhookLogsMemory = merged.slice(0, MAX_IN_MEMORY_WEBHOOK_LOGS);
+    }
+  } catch {
+    // Keep memory logs cleanly on read failure
+  }
+}
+
+function recordTatumWebhookLog(entry: CryptoWebhookLogEntry) {
+  webhookLogsMemory = [entry, ...webhookLogsMemory].slice(0, MAX_IN_MEMORY_WEBHOOK_LOGS);
+  void persistWebhookLogsToDb(webhookLogsMemory);
+}
+
+export async function getTatumWebhookLogs(): Promise<CryptoWebhookLogEntry[]> {
+  await ensureWebhookLogsLoaded();
+  return [...webhookLogsMemory];
+}
+
+export async function clearTatumWebhookLogs(): Promise<void> {
+  webhookLogsMemory = [];
+  webhookLogsLoadedFromDb = true;
+  await persistWebhookLogsToDb([]);
+}
+
+function extractWebhookHeaders(req: Request): Record<string, string> {
+  const keys = [
+    "content-type",
+    "content-length",
+    "user-agent",
+    "x-payload-hash",
+    "x-tatum-signature",
+    "x-forwarded-for",
+    "x-forwarded-host",
+    "host",
+  ];
+  const out: Record<string, string> = {};
+  for (const key of keys) {
+    const val = req.header(key);
+    if (typeof val === "string" && val.trim()) {
+      out[key] = val.trim();
+    }
+  }
+  return out;
+}
+
+router.post("/crypto/webhooks/tatum", async (req, res) => {
+  const startedAt = Date.now();
+  const rawBuffer = Buffer.isBuffer(req.body)
+    ? req.body
+    : typeof req.body === "string"
+      ? Buffer.from(req.body, "utf8")
+      : req.body && typeof req.body === "object"
+        ? Buffer.from(JSON.stringify(req.body), "utf8")
+        : Buffer.from("");
+  const rawBodyText = rawBuffer.toString("utf8").slice(0, 64_000);
+  const headers = extractWebhookHeaders(req);
+  const hasPayloadHash = Boolean(req.header("x-payload-hash"));
+  const sourceIp =
+    req.header("x-forwarded-for")?.split(",")[0]?.trim() || req.ip || req.socket?.remoteAddress || "unknown";
+
+  let rawJson: Record<string, unknown> | null = null;
+  let signatureValid: boolean | null = null;
+  let verifiedOnChain = false;
+  let depositAddress: DepositAddressRow | null = null;
+  let parsedAsset: string | null = null;
+  let parsedChain: string | null = null;
+  let parsedAddress: string | null = null;
+  let parsedTxHash: string | null = null;
+  let parsedAmount: string | null = null;
+  let parsedConfirmations: number | null = null;
+  let parsedType: string | null = null;
+  let parsedSubscriptionType: string | null = null;
+
+  const respondAndLog = (
+    httpStatus: number,
+    outcome: CryptoWebhookOutcome,
+    outcomeReason: string,
+    responsePayload: Record<string, unknown>,
+  ) => {
+    recordTatumWebhookLog({
+      id: randomUUID(),
+      receivedAt: new Date(startedAt).toISOString(),
+      method: req.method,
+      path: req.originalUrl || "/api/crypto/webhooks/tatum",
+      sourceIp,
+      contentType: headers["content-type"] || "application/json",
+      headers,
+      hasPayloadHash,
+      signatureValid,
+      verifiedOnChain,
+      httpStatus,
+      outcome,
+      outcomeReason,
+      durationMs: Math.max(1, Date.now() - startedAt),
+      parsed: {
+        asset: parsedAsset,
+        chain: parsedChain,
+        address: parsedAddress,
+        txHash: parsedTxHash,
+        amount: parsedAmount,
+        confirmations: parsedConfirmations,
+        type: parsedType,
+        subscriptionType: parsedSubscriptionType,
+        userId: depositAddress?.user_id ?? null,
+      },
+      rawBody: rawBodyText,
+      rawJson,
+      responsePayload,
+    });
+    res.status(httpStatus).json(responsePayload);
+  };
+
+  try {
+    try {
+      rawJson = rawBodyText ? (JSON.parse(rawBodyText) as Record<string, unknown>) : null;
+    } catch {
+      rawJson = null;
     }
 
-    const signatureValid = verifyTatumSignature(rawBody, event, req.header("x-payload-hash"));
+    if (!rawJson || typeof rawJson !== "object" || Array.isArray(rawJson)) {
+      return respondAndLog(400, "invalid_payload", "Request body is not valid JSON object", {
+        message: "Invalid JSON webhook payload",
+      });
+    }
+
+    parsedSubscriptionType = stringValue(rawJson.subscriptionType) ?? stringValue(rawJson.type);
+    const event = nestedWebhookEvent(rawJson);
+    if (!event) {
+      return respondAndLog(400, "invalid_payload", "Missing address or transaction event body", {
+        message: "Webhook payload is empty",
+      });
+    }
+
+    parsedAsset = stringValue(event.asset) ?? stringValue(event.tokenSymbol) ?? stringValue(event.currency);
+    parsedChain = stringValue(event.chain);
+    parsedType = stringValue(event.type);
+
+    signatureValid = verifyTatumSignature(rawBuffer, event, req.header("x-payload-hash"));
 
     const address = stringValue(event.address) ?? stringValue(event.to) ?? stringValue(event.destinationAddress);
     const txHash =
@@ -1217,39 +1428,67 @@ router.post("/crypto/webhooks/tatum", async (req, res) => {
       stringValue(event.value) ??
       (numberValue(event.amount)?.toString() ?? numberValue(event.value)?.toString() ?? null);
 
+    parsedAddress = address;
+    parsedTxHash = txHash;
+    parsedAmount = rawAmount;
+
     if (!address || !txHash) {
       if (!signatureValid) {
-        res.status(401).json({ message: "Invalid webhook signature" });
-        return;
+        return respondAndLog(
+          401,
+          "rejected_signature",
+          !hasPayloadHash
+            ? "Missing x-payload-hash header and missing address/txHash for on-chain fallback"
+            : "HMAC signature mismatch and missing address/txHash",
+          { message: "Invalid webhook signature" },
+        );
       }
-      res.status(400).json({ message: "Webhook is missing transaction details" });
-      return;
+      return respondAndLog(400, "invalid_payload", "Missing address or txHash/txId in payload", {
+        message: "Webhook is missing transaction details",
+      });
     }
 
-    const depositAddress = await findAddress(address);
+    depositAddress = await findAddress(address);
     if (!depositAddress) {
       if (!signatureValid) {
-        res.status(401).json({ message: "Invalid webhook signature" });
-        return;
+        return respondAndLog(
+          401,
+          "rejected_signature",
+          `Invalid HMAC signature and address ${address} is not registered in Vexa`,
+          { message: "Invalid webhook signature" },
+        );
       }
       req.log.warn({ address }, "Tatum webhook address is not a Vexa deposit address");
-      res.status(200).json({ received: true, ignored: true });
-      return;
+      return respondAndLog(200, "ignored", `Address ${address} is not registered in crypto_deposit_addresses`, {
+        received: true,
+        ignored: true,
+      });
     }
 
-    let verifiedOnChain: OnChainIncomingTx | null = null;
+    parsedAsset = depositAddress.asset;
+
+    let verifiedOnChainTx: OnChainIncomingTx | null = null;
     if (!signatureValid) {
-      verifiedOnChain = await verifyIncomingTxOnChain(depositAddress, txHash);
-      if (!verifiedOnChain) {
-        res.status(401).json({ message: "Invalid webhook signature" });
-        return;
+      verifiedOnChainTx = await verifyIncomingTxOnChain(depositAddress, txHash);
+      verifiedOnChain = Boolean(verifiedOnChainTx);
+      if (!verifiedOnChainTx) {
+        return respondAndLog(
+          401,
+          "rejected_signature",
+          !hasPayloadHash
+            ? "No x-payload-hash header & txHash could not yet be verified incoming on-chain"
+            : "HMAC signature mismatch & txHash could not be verified incoming on-chain",
+          { message: "Invalid webhook signature" },
+        );
       }
     }
 
-    const amount = verifiedOnChain?.amount ?? rawAmount;
+    const amount = verifiedOnChainTx?.amount ?? rawAmount;
+    parsedAmount = amount;
     if (!amount) {
-      res.status(400).json({ message: "Webhook is missing transaction amount" });
-      return;
+      return respondAndLog(400, "invalid_payload", "Missing amount/value in webhook payload", {
+        message: "Webhook is missing transaction amount",
+      });
     }
 
     const numericAmount = Number(amount);
@@ -1262,8 +1501,11 @@ router.post("/crypto/webhooks/tatum", async (req, res) => {
       direction === "outgoing" ||
       (fromAddr && toAddr && fromAddr.toLowerCase() === address.toLowerCase() && toAddr.toLowerCase() !== address.toLowerCase())
     ) {
-      res.status(200).json({ received: true, ignored: true, reason: "non_incoming_transfer" });
-      return;
+      return respondAndLog(200, "ignored", `Non-incoming or zero-value transfer (direction=${direction || "n/a"}, amount=${amount})`, {
+        received: true,
+        ignored: true,
+        reason: "non_incoming_transfer",
+      });
     }
 
     const isTestnetAddr = IS_TATUM_TESTNET || (depositAddress.asset === "BTC" && /^(tb1|[mn2])/i.test(depositAddress.address));
@@ -1271,16 +1513,21 @@ router.post("/crypto/webhooks/tatum", async (req, res) => {
     const chain = stringValue(event.chain);
     if (!chainMatchesAsset(depositAddress.asset, chain)) {
       req.log.warn({ address, chain, asset: depositAddress.asset }, "Tatum webhook chain does not match deposit address");
-      res.status(400).json({ message: "Webhook chain does not match deposit address" });
-      return;
+      return respondAndLog(400, "invalid_payload", `Chain "${chain}" does not match deposit asset ${depositAddress.asset}`, {
+        message: "Webhook chain does not match deposit address",
+      });
     }
-    if (!verifiedOnChain && !eventMatchesDepositAsset(depositAddress.asset, event)) {
+    if (!verifiedOnChainTx && !eventMatchesDepositAsset(depositAddress.asset, event)) {
       req.log.warn(
         { address, asset: depositAddress.asset, eventAsset: event.asset, eventType: event.type },
         "Tatum webhook asset/token does not match deposit address",
       );
-      res.status(200).json({ received: true, ignored: true, reason: "asset_mismatch" });
-      return;
+      return respondAndLog(
+        200,
+        "ignored",
+        `Event asset/token (${String(event.asset ?? event.tokenSymbol ?? event.contractAddress ?? event.type ?? "unknown")}) does not match wallet ${depositAddress.asset}`,
+        { received: true, ignored: true, reason: "asset_mismatch" },
+      );
     }
 
     const finality = stringValue(event.finality) ?? stringValue(event.status);
@@ -1294,15 +1541,34 @@ router.post("/crypto/webhooks/tatum", async (req, res) => {
         : finality === "final" || event.confirmed === true || (blockNumber !== null && blockNumber > 0)
           ? config.confirmations
           : 0);
-    const confirmations = verifiedOnChain
-      ? Math.max(verifiedOnChain.confirmations, webhookConfirmations)
+    const confirmations = verifiedOnChainTx
+      ? Math.max(verifiedOnChainTx.confirmations, webhookConfirmations)
       : webhookConfirmations;
+    parsedConfirmations = Math.max(0, Math.floor(confirmations));
 
     const body = await recordAndCreditDeposit(depositAddress, txHash, amount, confirmations);
-    res.status(200).json({ received: true, status: body.status ?? "processed" });
+    const finalStatus = body.status ?? "processed";
+    const mappedOutcome: CryptoWebhookOutcome =
+      finalStatus === "credited"
+        ? "credited"
+        : finalStatus === "pending"
+          ? "pending"
+          : finalStatus === "already_processed"
+            ? "already_processed"
+            : "credited";
+    const reason =
+      mappedOutcome === "pending"
+        ? `Pending confirmations (${body.confirmations ?? parsedConfirmations}/${body.required_confirmations ?? config.confirmations})`
+        : mappedOutcome === "already_processed"
+          ? "Transaction already credited previously (idempotent)"
+          : `Credited ${amount} ${depositAddress.asset} (${parsedConfirmations}/${config.confirmations} confirmations)`;
+
+    return respondAndLog(200, mappedOutcome, reason, { received: true, status: finalStatus });
   } catch (error) {
     req.log.error({ err: error }, "Tatum webhook processing failed");
-    res.status(503).json({ message: "Deposit processing is temporarily unavailable" });
+    return respondAndLog(503, "error", error instanceof Error ? error.message : "Unexpected error processing webhook", {
+      message: "Deposit processing is temporarily unavailable",
+    });
   }
 });
 

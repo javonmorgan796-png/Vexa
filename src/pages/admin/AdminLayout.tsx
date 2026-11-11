@@ -26,12 +26,14 @@ import {
   Radio,
   RotateCw,
   Users,
+  Webhook,
 } from 'lucide-react';
 
 import { OverviewTab } from './tabs/OverviewTab';
 import { UserManagementTab } from './tabs/UserManagementTab';
 import { BusinessDataTab } from './tabs/BusinessDataTab';
 import { CryptoDataTab } from './tabs/CryptoDataTab';
+import { CryptoLogsTab } from './tabs/CryptoLogsTab';
 import { RewardsDataTab } from './tabs/RewardsDataTab';
 import { KycManagementTab } from './tabs/KycManagementTab';
 import { TransactionManagementTab } from './tabs/TransactionManagementTab';
@@ -92,6 +94,7 @@ export const AdminLayout: React.FC = () => {
     { id: 'users', label: 'User Management', icon: <Users className="w-4 h-4" />, permission: 'users.view' },
     { id: 'business', label: 'Business Data', icon: <BriefcaseBusiness className="w-4 h-4 text-emerald-400" />, permission: 'users.view' },
     { id: 'crypto', label: 'Crypto Exchange Data', icon: <Coins className="w-4 h-4 text-amber-400" />, permission: 'transactions.view' },
+    { id: 'crypto-logs', label: 'Crypto Logs', icon: <Webhook className="w-4 h-4 text-cyan-400" />, permission: 'transactions.view' },
     { id: 'rewards', label: 'Referral & Cashback History', icon: <Gift className="w-4 h-4 text-purple-400" />, permission: 'transactions.view' },
     { id: 'kyc', label: 'KYC Management', icon: <FileCheck2 className="w-4 h-4" />, badge: badgeCounts.kyc, permission: 'kyc.view' },
     { id: 'transactions', label: 'Transactions', icon: <ArrowLeftRight className="w-4 h-4" />, permission: 'transactions.view' },
@@ -117,6 +120,8 @@ export const AdminLayout: React.FC = () => {
         return <BusinessDataTab />;
       case 'crypto':
         return <CryptoDataTab />;
+      case 'crypto-logs':
+        return <CryptoLogsTab />;
       case 'rewards':
         return <RewardsDataTab />;
       case 'kyc':

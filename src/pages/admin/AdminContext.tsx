@@ -6,6 +6,7 @@ export type AdminTab =
   | 'users'
   | 'business'
   | 'crypto'
+  | 'crypto-logs'
   | 'rewards'
   | 'kyc'
   | 'transactions'

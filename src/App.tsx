@@ -35,6 +35,7 @@ import { TransferConfirmationModal, PaymentPinModal } from '@/components/transfe
 import { BankLogoBadge } from '@/components/BankLogoBadge';
 import { BankingTransferReceipt } from '@/components/transfer/BankingTransferReceipt';
 import { InsufficientFundsModal, TransferSuccessfulModal } from '@/components/common/BankingStatusModals';
+import { TelecomCheckoutModal } from '@/components/telecom/TelecomCheckoutModal';
 import { BusinessProvider } from '@/context/BusinessContext';
 import BusinessDashboard from '@/pages/business/BusinessDashboard';
 import BusinessOnboarding from '@/pages/business/BusinessOnboarding';
@@ -47,9 +48,10 @@ import EmployeeManagement from '@/pages/business/EmployeeManagement';
 import PayrollManagement from '@/pages/business/PayrollManagement';
 import { BusinessSecurityProvider, useBusinessSecurity } from '@/context/BusinessSecurityContext';
 import { UserDataProvider, useUserData } from '@/context/UserDataContext';
-import { VexaFinanceProvider } from '@/context/VexaFinanceContext';
+import { VexaFinanceProvider, type CryptoAsset } from '@/context/VexaFinanceContext';
 import { AccountSecurityProvider, useAccountSecurity } from '@/context/AccountSecurityContext';
-import type { AppTransaction } from '@/context/UserDataContext';
+import type { AppNotification, AppTransaction } from '@/context/UserDataContext';
+import { CRYPTO_ASSET_META, CryptoAssetLogo } from '@/components/crypto/CryptoActivityDetailsModal';
 import BusinessSecurityScreen from '@/pages/business/BusinessSecurityScreen';
 import {
   LOGIN_FAILURE_LIMIT,
@@ -2111,6 +2113,89 @@ function HelpSupportPage() {
 }
 
 /* ─── Notifications Page ─────────────────────────────────────────────── */
+function extractNotificationCoinAsset(notification: AppNotification): CryptoAsset | null {
+  const haystack = `${notification.title} ${notification.body}`;
+  const isCryptoRelated =
+    notification.type === 'crypto' ||
+    /\b(BTC|ETH|USDT|Bitcoin|Ethereum|Tether)\b/i.test(haystack);
+
+  if (!isCryptoRelated) return null;
+  if (/\b(BTC|Bitcoin)\b/i.test(haystack)) return 'BTC';
+  if (/\b(ETH|Ethereum)\b/i.test(haystack)) return 'ETH';
+  if (/\b(USDT|Tether)\b/i.test(haystack)) return 'USDT';
+  return null;
+}
+
+function useCryptoCoinLogos() {
+  const [logos, setLogos] = useState<Partial<Record<CryptoAsset, string | null>>>({});
+
+  useEffect(() => {
+    let active = true;
+    void fetch('/api/crypto/logos', { headers: { accept: 'application/json' } })
+      .then(async (res) => {
+        if (!res.ok) return null;
+        return (await res.json()) as {
+          logos?: Record<string, { asset?: string; logoUrl?: string | null }>;
+        };
+      })
+      .then((body) => {
+        if (!active || !body?.logos) return;
+        setLogos({
+          BTC: body.logos.BTC?.logoUrl ?? null,
+          ETH: body.logos.ETH?.logoUrl ?? null,
+          USDT: body.logos.USDT?.logoUrl ?? null,
+        });
+      })
+      .catch(() => {
+        // Keep SVG asset badge fallback silently
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return logos;
+}
+
+function NotificationCoinAvatar({
+  asset,
+  logoUrl,
+}: {
+  asset: CryptoAsset;
+  logoUrl?: string | null;
+}) {
+  const [imgFailed, setImgFailed] = useState(false);
+
+  useEffect(() => {
+    setImgFailed(false);
+  }, [logoUrl, asset]);
+
+  const meta = CRYPTO_ASSET_META[asset];
+
+  if (logoUrl && !imgFailed) {
+    return (
+      <div className="w-10 h-10 rounded-full bg-white border border-slate-200 dark:border-[#2B313A] flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
+        <img
+          src={logoUrl}
+          alt={`${meta.name} (${asset}) logo`}
+          referrerPolicy="no-referrer"
+          className="w-full h-full object-cover rounded-full"
+          onError={() => setImgFailed(true)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-xs"
+      style={{ backgroundColor: meta.color }}
+    >
+      <CryptoAssetLogo asset={asset} size={20} />
+    </div>
+  );
+}
+
 function NotificationsPage() {
   const [, navigate] = useLocation();
   const {
@@ -2121,6 +2206,7 @@ function NotificationsPage() {
     markAllNotificationsRead: markAllRead,
   } = useUserData();
   const [filter, setFilter] = useState<'all' | 'unread' | 'crypto'>('all');
+  const coinLogos = useCryptoCoinLogos();
 
   function dotColor(type: string) {
     switch (type) {
@@ -2133,10 +2219,23 @@ function NotificationsPage() {
     }
   }
 
-  function renderIcon(type: string, stroke: string) {
-    if (type === 'crypto') return <Coins className="w-5 h-5" style={{ color: stroke }} strokeWidth={1.9} />;
-    if (type === 'security') return <Shield className="w-5 h-5" style={{ color: stroke }} strokeWidth={1.9} />;
-    return <Bell className="w-5 h-5" style={{ color: stroke }} strokeWidth={1.8} />;
+  function renderLeadingAvatar(notification: AppNotification) {
+    const coinAsset = extractNotificationCoinAsset(notification);
+    if (coinAsset) {
+      return <NotificationCoinAvatar asset={coinAsset} logoUrl={coinLogos[coinAsset]} />;
+    }
+    const c = dotColor(notification.type);
+    return (
+      <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: c.bg }}>
+        {notification.type === 'crypto' ? (
+          <Coins className="w-5 h-5" style={{ color: c.stroke }} strokeWidth={1.9} />
+        ) : notification.type === 'security' ? (
+          <Shield className="w-5 h-5" style={{ color: c.stroke }} strokeWidth={1.9} />
+        ) : (
+          <Bell className="w-5 h-5" style={{ color: c.stroke }} strokeWidth={1.8} />
+        )}
+      </div>
+    );
   }
 
   const cryptoCount = notifications.filter(n => n.type === 'crypto').length;
@@ -2219,60 +2318,50 @@ function NotificationsPage() {
         {!notificationsLoading && unreadVisible.length > 0 && (
           <p className="theme-text-secondary text-[11px] font-semibold uppercase tracking-wide px-1">New</p>
         )}
-        {unreadVisible.map(n => {
-          const c = dotColor(n.type);
-          return (
-            <button key={n.id} onClick={() => markRead(n.id)}
-              className="theme-surface theme-border w-full rounded-2xl border px-4 py-4 flex items-start gap-3 text-left transition-colors shadow-sm">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: c.bg }}>
-                {renderIcon(n.type, c.stroke)}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2 mb-0.5">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <p className="theme-text-primary text-[13px] font-bold truncate">{n.title}</p>
-                    {n.type === 'crypto' && (
-                      <span className="shrink-0 rounded-md bg-[#F0B90B]/15 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-[#B7791F] dark:text-[#F0B90B]">
-                        Crypto
-                      </span>
-                    )}
-                  </div>
-                  <span className="theme-text-secondary text-[10px] shrink-0">{n.time}</span>
+        {unreadVisible.map(n => (
+          <button key={n.id} onClick={() => markRead(n.id)}
+            className="theme-surface theme-border w-full rounded-2xl border px-4 py-4 flex items-start gap-3 text-left transition-colors shadow-sm">
+            {renderLeadingAvatar(n)}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2 mb-0.5">
+                <div className="flex items-center gap-2 min-w-0">
+                  <p className="theme-text-primary text-[13px] font-bold truncate">{n.title}</p>
+                  {n.type === 'crypto' && (
+                    <span className="shrink-0 rounded-md bg-[#F0B90B]/15 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-[#B7791F] dark:text-[#F0B90B]">
+                      Crypto
+                    </span>
+                  )}
                 </div>
-                <p className="theme-text-secondary text-[12px] leading-relaxed">{n.body}</p>
+                <span className="theme-text-secondary text-[10px] shrink-0">{n.time}</span>
               </div>
-              <span className="w-2 h-2 rounded-full bg-red-500 shrink-0 mt-1.5" />
-            </button>
-          );
-        })}
+              <p className="theme-text-secondary text-[12px] leading-relaxed">{n.body}</p>
+            </div>
+            <span className="w-2 h-2 rounded-full bg-red-500 shrink-0 mt-1.5" />
+          </button>
+        ))}
 
         {readVisible.length > 0 && (
           <p className="theme-text-secondary text-[11px] font-semibold uppercase tracking-wide px-1 pt-1">Earlier</p>
         )}
-        {readVisible.map(n => {
-          const c = dotColor(n.type);
-          return (
-            <div key={n.id} className="theme-surface theme-border rounded-2xl border px-4 py-4 flex items-start gap-3 opacity-85">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: c.bg }}>
-                {renderIcon(n.type, c.stroke)}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2 mb-0.5">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <p className="theme-text-primary text-[13px] font-semibold truncate">{n.title}</p>
-                    {n.type === 'crypto' && (
-                      <span className="shrink-0 rounded-md bg-[#F0B90B]/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#B7791F] dark:text-[#F0B90B]">
-                        Crypto
-                      </span>
-                    )}
-                  </div>
-                  <span className="theme-text-secondary text-[10px] shrink-0">{n.time}</span>
+        {readVisible.map(n => (
+          <div key={n.id} className="theme-surface theme-border rounded-2xl border px-4 py-4 flex items-start gap-3 opacity-85">
+            {renderLeadingAvatar(n)}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2 mb-0.5">
+                <div className="flex items-center gap-2 min-w-0">
+                  <p className="theme-text-primary text-[13px] font-semibold truncate">{n.title}</p>
+                  {n.type === 'crypto' && (
+                    <span className="shrink-0 rounded-md bg-[#F0B90B]/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#B7791F] dark:text-[#F0B90B]">
+                      Crypto
+                    </span>
+                  )}
                 </div>
-                <p className="theme-text-secondary text-[12px] leading-relaxed">{n.body}</p>
+                <span className="theme-text-secondary text-[10px] shrink-0">{n.time}</span>
               </div>
+              <p className="theme-text-secondary text-[12px] leading-relaxed">{n.body}</p>
             </div>
-          );
-        })}
+          </div>
+        ))}
         <div className="pb-4" />
       </div>
     </div>
@@ -3499,8 +3588,21 @@ function PageShell({ title, back, children }: { title: string; back: string; chi
   );
 }
 
-function PinModal({ amount, label, onSuccess, onClose }: { amount: string; label: string; onSuccess: () => void; onClose: () => void }) {
+function PinModal({
+  amount,
+  label,
+  onSuccess,
+  onAuthorize,
+  onClose,
+}: {
+  amount: string;
+  label: string;
+  onSuccess: () => void;
+  onAuthorize?: (pin: string) => Promise<{ success: boolean; error?: string }>;
+  onClose: () => void;
+}) {
   const { user } = useAuth();
+  const { balance } = useUserData();
   const { state: securityState } = useAccountSecurity();
   const [pin, setPin] = useState('');
   const [processing, setProcessing] = useState(false);
@@ -3508,17 +3610,36 @@ function PinModal({ amount, label, onSuccess, onClose }: { amount: string; label
   const [showInsufficient, setShowInsufficient] = useState(false);
   const movementBlocked = securityState.sleepModeActive || securityState.freezeActive;
   const numAmt = parseFloat(amount.replace(/,/g, '') || '0');
+  const availableBalance = balance ?? user?.balance ?? 0;
 
-  function submit() {
-    if (pin.length < 4) return;
+  async function submit() {
+    if (pin.length < 4 || processing) return;
+    setBlockedMessage('');
     if (movementBlocked) {
       setBlockedMessage(securityState.freezeActive
         ? 'Freeze Account is active. Money movement is blocked.'
         : 'Sleep Mode is active. Money movement is blocked.');
       return;
     }
-    if (user && numAmt > (user.balance ?? 0)) {
+    if (numAmt > availableBalance) {
       setShowInsufficient(true);
+      return;
+    }
+    if (onAuthorize) {
+      setProcessing(true);
+      try {
+        const result = await onAuthorize(pin);
+        setProcessing(false);
+        if (!result.success) {
+          setBlockedMessage(result.error || 'Could not authorize payment.');
+          setPin('');
+          return;
+        }
+        onSuccess();
+      } catch {
+        setProcessing(false);
+        setBlockedMessage('Network error. Please try again.');
+      }
       return;
     }
     setProcessing(true);
@@ -3545,18 +3666,18 @@ function PinModal({ amount, label, onSuccess, onClose }: { amount: string; label
         </div>
         <div className="grid grid-cols-3 gap-2.5 w-full max-w-[288px] mx-auto mb-4">
           {['1','2','3','4','5','6','7','8','9'].map(k => (
-            <button key={k} onClick={() => pin.length < 4 && setPin(p => p + k)}
+            <button key={k} onClick={() => !processing && pin.length < 4 && setPin(p => p + k)}
               className="h-[52px] rounded-2xl bg-[#F2F3F5] text-[20px] font-semibold text-[#111] active:bg-[#E2E5EA]">{k}</button>
           ))}
           <div />
-          <button onClick={() => pin.length < 4 && setPin(p => p + '0')}
+          <button onClick={() => !processing && pin.length < 4 && setPin(p => p + '0')}
             className="h-[52px] rounded-2xl bg-[#F2F3F5] text-[20px] font-semibold text-[#111] active:bg-[#E2E5EA]">0</button>
-          <button onClick={() => setPin(p => p.slice(0, -1))}
+          <button onClick={() => !processing && setPin(p => p.slice(0, -1))}
             className="h-[52px] rounded-2xl bg-[#F2F3F5] text-[#333] flex items-center justify-center active:bg-[#E2E5EA]">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12H9M15 6l-6 6 6 6"/></svg>
           </button>
         </div>
-        <button onClick={submit} disabled={pin.length < 4 || processing || movementBlocked}
+        <button onClick={() => { void submit(); }} disabled={pin.length < 4 || processing || movementBlocked}
           className={`w-full h-[50px] rounded-xl text-[14px] font-bold transition-all shadow-sm ${pin.length === 4 && !processing && !movementBlocked ? 'bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20]' : 'bg-[#F0B90B]/40 text-[#181A20]/50'}`}>
           {movementBlocked ? 'Money movement blocked' : processing ? 'Processing…' : 'Pay Now'}
         </button>
@@ -3588,75 +3709,197 @@ function SuccessBanner({ title, sub, onHome }: { title: string; sub: string; onH
   );
 }
 
-/* ─── Airtime Page ───────────────────────────────────────────────────── */
-const NETWORKS = [
-  { id: 'mtn',    name: 'MTN',     color: '#FFD700', text: '#000' },
-  { id: 'airtel', name: 'Airtel',  color: '#DC2626', text: '#fff' },
-  { id: 'glo',    name: 'Glo',     color: '#16A34A', text: '#fff' },
-  { id: '9mobile',name: '9mobile', color: '#1D7F3E', text: '#fff' },
+/* ─── Airtime & Data Networks ────────────────────────────────────────── */
+type TelecomNetwork = {
+  id: string;
+  name: string;
+  domain: string;
+  color: string;
+  text: string;
+  logoUrl?: string | null;
+};
+
+const NETWORKS: TelecomNetwork[] = [
+  { id: 'mtn',     name: 'MTN',     domain: 'mtn.ng',         color: '#FFD700', text: '#000' },
+  { id: 'airtel',  name: 'Airtel',  domain: 'airtel.com.ng',  color: '#DC2626', text: '#fff' },
+  { id: 'glo',     name: 'Glo',     domain: 'gloworld.com',   color: '#16A34A', text: '#fff' },
+  { id: '9mobile', name: '9mobile', domain: '9mobile.com.ng', color: '#1D7F3E', text: '#fff' },
 ];
 const AIRTIME_AMOUNTS = ['100','200','500','1,000','2,000','5,000'];
 
+function TelecomNetworkLogo({ item }: { item: TelecomNetwork }) {
+  const [imgFailed, setImgFailed] = useState(false);
+
+  if (item.logoUrl && !imgFailed) {
+    return (
+      <span className="w-10 h-10 rounded-full bg-white border border-slate-200 dark:border-[#2B313A] flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
+        <img
+          src={item.logoUrl}
+          alt={`${item.name} logo`}
+          referrerPolicy="no-referrer"
+          className="w-full h-full object-cover rounded-full"
+          onError={() => setImgFailed(true)}
+        />
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="w-10 h-10 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 shadow-xs"
+      style={{ background: item.color, color: item.text }}
+      aria-hidden="true"
+    >
+      {item.name.slice(0, 3)}
+    </span>
+  );
+}
+
+function useTelecomNetworks() {
+  const [networks, setNetworks] = useState<TelecomNetwork[]>(NETWORKS);
+
+  useEffect(() => {
+    let active = true;
+    void fetch('/api/telecom/networks', { headers: { accept: 'application/json' } })
+      .then(async (res) => {
+        if (!res.ok) return null;
+        return (await res.json()) as { networks?: TelecomNetwork[] };
+      })
+      .then((body) => {
+        if (active && Array.isArray(body?.networks) && body.networks.length > 0) {
+          setNetworks(body.networks);
+        }
+      })
+      .catch(() => {
+        // Keep fallback network list silently
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return networks;
+}
+
+async function executeTelecomPurchase(
+  accessToken: string | undefined,
+  payload: {
+    productType: 'airtime' | 'data';
+    networkName: string;
+    phone: string;
+    dataBundle?: string;
+    amount: number;
+    useCashback: boolean;
+    pin: string;
+  },
+): Promise<{ success: boolean; error?: string; cashbackUsed?: number; cashbackEarned?: number; payableAmount?: number }> {
+  if (!accessToken) {
+    return { success: false, error: 'Your session expired. Please sign in again.' };
+  }
+  const resp = await fetch('/api/telecom/purchase', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  const body = (await resp.json().catch(() => null)) as {
+    message?: string;
+    cashbackUsed?: number;
+    cashbackEarned?: number;
+    payableAmount?: number;
+  } | null;
+  if (!resp.ok) {
+    return { success: false, error: body?.message || 'Could not complete purchase.' };
+  }
+  return {
+    success: true,
+    cashbackUsed: body?.cashbackUsed ?? 0,
+    cashbackEarned: body?.cashbackEarned ?? 0,
+    payableAmount: body?.payableAmount ?? payload.amount,
+  };
+}
+
 function AirtimePage() {
-  const { user } = useAuth();
+  const { user, session, refreshProfile } = useAuth();
+  const { balance, cashbackRedeemable, cashbackPending, refreshAll } = useUserData();
   const [, navigate] = useLocation();
+  const networks = useTelecomNetworks();
   const [network, setNetwork] = useState('');
   const [phone, setPhone] = useState('');
   const [amount, setAmount] = useState('');
+  const [showCheckout, setShowCheckout] = useState(false);
+  const [checkoutMeta, setCheckoutMeta] = useState<{ payableAmtStr: string; useCashback: boolean }>({
+    payableAmtStr: '',
+    useCashback: false,
+  });
+  const [receiptMeta, setReceiptMeta] = useState<{ cashbackUsed: number; cashbackEarned: number }>({
+    cashbackUsed: 0,
+    cashbackEarned: 0,
+  });
   const [showPin, setShowPin] = useState(false);
-  const [showInsufficient, setShowInsufficient] = useState(false);
   const [done, setDone] = useState(false);
 
-  if (done) return <SuccessBanner title="Airtime Purchased!" sub={`₦${amount} airtime sent to ${phone}`} onHome={() => navigate('/')} />;
+  if (done) {
+    const cbParts: string[] = [];
+    if (receiptMeta.cashbackUsed > 0) cbParts.push(`₦${receiptMeta.cashbackUsed.toFixed(2)} cashback applied`);
+    if (receiptMeta.cashbackEarned > 0) cbParts.push(`earned ₦${receiptMeta.cashbackEarned.toFixed(2)} cashback`);
+    const extra = cbParts.length > 0 ? ` (${cbParts.join(' · ')})` : '';
+    return (
+      <SuccessBanner
+        title="Airtime Purchased!"
+        sub={`₦${amount} airtime sent to ${phone}${extra}`}
+        onHome={() => navigate('/')}
+      />
+    );
+  }
 
-  const canProceed = network && phone.length >= 10 && amount;
+  const parsedAmount = parseFloat(amount.replace(/,/g, '') || '0');
+  const canProceed = Boolean(network && phone.length >= 10 && parsedAmount > 0);
+  const selectedNetworkObj = networks.find(n => n.id === network) ?? networks[0] ?? NETWORKS[0];
 
   const handleContinue = () => {
     if (!canProceed) return;
-    const numAmt = parseFloat(amount.replace(/,/g, '') || '0');
-    if (user && numAmt > (user.balance ?? 0)) {
-      setShowInsufficient(true);
-      return;
-    }
-    setShowPin(true);
+    setShowCheckout(true);
   };
 
   return (
     <PageShell title="Buy Airtime" back="/">
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4" style={{ scrollbarWidth: 'none' }}>
         {/* Network */}
-        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
-          <p className="text-[12px] font-semibold text-[#444] mb-3">Select Network</p>
+        <div className="theme-surface theme-border rounded-2xl p-5 border">
+          <p className="text-[12px] font-semibold theme-text-secondary mb-3">Select Network</p>
           <div className="grid grid-cols-4 gap-2">
-            {NETWORKS.map(n => (
-              <button key={n.id} onClick={() => setNetwork(n.id)}
-                className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 transition-all ${network === n.id ? 'theme-selected-control border-[#162353]' : 'border-[#F0F0F0]'}`}>
-                <div className="w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-black" style={{ background: n.color, color: n.text }}>{n.name.slice(0,3)}</div>
-                <span className="text-[10px] text-[#555] font-medium">{n.name}</span>
+            {networks.map(n => (
+              <button key={n.id} type="button" onClick={() => setNetwork(n.id)}
+                className={`flex flex-col items-center gap-1.5 py-3 px-1 rounded-xl border-2 transition-all ${network === n.id ? 'theme-selected-control border-[#F0B90B] dark:border-[#F0B90B]' : 'theme-border hover:border-[#D0D5DD] dark:hover:border-[#3A414D]'}`}>
+                <TelecomNetworkLogo item={n} />
+                <span className="text-[10px] theme-text-primary font-semibold truncate max-w-full">{n.name}</span>
               </button>
             ))}
           </div>
         </div>
         {/* Phone */}
-        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
-          <p className="text-[12px] font-semibold text-[#444] mb-3">Phone Number</p>
+        <div className="theme-surface theme-border rounded-2xl p-5 border">
+          <p className="text-[12px] font-semibold theme-text-secondary mb-3">Phone Number</p>
           <input type="tel" inputMode="tel" placeholder="08012345678" value={phone}
             onChange={e => setPhone(e.target.value.replace(/\D/g,'').slice(0,11))}
-            className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[16px] font-semibold tracking-wider outline-none focus:border-[#2563EB] transition-colors placeholder:text-[#CCC] placeholder:font-normal placeholder:tracking-normal" />
+            className="theme-field theme-border w-full border rounded-xl px-4 py-3 text-[16px] font-semibold tracking-wider theme-text-primary outline-none focus:border-[#F0B90B] transition-colors placeholder:text-[var(--theme-secondary-text)] placeholder:font-normal placeholder:tracking-normal" />
         </div>
         {/* Amount */}
-        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
-          <p className="text-[12px] font-semibold text-[#444] mb-3">Amount</p>
-          <div className="flex items-center gap-2 border border-[#E0E0E0] rounded-xl px-4 py-3 focus-within:border-[#2563EB] mb-3">
-            <span className="text-[18px] font-bold text-[#444]">₦</span>
+        <div className="theme-surface theme-border rounded-2xl p-5 border">
+          <p className="text-[12px] font-semibold theme-text-secondary mb-3">Amount</p>
+          <div className="theme-field theme-border flex items-center gap-2 border rounded-xl px-4 py-3 focus-within:border-[#F0B90B] mb-3">
+            <span className="text-[18px] font-bold theme-text-secondary">₦</span>
             <input type="text" inputMode="numeric" placeholder="0" value={amount}
               onChange={e => setAmount(formatAmt(e.target.value))}
-              className="flex-1 text-[18px] font-semibold text-[#111] outline-none bg-transparent placeholder:text-[#CCC]" />
+              className="flex-1 text-[18px] font-semibold theme-text-primary outline-none bg-transparent placeholder:text-[var(--theme-secondary-text)]" />
           </div>
           <div className="grid grid-cols-3 gap-2">
             {AIRTIME_AMOUNTS.map(a => (
-              <button key={a} onClick={() => setAmount(a)}
-                className={`py-2 rounded-xl text-[12px] font-semibold border transition-all ${amount===a ? 'bg-[#F0B90B] text-[#181A20] border-[#F0B90B] shadow-xs' : 'border-[#E0E0E0] text-[#444]'}`}>
+              <button key={a} type="button" onClick={() => setAmount(a)}
+                className={`py-2 rounded-xl text-[12px] font-semibold border transition-all ${amount===a ? 'bg-[#F0B90B] text-[#181A20] border-[#F0B90B] shadow-xs' : 'theme-border theme-text-secondary'}`}>
                 ₦{a}
               </button>
             ))}
@@ -3669,16 +3912,62 @@ function AirtimePage() {
           Continue
         </button>
       </div>
-      {showPin && <PinModal amount={amount} label={`Airtime for ${phone}`} onSuccess={() => { setShowPin(false); setDone(true); }} onClose={() => setShowPin(false)} />}
-      <InsufficientFundsModal
-        isOpen={showInsufficient}
-        onClose={() => setShowInsufficient(false)}
-        amount={amount}
-        action="buy airtime"
-        accountNumber={user?.accountNumber || '9067212032'}
-        accountName={user?.name?.toUpperCase() || 'CHIBUZOR EMMANUEL DIKE'}
-        bankName="Moniepoint MFB"
+      <TelecomCheckoutModal
+        isOpen={showCheckout}
+        onClose={() => setShowCheckout(false)}
+        productType="airtime"
+        network={selectedNetworkObj}
+        phone={phone}
+        amount={parsedAmount}
+        availableBalance={balance ?? user?.balance ?? 0}
+        cashbackBalance={cashbackRedeemable}
+        pendingCashbackBalance={cashbackPending}
+        onPay={(payableAmount, _cashbackUsed, useCashback) => {
+          setShowCheckout(false);
+          setCheckoutMeta({
+            payableAmtStr: payableAmount.toLocaleString('en-NG', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            }),
+            useCashback,
+          });
+          setShowPin(true);
+        }}
+        onAddMoney={() => {
+          setShowCheckout(false);
+          navigate('/deposit');
+        }}
       />
+      {showPin && (
+        <PinModal
+          amount={checkoutMeta.payableAmtStr || amount}
+          label={`Airtime for ${phone}${checkoutMeta.useCashback ? ' (Cashback applied)' : ''}`}
+          onAuthorize={async (pin) => {
+            const res = await executeTelecomPurchase(session?.access_token, {
+              productType: 'airtime',
+              networkName: selectedNetworkObj.name,
+              phone,
+              amount: parsedAmount,
+              useCashback: checkoutMeta.useCashback,
+              pin,
+            });
+            if (res.success) {
+              setReceiptMeta({
+                cashbackUsed: res.cashbackUsed ?? 0,
+                cashbackEarned: res.cashbackEarned ?? 0,
+              });
+              refreshAll();
+              void refreshProfile();
+            }
+            return res;
+          }}
+          onSuccess={() => {
+            setShowPin(false);
+            setDone(true);
+          }}
+          onClose={() => setShowPin(false)}
+        />
+      )}
     </PageShell>
   );
 }
@@ -3692,64 +3981,83 @@ const DATA_PLANS: Record<string, {size:string; price:string; validity:string}[]>
 };
 
 function DataPage() {
-  const { user } = useAuth();
+  const { user, session, refreshProfile } = useAuth();
+  const { balance, cashbackRedeemable, cashbackPending, refreshAll } = useUserData();
   const [, navigate] = useLocation();
+  const networks = useTelecomNetworks();
   const [network, setNetwork] = useState('');
   const [phone, setPhone]     = useState('');
   const [plan, setPlan]       = useState('');
+  const [showCheckout, setShowCheckout] = useState(false);
+  const [checkoutMeta, setCheckoutMeta] = useState<{ payableAmtStr: string; useCashback: boolean }>({
+    payableAmtStr: '',
+    useCashback: false,
+  });
+  const [receiptMeta, setReceiptMeta] = useState<{ cashbackUsed: number; cashbackEarned: number }>({
+    cashbackUsed: 0,
+    cashbackEarned: 0,
+  });
   const [showPin, setShowPin] = useState(false);
-  const [showInsufficient, setShowInsufficient] = useState(false);
   const [done, setDone]       = useState(false);
 
-  if (done) return <SuccessBanner title="Data Activated!" sub={`${plan} sent to ${phone}`} onHome={() => navigate('/')} />;
+  if (done) {
+    const cbParts: string[] = [];
+    if (receiptMeta.cashbackUsed > 0) cbParts.push(`₦${receiptMeta.cashbackUsed.toFixed(2)} cashback applied`);
+    if (receiptMeta.cashbackEarned > 0) cbParts.push(`earned ₦${receiptMeta.cashbackEarned.toFixed(2)} cashback`);
+    const extra = cbParts.length > 0 ? ` (${cbParts.join(' · ')})` : '';
+    return (
+      <SuccessBanner
+        title="Data Activated!"
+        sub={`${plan} sent to ${phone}${extra}`}
+        onHome={() => navigate('/')}
+      />
+    );
+  }
 
   const plans = network ? DATA_PLANS[network] : [];
   const selectedPlan = plans.find(p => p.size === plan);
-  const canProceed = network && phone.length >= 10 && plan;
+  const selectedNetworkObj = networks.find(n => n.id === network) ?? networks[0] ?? NETWORKS[0];
+  const parsedPlanPrice = parseFloat(selectedPlan?.price.replace(/,/g, '') || '0');
+  const canProceed = Boolean(network && phone.length >= 10 && selectedPlan && parsedPlanPrice > 0);
 
   const handleContinue = () => {
-    if (!canProceed || !selectedPlan) return;
-    const planPrice = parseFloat(selectedPlan.price.replace(/,/g, '') || '0');
-    if (user && planPrice > (user.balance ?? 0)) {
-      setShowInsufficient(true);
-      return;
-    }
-    setShowPin(true);
+    if (!canProceed) return;
+    setShowCheckout(true);
   };
 
   return (
     <PageShell title="Buy Data" back="/">
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4" style={{ scrollbarWidth: 'none' }}>
-        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
-          <p className="text-[12px] font-semibold text-[#444] mb-3">Select Network</p>
+        <div className="theme-surface theme-border rounded-2xl p-5 border">
+          <p className="text-[12px] font-semibold theme-text-secondary mb-3">Select Network</p>
           <div className="grid grid-cols-4 gap-2">
-            {NETWORKS.map(n => (
-              <button key={n.id} onClick={() => { setNetwork(n.id); setPlan(''); }}
-                className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 transition-all ${network===n.id ? 'theme-selected-control border-[#162353]' : 'border-[#F0F0F0]'}`}>
-                <div className="w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-black" style={{ background: n.color, color: n.text }}>{n.name.slice(0,3)}</div>
-                <span className="text-[10px] text-[#555] font-medium">{n.name}</span>
+            {networks.map(n => (
+              <button key={n.id} type="button" onClick={() => { setNetwork(n.id); setPlan(''); }}
+                className={`flex flex-col items-center gap-1.5 py-3 px-1 rounded-xl border-2 transition-all ${network===n.id ? 'theme-selected-control border-[#F0B90B] dark:border-[#F0B90B]' : 'theme-border hover:border-[#D0D5DD] dark:hover:border-[#3A414D]'}`}>
+                <TelecomNetworkLogo item={n} />
+                <span className="text-[10px] theme-text-primary font-semibold truncate max-w-full">{n.name}</span>
               </button>
             ))}
           </div>
         </div>
-        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
-          <p className="text-[12px] font-semibold text-[#444] mb-3">Phone Number</p>
+        <div className="theme-surface theme-border rounded-2xl p-5 border">
+          <p className="text-[12px] font-semibold theme-text-secondary mb-3">Phone Number</p>
           <input type="tel" inputMode="tel" placeholder="08012345678" value={phone}
             onChange={e => setPhone(e.target.value.replace(/\D/g,'').slice(0,11))}
-            className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[16px] font-semibold tracking-wider outline-none focus:border-[#2563EB] transition-colors placeholder:text-[#CCC] placeholder:font-normal placeholder:tracking-normal" />
+            className="theme-field theme-border w-full border rounded-xl px-4 py-3 text-[16px] font-semibold tracking-wider theme-text-primary outline-none focus:border-[#F0B90B] transition-colors placeholder:text-[var(--theme-secondary-text)] placeholder:font-normal placeholder:tracking-normal" />
         </div>
         {network && (
-          <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
-            <p className="text-[12px] font-semibold text-[#444] mb-3">Select Plan</p>
+          <div className="theme-surface theme-border rounded-2xl p-5 border">
+            <p className="text-[12px] font-semibold theme-text-secondary mb-3">Select Plan</p>
             <div className="space-y-2">
               {plans.map(p => (
-                <button key={p.size} onClick={() => setPlan(p.size)}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all ${plan===p.size ? 'border-[#162353] bg-[#EEF2FF]' : 'border-[#F0F0F0]'}`}>
+                <button key={p.size} type="button" onClick={() => setPlan(p.size)}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all ${plan===p.size ? 'theme-selected-control border-[#F0B90B] dark:border-[#F0B90B]' : 'theme-border'}`}>
                   <div className="text-left">
-                    <p className="text-[14px] font-bold text-[#111]">{p.size}</p>
-                    <p className="text-[11px] text-[#888]">Valid for {p.validity}</p>
+                    <p className="text-[14px] font-bold theme-text-primary">{p.size}</p>
+                    <p className="text-[11px] theme-text-secondary">Valid for {p.validity}</p>
                   </div>
-                  <p className="text-[14px] font-bold text-[#162353]">₦{p.price}</p>
+                  <p className="text-[14px] font-bold text-[#B7791F] dark:text-[#F0B90B]">₦{p.price}</p>
                 </button>
               ))}
             </div>
@@ -3762,42 +4070,144 @@ function DataPage() {
           Continue
         </button>
       </div>
-      {showPin && selectedPlan && (
-        <PinModal amount={selectedPlan.price} label={`${plan} data for ${phone}`}
-          onSuccess={() => { setShowPin(false); setDone(true); }} onClose={() => setShowPin(false)} />
-      )}
-      <InsufficientFundsModal
-        isOpen={showInsufficient}
-        onClose={() => setShowInsufficient(false)}
-        amount={selectedPlan?.price || '0'}
-        action="buy data"
-        accountNumber={user?.accountNumber || '9067212032'}
-        accountName={user?.name?.toUpperCase() || 'CHIBUZOR EMMANUEL DIKE'}
-        bankName="Moniepoint MFB"
+      <TelecomCheckoutModal
+        isOpen={showCheckout && Boolean(selectedPlan)}
+        onClose={() => setShowCheckout(false)}
+        productType="data"
+        network={selectedNetworkObj}
+        phone={phone}
+        dataBundle={selectedPlan ? `${selectedPlan.size} (${selectedPlan.validity})` : undefined}
+        amount={parsedPlanPrice}
+        availableBalance={balance ?? user?.balance ?? 0}
+        cashbackBalance={cashbackRedeemable}
+        pendingCashbackBalance={cashbackPending}
+        onPay={(payableAmount, _cashbackUsed, useCashback) => {
+          setShowCheckout(false);
+          setCheckoutMeta({
+            payableAmtStr: payableAmount.toLocaleString('en-NG', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            }),
+            useCashback,
+          });
+          setShowPin(true);
+        }}
+        onAddMoney={() => {
+          setShowCheckout(false);
+          navigate('/deposit');
+        }}
       />
+      {showPin && selectedPlan && (
+        <PinModal
+          amount={checkoutMeta.payableAmtStr || selectedPlan.price}
+          label={`${plan} data for ${phone}${checkoutMeta.useCashback ? ' (Cashback applied)' : ''}`}
+          onAuthorize={async (pin) => {
+            const res = await executeTelecomPurchase(session?.access_token, {
+              productType: 'data',
+              networkName: selectedNetworkObj.name,
+              phone,
+              dataBundle: `${selectedPlan.size} (${selectedPlan.validity})`,
+              amount: parsedPlanPrice,
+              useCashback: checkoutMeta.useCashback,
+              pin,
+            });
+            if (res.success) {
+              setReceiptMeta({
+                cashbackUsed: res.cashbackUsed ?? 0,
+                cashbackEarned: res.cashbackEarned ?? 0,
+              });
+              refreshAll();
+              void refreshProfile();
+            }
+            return res;
+          }}
+          onSuccess={() => {
+            setShowPin(false);
+            setDone(true);
+          }}
+          onClose={() => setShowPin(false)}
+        />
+      )}
     </PageShell>
   );
 }
 
 /* ─── Betting Page ───────────────────────────────────────────────────── */
-const BETTING_PLATFORMS = [
-  { id:'bet9ja',   name:'Bet9ja',    color:'#006400' },
-  { id:'sporty',   name:'SportyBet', color:'#1D4ED8' },
-  { id:'betking',  name:'BetKing',   color:'#7C3AED' },
-  { id:'1xbet',    name:'1xBet',     color:'#EF4444' },
-  { id:'nairabet', name:'NairaBet',  color:'#F59E0B' },
-  { id:'msport',   name:'MSport',    color:'#0EA5E9'  },
+type BettingPlatform = {
+  id: string;
+  name: string;
+  domain: string;
+  color: string;
+  logoUrl?: string | null;
+};
+
+const BETTING_PLATFORMS: BettingPlatform[] = [
+  { id: 'bet9ja',   name: 'Bet9ja',    domain: 'bet9ja.com',   color: '#006400' },
+  { id: 'sporty',   name: 'SportyBet', domain: 'sportybet.com', color: '#E11D48' },
+  { id: 'betking',  name: 'BetKing',   domain: 'betking.com',  color: '#1D4ED8' },
+  { id: '1xbet',    name: '1xBet',     domain: '1xbet.com',    color: '#0284C7' },
+  { id: 'nairabet', name: 'NairaBet',  domain: 'nairabet.com', color: '#15803D' },
+  { id: 'msport',   name: 'MSport',    domain: 'msport.com',   color: '#D97706' },
 ];
+
+function BettingPlatformLogo({ item }: { item: BettingPlatform }) {
+  const [imgFailed, setImgFailed] = useState(false);
+
+  if (item.logoUrl && !imgFailed) {
+    return (
+      <span className="w-10 h-10 rounded-full bg-white border border-slate-200 dark:border-[#2B313A] flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
+        <img
+          src={item.logoUrl}
+          alt={`${item.name} logo`}
+          referrerPolicy="no-referrer"
+          className="w-full h-full object-cover rounded-full"
+          onError={() => setImgFailed(true)}
+        />
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="w-10 h-10 rounded-full flex items-center justify-center text-[11px] font-black text-white shrink-0 shadow-xs"
+      style={{ backgroundColor: item.color }}
+      aria-hidden="true"
+    >
+      {item.name.slice(0, 2).toUpperCase()}
+    </span>
+  );
+}
 
 function BettingPage() {
   const { user } = useAuth();
   const [, navigate] = useLocation();
+  const [platforms, setPlatforms] = useState<BettingPlatform[]>(BETTING_PLATFORMS);
   const [platform, setPlatform] = useState('');
   const [userId, setUserId]     = useState('');
   const [amount, setAmount]     = useState('');
   const [showPin, setShowPin]   = useState(false);
   const [showInsufficient, setShowInsufficient] = useState(false);
   const [done, setDone]         = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void fetch('/api/betting/platforms', { headers: { accept: 'application/json' } })
+      .then(async (res) => {
+        if (!res.ok) return null;
+        return (await res.json()) as { platforms?: BettingPlatform[] };
+      })
+      .then((body) => {
+        if (active && Array.isArray(body?.platforms) && body.platforms.length > 0) {
+          setPlatforms(body.platforms);
+        }
+      })
+      .catch(() => {
+        // Keep fallback platform list silently
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   if (done) return <SuccessBanner title="Wallet Funded!" sub={`₦${amount} added to ${platform} account ${userId}`} onHome={() => navigate('/')} />;
 
@@ -3816,36 +4226,47 @@ function BettingPage() {
   return (
     <PageShell title="Betting" back="/">
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4" style={{ scrollbarWidth: 'none' }}>
-        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
-          <p className="text-[12px] font-semibold text-[#444] mb-3">Select Platform</p>
-          <div className="grid grid-cols-3 gap-2">
-            {BETTING_PLATFORMS.map(b => (
-              <button key={b.id} onClick={() => setPlatform(b.name)}
-                className={`py-3 rounded-xl border-2 text-[12px] font-bold transition-all ${platform===b.name ? 'theme-selected-control border-[#162353]' : 'border-[#F0F0F0]'}`}
-                style={{ color: b.color }}>
-                {b.name}
-              </button>
-            ))}
+        <div className="theme-surface theme-border rounded-2xl p-5 border">
+          <p className="text-[12px] font-semibold theme-text-secondary mb-3">Select Platform</p>
+          <div className="grid grid-cols-3 gap-2.5">
+            {platforms.map(b => {
+              const isSelected = platform === b.name;
+              return (
+                <button
+                  key={b.id}
+                  type="button"
+                  onClick={() => setPlatform(b.name)}
+                  className={`flex flex-col items-center justify-center gap-2 py-3 px-2 rounded-xl border-2 text-[11px] font-bold transition-all ${
+                    isSelected
+                      ? 'theme-selected-control border-[#F0B90B] dark:border-[#F0B90B]'
+                      : 'theme-border hover:border-[#D0D5DD] dark:hover:border-[#3A414D]'
+                  }`}
+                >
+                  <BettingPlatformLogo item={b} />
+                  <span className="truncate max-w-full theme-text-primary">{b.name}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
-        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
-          <p className="text-[12px] font-semibold text-[#444] mb-3">User ID / Username</p>
+        <div className="theme-surface theme-border rounded-2xl p-5 border">
+          <p className="text-[12px] font-semibold theme-text-secondary mb-3">User ID / Username</p>
           <input type="text" placeholder="Enter your betting user ID" value={userId}
             onChange={e => setUserId(e.target.value)}
-            className="w-full border border-[#E0E0E0] rounded-xl px-4 py-3 text-[14px] outline-none focus:border-[#2563EB] transition-colors placeholder:text-[#CCC]" />
+            className="theme-field theme-border w-full border rounded-xl px-4 py-3 text-[14px] theme-text-primary outline-none focus:border-[#F0B90B] transition-colors placeholder:text-[var(--theme-secondary-text)]" />
         </div>
-        <div className="bg-white rounded-2xl p-5 border border-[#F0F0F0]">
-          <p className="text-[12px] font-semibold text-[#444] mb-3">Amount</p>
-          <div className="flex items-center gap-2 border border-[#E0E0E0] rounded-xl px-4 py-3 focus-within:border-[#2563EB] mb-3">
-            <span className="text-[18px] font-bold text-[#444]">₦</span>
+        <div className="theme-surface theme-border rounded-2xl p-5 border">
+          <p className="text-[12px] font-semibold theme-text-secondary mb-3">Amount</p>
+          <div className="theme-field theme-border flex items-center gap-2 border rounded-xl px-4 py-3 focus-within:border-[#F0B90B] mb-3">
+            <span className="text-[18px] font-bold theme-text-secondary">₦</span>
             <input type="text" inputMode="numeric" placeholder="0.00" value={amount}
               onChange={e => setAmount(formatAmt(e.target.value))}
-              className="flex-1 text-[18px] font-semibold text-[#111] outline-none bg-transparent placeholder:text-[#CCC]" />
+              className="flex-1 text-[18px] font-semibold theme-text-primary outline-none bg-transparent placeholder:text-[var(--theme-secondary-text)]" />
           </div>
           <div className="flex gap-2 flex-wrap">
             {['500','1,000','2,000','5,000','10,000'].map(a => (
-              <button key={a} onClick={() => setAmount(a)}
-                className={`px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-all ${amount===a ? 'bg-[#F0B90B] text-[#181A20] border-[#F0B90B] shadow-xs' : 'border-[#E0E0E0] text-[#444]'}`}>
+              <button key={a} type="button" onClick={() => setAmount(a)}
+                className={`px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-all ${amount===a ? 'bg-[#F0B90B] text-[#181A20] border-[#F0B90B] shadow-xs' : 'theme-border theme-text-secondary'}`}>
                 ₦{a}
               </button>
             ))}
@@ -4975,9 +5396,69 @@ function ServicesTabPage() {
 }
 
 /* ─── Cashback Page ──────────────────────────────────────────────────── */
+function useCashbackCounter(targetValue: number, durationMs = 850) {
+  const safeTarget = Number.isFinite(targetValue) ? Math.max(0, targetValue) : 0;
+  const [displayValue, setDisplayValue] = useState(0);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const currentRef = useRef(0);
+
+  useEffect(() => {
+    const start = currentRef.current;
+    if (Math.abs(safeTarget - start) < 0.005) {
+      currentRef.current = safeTarget;
+      setDisplayValue(safeTarget);
+      setIsAnimating(false);
+      return;
+    }
+
+    if (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      currentRef.current = safeTarget;
+      setDisplayValue(safeTarget);
+      setIsAnimating(false);
+      return;
+    }
+
+    let frameId = 0;
+    let startTime: number | null = null;
+    setIsAnimating(true);
+
+    const step = (timestamp: number) => {
+      startTime ??= timestamp;
+      const progress = Math.min((timestamp - startTime) / durationMs, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const next = start + (safeTarget - start) * eased;
+      currentRef.current = next;
+      setDisplayValue(next);
+
+      if (progress < 1) {
+        frameId = window.requestAnimationFrame(step);
+      } else {
+        currentRef.current = safeTarget;
+        setDisplayValue(safeTarget);
+        setIsAnimating(false);
+      }
+    };
+
+    frameId = window.requestAnimationFrame(step);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [safeTarget, durationMs]);
+
+  return { displayValue, isAnimating };
+}
+
+function formatCashbackNaira(value: number) {
+  const safe = Number.isFinite(value) ? Math.max(0, value) : 0;
+  return safe.toLocaleString('en-NG', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 function CashbackPage() {
   const [, navigate] = useLocation();
-  const [redeemed, setRedeemed] = useState(false);
+  const [redemptionPhase, setRedemptionPhase] = useState<'idle' | 'redeeming' | 'animating' | 'complete'>('idle');
+  const [redeemedAmount, setRedeemedAmount] = useState(0);
+  const [balancePulse, setBalancePulse] = useState(false);
   const {
     cashbackTotal: totalEarned,
     cashbackPending: pending,
@@ -4985,6 +5466,36 @@ function CashbackPage() {
     cashbackHistory: history,
     redeemCashback,
   } = useUserData();
+
+  const { displayValue: animatedTotal, isAnimating: isTotalAnimating } = useCashbackCounter(totalEarned, 900);
+  const { displayValue: animatedRedeemable, isAnimating: isRedeemableAnimating } = useCashbackCounter(redeemable, 900);
+  const { displayValue: animatedPending } = useCashbackCounter(pending, 900);
+  const { displayValue: animatedCredited } = useCashbackCounter(
+    redemptionPhase === 'complete' ? redeemedAmount : 0,
+    900,
+  );
+
+  const prevValuesRef = useRef<{ total: number; redeemable: number; pending: number } | null>(null);
+  useEffect(() => {
+    const prev = prevValuesRef.current;
+    prevValuesRef.current = { total: totalEarned, redeemable, pending };
+    if (!prev) return;
+    if (prev.total !== totalEarned || prev.redeemable !== redeemable || prev.pending !== pending) {
+      setBalancePulse(true);
+      const timer = window.setTimeout(() => setBalancePulse(false), 750);
+      return () => window.clearTimeout(timer);
+    }
+  }, [totalEarned, redeemable, pending]);
+
+  useEffect(() => {
+    if (redemptionPhase !== 'animating') return;
+    if (isTotalAnimating || isRedeemableAnimating) return;
+
+    const timer = window.setTimeout(() => {
+      setRedemptionPhase('complete');
+    }, 320);
+    return () => window.clearTimeout(timer);
+  }, [redemptionPhase, isTotalAnimating, isRedeemableAnimating]);
 
   const rates = [
     { label: 'Transfers',  rate: '2%', icon: '↗' },
@@ -4995,26 +5506,57 @@ function CashbackPage() {
     { label: 'Savings',    rate: '4%', icon: '🏦' },
   ];
 
-  if (redeemed) {
+  async function handleRedeem() {
+    if (redeemable <= 0 || redemptionPhase !== 'idle') return;
+    const snapshot = redeemable;
+    setRedeemedAmount(snapshot);
+    setRedemptionPhase('redeeming');
+    await redeemCashback();
+    setRedemptionPhase('animating');
+  }
+
+  if (redemptionPhase === 'complete') {
     return (
-      <div className="fixed inset-0 bg-white flex flex-col items-center justify-center px-6" style={{ fontFamily: "'Inter', sans-serif" }}>
-        <div className="w-20 h-20 rounded-full bg-yellow-50 flex items-center justify-center mb-5 text-[36px]">🪙</div>
-        <p className="text-[20px] font-bold text-[#111] mb-1">Cashback Redeemed!</p>
-        <p className="text-[13px] text-[#888] text-center mb-8">₦{redeemable.toLocaleString('en-NG')}.00 has been added to your Vexa wallet.</p>
-        <button onClick={() => navigate('/')} className="w-full max-w-xs bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] rounded-xl h-[50px] text-[14px] font-bold text-[#181A20] shadow-sm transition-all">Back to Home</button>
+      <div className="theme-page fixed inset-0 bg-white flex flex-col items-center justify-center px-6" style={{ fontFamily: "'Inter', sans-serif" }}>
+        <div className="w-20 h-20 rounded-full bg-yellow-50 dark:bg-yellow-500/15 flex items-center justify-center mb-5 text-[36px] animate-bounce">
+          🪙
+        </div>
+        <p className="theme-text-primary text-[20px] font-bold text-[#111] mb-1">Cashback Redeemed!</p>
+        <p className="text-[28px] font-extrabold text-[#16A34A] dark:text-emerald-400 tabular-nums mb-1">
+          +₦{formatCashbackNaira(animatedCredited)}
+        </p>
+        <p className="theme-text-secondary text-[13px] text-[#888] text-center mb-8">
+          Added directly to your Vexa wallet balance.
+        </p>
+        <div className="w-full max-w-xs space-y-2.5">
+          <button
+            onClick={() => navigate('/')}
+            className="w-full bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] rounded-xl h-[50px] text-[14px] font-bold text-[#181A20] shadow-sm transition-all"
+          >
+            Back to Home
+          </button>
+          <button
+            onClick={() => setRedemptionPhase('idle')}
+            className="theme-surface theme-border theme-text-primary w-full border rounded-xl h-[46px] text-[13px] font-semibold transition-all"
+          >
+            View Cashback Balance
+          </button>
+        </div>
       </div>
     );
   }
 
+  const isBusy = redemptionPhase === 'redeeming' || redemptionPhase === 'animating';
+
   return (
-    <div className="fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="theme-page fixed inset-0 bg-[#F2F3F5] flex flex-col" style={{ fontFamily: "'Inter', sans-serif" }}>
       {/* Header */}
-      <div className="flex-none flex items-center gap-3 px-4 pb-3 bg-white border-b border-[#E8EBF0]"
+      <div className="theme-surface theme-border flex-none flex items-center gap-3 px-4 pb-3 bg-white border-b border-[#E8EBF0]"
         style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
-        <button onClick={() => navigate('/')} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
+        <button onClick={() => navigate('/')} className="theme-text-primary w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         </button>
-        <span className="text-[16px] font-bold text-[#111]">Cashback</span>
+        <span className="theme-text-primary text-[16px] font-bold text-[#111]">Cashback</span>
       </div>
 
       <div className="flex-1 overflow-y-auto py-4 px-4 space-y-4" style={{ scrollbarWidth: 'none' }}>
@@ -5023,41 +5565,72 @@ function CashbackPage() {
         <div className="bg-[#162353] rounded-2xl px-5 py-5 relative overflow-hidden">
           <div className="absolute -top-4 -right-4 w-24 h-24 rounded-full opacity-10 bg-white" />
           <div className="absolute bottom-[-20px] right-[40px] w-16 h-16 rounded-full opacity-5 bg-white" />
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-7 h-7 rounded-full bg-yellow-400/20 flex items-center justify-center">
-              <span className="text-[14px]">🪙</span>
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2">
+              <div className={`w-7 h-7 rounded-full bg-yellow-400/20 flex items-center justify-center transition-transform duration-300 ${isBusy || balancePulse ? 'scale-110' : ''}`}>
+                <span className={`text-[14px] ${isBusy ? 'animate-spin' : ''}`}>🪙</span>
+              </div>
+              <span className="text-white/70 text-[12px] font-medium">Total Earned</span>
             </div>
-            <span className="text-white/70 text-[12px] font-medium">Total Earned</span>
+            {(isTotalAnimating || isRedeemableAnimating || isBusy) && (
+              <span className="text-[11px] font-semibold text-yellow-300 animate-pulse">
+                {redemptionPhase === 'redeeming' ? 'Redeeming…' : redemptionPhase === 'animating' ? 'Crediting wallet…' : 'Updating…'}
+              </span>
+            )}
           </div>
-          <p className="text-[28px] font-extrabold text-white mb-1">₦{totalEarned.toLocaleString('en-NG')}.00</p>
+          <p
+            className={`text-[30px] font-extrabold tabular-nums mb-1 transition-all duration-300 ${
+              balancePulse || isBusy ? 'scale-[1.03] origin-left text-yellow-300' : 'text-white'
+            }`}
+          >
+            ₦{formatCashbackNaira(animatedTotal)}
+          </p>
           <div className="flex gap-4 mt-3">
             <div className="bg-white/10 rounded-xl px-4 py-2.5 flex-1">
               <p className="text-[10px] text-white/60 mb-0.5">Redeemable</p>
-              <p className="text-[15px] font-bold text-white">₦{redeemable.toLocaleString('en-NG')}.00</p>
+              <p
+                className={`text-[15px] font-bold tabular-nums transition-colors duration-300 ${
+                  balancePulse || isBusy ? 'text-emerald-300' : 'text-white'
+                }`}
+              >
+                ₦{formatCashbackNaira(animatedRedeemable)}
+              </p>
             </div>
             <div className="bg-white/10 rounded-xl px-4 py-2.5 flex-1">
               <p className="text-[10px] text-white/60 mb-0.5">Pending</p>
-              <p className="text-[15px] font-bold text-yellow-300">₦{pending.toLocaleString('en-NG')}.00</p>
+              <p className="text-[15px] font-bold text-yellow-300 tabular-nums">
+                ₦{formatCashbackNaira(animatedPending)}
+              </p>
             </div>
           </div>
           <button
-            onClick={async () => { await redeemCashback(); setRedeemed(true); }}
-            className="mt-4 w-full bg-yellow-400 rounded-xl h-[42px] text-[13px] font-bold text-[#111] active:bg-yellow-300 transition-colors flex items-center justify-center gap-2"
+            type="button"
+            disabled={redeemable <= 0 || isBusy}
+            onClick={handleRedeem}
+            className={`mt-4 w-full rounded-xl h-[42px] text-[13px] font-bold transition-all flex items-center justify-center gap-2 ${
+              redeemable <= 0 || isBusy
+                ? 'bg-yellow-400/50 text-[#111]/60 cursor-not-allowed'
+                : 'bg-yellow-400 text-[#111] active:bg-yellow-300 hover:bg-yellow-300 cursor-pointer'
+            }`}
           >
             <Gift className="w-4 h-4" />
-            Redeem ₦{redeemable.toLocaleString('en-NG')}.00 to Wallet
+            {redemptionPhase === 'redeeming'
+              ? 'Redeeming to Wallet…'
+              : redemptionPhase === 'animating'
+                ? 'Completing Redemption…'
+                : `Redeem ₦${formatCashbackNaira(animatedRedeemable)} to Wallet`}
           </button>
         </div>
 
         {/* Cashback rates */}
         <div>
-          <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide mb-2 px-1">Cashback Rates</p>
+          <p className="theme-text-secondary text-[11px] font-semibold text-[#888] uppercase tracking-wide mb-2 px-1">Cashback Rates</p>
           <div className="grid grid-cols-3 gap-2">
             {rates.map(r => (
-              <div key={r.label} className="bg-white rounded-2xl border border-[#F0F0F0] px-3 py-3 flex flex-col items-center gap-1.5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+              <div key={r.label} className="theme-surface theme-border bg-white rounded-2xl border border-[#F0F0F0] px-3 py-3 flex flex-col items-center gap-1.5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                 <span className="text-[20px]">{r.icon}</span>
-                <span className="text-[12px] font-bold text-[#162353]">{r.rate}</span>
-                <span className="text-[10px] text-[#888] font-medium">{r.label}</span>
+                <span className="theme-brand-text text-[12px] font-bold text-[#162353]">{r.rate}</span>
+                <span className="theme-text-secondary text-[10px] text-[#888] font-medium">{r.label}</span>
               </div>
             ))}
           </div>
@@ -5065,29 +5638,39 @@ function CashbackPage() {
 
         {/* Earning history */}
         <div>
-          <p className="text-[11px] font-semibold text-[#888] uppercase tracking-wide mb-2 px-1">Earning History</p>
-          <div className="bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
-            {history.map((item, i) => (
-              <div key={item.id} className={`flex items-center gap-3.5 px-4 py-3.5 ${i < history.length - 1 ? 'border-b border-[#F5F5F5]' : ''}`}>
-                <div className="w-9 h-9 rounded-full bg-yellow-50 flex items-center justify-center flex-shrink-0">
-                  <Percent className="w-4 h-4 text-yellow-500" />
+          <p className="theme-text-secondary text-[11px] font-semibold text-[#888] uppercase tracking-wide mb-2 px-1">Earning History</p>
+          <div className="theme-surface theme-border bg-white rounded-2xl border border-[#F0F0F0] overflow-hidden">
+            {history.length === 0 ? (
+              <p className="theme-text-secondary px-4 py-6 text-center text-[12.5px]">
+                No cashback activity yet. Earn instant cashback on airtime, data, and transfers.
+              </p>
+            ) : (
+              history.map((item, i) => (
+                <div key={item.id} className={`flex items-center gap-3.5 px-4 py-3.5 ${i < history.length - 1 ? 'theme-border border-b border-[#F5F5F5]' : ''}`}>
+                  <div className="w-9 h-9 rounded-full bg-yellow-50 dark:bg-yellow-500/15 flex items-center justify-center flex-shrink-0">
+                    <Percent className="w-4 h-4 text-yellow-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="theme-text-primary text-[13px] font-semibold text-[#111] truncate">{item.desc}</p>
+                    <p className="theme-text-secondary text-[11px] text-[#888] mt-0.5">
+                      {item.date} · {item.rate} · <span className="capitalize">{item.status}</span>
+                    </p>
+                  </div>
+                  <span className={`text-[13px] font-bold tabular-nums flex-shrink-0 ${item.status === 'redeemed' ? 'theme-text-secondary' : 'text-[#16A34A] dark:text-emerald-400'}`}>
+                    {item.status === 'redeemed' ? '' : '+'}₦{formatCashbackNaira(Number(item.earned))}
+                  </span>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-semibold text-[#111] truncate">{item.desc}</p>
-                  <p className="text-[11px] text-[#888] mt-0.5">{item.date} · {item.rate} cashback</p>
-                </div>
-                <span className="text-[13px] font-bold text-[#16A34A] flex-shrink-0">+₦{item.earned}</span>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 
         {/* Info note */}
-        <div className="bg-[#F0F4FF] border border-[#C7D7FF] rounded-2xl px-4 py-4">
-          <p className="text-[12px] font-bold text-[#162353] mb-1 flex items-center gap-1.5">
+        <div className="theme-surface-alt theme-border bg-[#F0F4FF] border border-[#C7D7FF] rounded-2xl px-4 py-4">
+          <p className="theme-text-primary text-[12px] font-bold text-[#162353] mb-1 flex items-center gap-1.5">
             <TrendingUp className="w-3.5 h-3.5" /> How it works
           </p>
-          <p className="text-[11px] text-[#555] leading-relaxed">Earn cashback on every transaction. Pending cashback clears after 7 days and can then be redeemed to your Vexa wallet instantly.</p>
+          <p className="theme-text-secondary text-[11px] text-[#555] leading-relaxed">Earn cashback on every transaction. Pending cashback clears after 7 days and can then be redeemed to your Vexa wallet instantly.</p>
         </div>
 
         <div className="pb-2" />
@@ -5317,6 +5900,9 @@ function Router() {
       </Route>
       <Route path="/admin/crypto">
         <AdminDashboardPage tab="crypto" />
+      </Route>
+      <Route path="/admin/crypto-logs">
+        <AdminDashboardPage tab="crypto-logs" />
       </Route>
       <Route path="/admin/rewards">
         <AdminDashboardPage tab="rewards" />

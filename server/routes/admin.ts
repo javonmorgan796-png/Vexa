@@ -18,6 +18,8 @@ import {
   createTatumSubscription,
   listTatumSubscriptions,
   deleteTatumSubscription,
+  getTatumWebhookLogs,
+  clearTatumWebhookLogs,
 } from "./crypto-wallet";
 
 const router: IRouter = Router();
@@ -2782,6 +2784,63 @@ router.get("/admin/crypto", async (_req: Request, res: Response) => {
     exchangeOrders,
     exchangeRates,
   });
+});
+
+// ─────────────────────────────────────────────────────────────
+// 16b. Crypto Logs (Raw Incoming Tatum Webhook Payloads)
+// ─────────────────────────────────────────────────────────────
+router.get("/admin/crypto/logs", async (req: Request, res: Response) => {
+  const [logs, webhookInfo] = await Promise.all([
+    getTatumWebhookLogs(),
+    resolveEffectiveTatumWebhook(req),
+  ]);
+
+  let depositEvents: any[] = [];
+  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      const evRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/crypto_deposit_events?select=*&order=created_at.desc&limit=50`,
+        { headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` } },
+      );
+      if (evRes.ok) {
+        const rows = await evRes.json().catch(() => []);
+        if (Array.isArray(rows)) depositEvents = rows;
+      }
+    } catch {
+      depositEvents = [];
+    }
+  }
+
+  const tatumApiKey = process.env["TATUM_API_KEY"] || "";
+  const isTestnet =
+    process.env["TATUM_NETWORK"]?.toLowerCase() === "testnet" || Boolean(tatumApiKey.startsWith("t-"));
+
+  return res.json({
+    logs,
+    depositEvents,
+    webhookConfig: {
+      url: webhookInfo.url,
+      source: webhookInfo.source,
+      hasTatumApiKey: Boolean(tatumApiKey),
+      hasWebhookSecret: Boolean(process.env["TATUM_WEBHOOK_SECRET"]),
+      networkMode: isTestnet ? "testnet" : "mainnet",
+    },
+  });
+});
+
+router.delete("/admin/crypto/logs", async (req: Request, res: Response) => {
+  await clearTatumWebhookLogs();
+  logAdminAudit(
+    req.admin!,
+    "CRYPTO_WEBHOOK_LOGS_CLEARED",
+    "system",
+    "crypto_webhook_logs",
+    {},
+    undefined,
+    undefined,
+    req.ip,
+  );
+  return res.json({ success: true, message: "Crypto webhook logs cleared." });
 });
 
 // ─────────────────────────────────────────────────────────────

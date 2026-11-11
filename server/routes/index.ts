@@ -6,6 +6,8 @@ import paystackRouter from "./paystack";
 import termiiRouter from "./termii";
 import securityRouter from "./security";
 import adminRouter from "./admin";
+import bettingRouter from "./betting";
+import telecomRouter from "./telecom";
 
 const router: IRouter = Router();
 
@@ -16,5 +18,7 @@ router.use(paystackRouter);
 router.use(termiiRouter);
 router.use(securityRouter);
 router.use(adminRouter);
+router.use(bettingRouter);
+router.use(telecomRouter);
 
 export default router;
