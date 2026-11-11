@@ -32,13 +32,13 @@ function Keypad({
 }) {
   const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
   return (
-    <div className="grid grid-cols-3 gap-3 w-full max-w-xs mx-auto">
+    <div className="grid grid-cols-3 gap-3 w-full max-w-[288px] mx-auto">
       {keys.map(k => (
         <button
           key={k}
           onClick={() => onDigit(k)}
           disabled={disabled}
-          className="h-[58px] rounded-2xl bg-white/10 border border-white/15 text-[24px] font-semibold text-white active:bg-white/25 transition-colors disabled:opacity-40 select-none"
+          className="h-[54px] rounded-2xl bg-white dark:bg-white/10 border border-[#E2E8F0] dark:border-white/15 shadow-xs dark:shadow-none text-[23px] font-semibold text-[#181A20] dark:text-white active:bg-[#F1F5F9] dark:active:bg-white/25 transition-colors disabled:opacity-40 select-none"
         >
           {k}
         </button>
@@ -47,16 +47,16 @@ function Keypad({
       <button
         onClick={() => onDigit('0')}
         disabled={disabled}
-        className="h-[58px] rounded-2xl bg-white/10 border border-white/15 text-[24px] font-semibold text-white active:bg-white/25 transition-colors disabled:opacity-40 select-none"
+        className="h-[54px] rounded-2xl bg-white dark:bg-white/10 border border-[#E2E8F0] dark:border-white/15 shadow-xs dark:shadow-none text-[23px] font-semibold text-[#181A20] dark:text-white active:bg-[#F1F5F9] dark:active:bg-white/25 transition-colors disabled:opacity-40 select-none"
       >
         0
       </button>
       <button
         onClick={onBack}
         disabled={disabled}
-        className="h-[58px] rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center active:bg-white/25 transition-colors disabled:opacity-40 select-none"
+        className="h-[54px] rounded-2xl bg-white dark:bg-white/10 border border-[#E2E8F0] dark:border-white/15 shadow-xs dark:shadow-none text-[#181A20] dark:text-white flex items-center justify-center active:bg-[#F1F5F9] dark:active:bg-white/25 transition-colors disabled:opacity-40 select-none"
       >
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 12H9M15 6l-6 6 6 6" />
         </svg>
       </button>
@@ -80,8 +80,8 @@ function PinDots({ value, max = 6, shake }: { value: string; max?: number; shake
           transition={{ duration: 0.15 }}
           className={`w-3.5 h-3.5 rounded-full border-2 transition-all ${
             i < value.length
-              ? 'bg-white border-white'
-              : 'border-white/30 bg-transparent'
+              ? 'bg-[#F0B90B] border-[#F0B90B] shadow-[0_0_8px_rgba(240,185,11,0.45)]'
+              : 'border-[#CBD5E1] bg-transparent dark:bg-white/20'
           }`}
         />
       ))}
@@ -97,12 +97,14 @@ function BiometricIcon({ loading }: { loading: boolean }) {
       {!loading && (
         <>
           <motion.div
-            className="absolute w-32 h-32 rounded-full border border-[#0e7490]/20"
+            className="absolute w-32 h-32 rounded-full"
+            style={{ boxShadow: '0 0 0 1px rgba(240, 185, 11, 0.25)' }}
             animate={{ scale: [1, 1.5, 1.5], opacity: [0.5, 0, 0] }}
             transition={{ duration: 2, repeat: Infinity, ease: 'easeOut' }}
           />
           <motion.div
-            className="absolute w-32 h-32 rounded-full border border-[#0e7490]/30"
+            className="absolute w-32 h-32 rounded-full"
+            style={{ boxShadow: '0 0 0 1px rgba(240, 185, 11, 0.35)' }}
             animate={{ scale: [1, 1.35, 1.35], opacity: [0.6, 0, 0] }}
             transition={{ duration: 2, repeat: Infinity, ease: 'easeOut', delay: 0.4 }}
           />
@@ -111,17 +113,17 @@ function BiometricIcon({ loading }: { loading: boolean }) {
       {/* Icon container */}
       <motion.div
         className="w-24 h-24 rounded-full flex items-center justify-center relative z-10"
-        style={{ background: 'linear-gradient(135deg, rgba(14,116,144,0.2) 0%, rgba(15,79,92,0.3) 100%)', border: '1px solid rgba(14,116,144,0.45)' }}
+        style={{ background: 'linear-gradient(135deg, rgba(240,185,11,0.16) 0%, rgba(240,185,11,0.06) 100%)', border: '1px solid rgba(217,155,0,0.4)' }}
         animate={loading ? { scale: [1, 1.05, 1] } : {}}
         transition={{ duration: 0.8, repeat: Infinity }}
       >
         {loading ? (
-          <svg className="animate-spin w-10 h-10 text-[#0e7490]" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="10" stroke="rgba(14,116,144,0.25)" strokeWidth="2.5" />
-            <path d="M12 2a10 10 0 0 1 10 10" stroke="#0e7490" strokeWidth="2.5" strokeLinecap="round" />
+          <svg className="animate-spin w-10 h-10 text-[#B7791F] dark:text-[#F0B90B]" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="rgba(240,185,11,0.25)" strokeWidth="2.5" />
+            <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
           </svg>
         ) : (
-          <i className="fa-solid fa-fingerprint text-[40px] text-[#0e7490]" />
+          <i className="fa-solid fa-fingerprint text-[40px] text-[#B7791F] dark:text-[#F0B90B]" />
         )}
       </motion.div>
     </div>
@@ -310,17 +312,14 @@ export default function BusinessSecurityScreen() {
   /* ── Render ──────────────────────────── */
   return (
     <div
-      className="fixed inset-0 flex flex-col"
-      style={{
-         background: 'linear-gradient(180deg, #0e7490 0%, #0f4f5c 60%, #083d49 100%)',
-        fontFamily: "'Inter', sans-serif",
-      }}
+      className="vexa-security-screen fixed inset-0 flex flex-col"
+      style={{ fontFamily: "'Inter', sans-serif" }}
     >
       {/* Font Awesome (already loaded via index.html CDN or inline) */}
       <style>{`
         @keyframes bizShieldPulse {
-          0%, 100% { filter: drop-shadow(0 0 0px rgba(14,116,144,0)); }
-          50%       { filter: drop-shadow(0 0 16px rgba(14,116,144,0.5)); }
+          0%, 100% { filter: drop-shadow(0 0 0px rgba(240,185,11,0)); }
+          50%       { filter: drop-shadow(0 0 16px rgba(240,185,11,0.35)); }
         }
         .biz-shield { animation: bizShieldPulse 3s ease-in-out infinite; }
       `}</style>
@@ -332,14 +331,14 @@ export default function BusinessSecurityScreen() {
       >
         <button
           onClick={() => navigate('/')}
-          className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20 transition-colors"
+          className="w-9 h-9 rounded-full bg-black/5 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15 text-[#181A20] dark:text-white flex items-center justify-center active:scale-95 transition-all"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M12 5l-7 7 7 7" />
           </svg>
         </button>
 
-        <p className="text-white/80 text-[13px] font-semibold tracking-wide">Vexa Business</p>
+        <p className="text-[#181A20]/80 dark:text-white/80 text-[13px] font-semibold tracking-wide">Vexa Business</p>
 
         <div className="w-9" />
       </div>
@@ -351,20 +350,20 @@ export default function BusinessSecurityScreen() {
             <path
               d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.35C17.25 22.15 21 17.25 21 12V7L12 2z"
               fill="url(#shieldGrad)"
-              stroke="rgba(14,116,144,0.75)"
+              stroke="rgba(217,155,0,0.65)"
               strokeWidth="1"
             />
             <defs>
               <linearGradient id="shieldGrad" x1="12" y1="2" x2="12" y2="23" gradientUnits="userSpaceOnUse">
-                <stop stopColor="rgba(14,116,144,0.45)" />
-                <stop offset="1" stopColor="rgba(15,79,92,0.25)" />
+                <stop stopColor="rgba(240,185,11,0.32)" />
+                <stop offset="1" stopColor="rgba(240,185,11,0.1)" />
               </linearGradient>
             </defs>
-            <path d="M9 12l2 2 4-4" stroke="#0e7490" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M9 12l2 2 4-4" stroke="#B7791F" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="dark:stroke-[#F0B90B]" />
           </svg>
         </div>
-        <p className="text-white text-[20px] font-bold tracking-tight">Business Security</p>
-        <p className="text-white/50 text-[12px] mt-1 text-center">Verify your identity to access Vexa Business</p>
+        <p className="text-[#181A20] dark:text-white text-[20px] font-bold tracking-tight">Business Security</p>
+        <p className="text-[#64748B] dark:text-white/50 text-[12px] mt-1 text-center">Verify your identity to access Vexa Business</p>
       </div>
 
       {/* Mode content */}
@@ -379,7 +378,7 @@ export default function BusinessSecurityScreen() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.25 }}
-              className="flex-1 flex flex-col items-center justify-center gap-6"
+              className="flex-1 flex flex-col items-center justify-center gap-6 pb-8"
             >
               <button
                 onClick={handleBiometrics}
@@ -388,10 +387,10 @@ export default function BusinessSecurityScreen() {
               >
                 <BiometricIcon loading={bioLoading} />
                 <div className="text-center">
-                  <p className="text-white text-[15px] font-semibold">
+                  <p className="text-[#181A20] dark:text-white text-[15px] font-semibold">
                     {bioLoading ? 'Scanning…' : bioFailed ? 'Verification failed' : 'Use Face ID or Fingerprint'}
                   </p>
-                  <p className="text-white/40 text-[12px] mt-1">
+                  <p className="text-[#64748B] dark:text-white/40 text-[12px] mt-1">
                     {bioLoading ? 'Hold still and look at your device' : bioFailed ? 'Tap to try again' : 'Tap to authenticate'}
                   </p>
                 </div>
@@ -399,7 +398,7 @@ export default function BusinessSecurityScreen() {
 
               <button
                 onClick={() => { setMode('pin'); }}
-                className="text-[#00c6ff] text-[13px] font-semibold py-2"
+                className="text-[#9A6800] hover:text-[#7A5200] dark:text-[#F0B90B] dark:hover:text-[#FCD535] text-[13px] font-semibold py-2 transition-colors"
               >
                 Use PIN instead
               </button>
@@ -418,8 +417,8 @@ export default function BusinessSecurityScreen() {
             >
               <div className="flex-1 flex flex-col items-center justify-center gap-5">
                 <div className="text-center">
-                  <p className="text-white text-[16px] font-semibold">Enter Business PIN</p>
-                  <p className="text-white/40 text-[12px] mt-1">Enter your 6-digit Business PIN</p>
+                  <p className="text-[#181A20] dark:text-white text-[16px] font-semibold">Enter Business PIN</p>
+                  <p className="text-[#64748B] dark:text-white/40 text-[12px] mt-1">Enter your 6-digit Business PIN</p>
                 </div>
 
                 <PinDots value={pin} max={6} shake={shake} />
@@ -430,7 +429,7 @@ export default function BusinessSecurityScreen() {
                       initial={{ opacity: 0, y: -4 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0 }}
-                      className="text-[#ff6b6b] text-[12px] font-medium text-center px-4"
+                      className="text-[#DC2626] dark:text-[#ff6b6b] text-[12px] font-medium text-center px-4"
                     >
                       {pinError}
                     </motion.p>
@@ -444,7 +443,7 @@ export default function BusinessSecurityScreen() {
                       <div
                         key={i}
                         className={`w-2 h-2 rounded-full ${
-                          i < pinState.attempts ? 'bg-[#ff6b6b]' : 'bg-white/20'
+                          i < pinState.attempts ? 'bg-[#EF4444]' : 'bg-[#CBD5E1] dark:bg-white/20'
                         }`}
                       />
                     ))}
@@ -452,14 +451,14 @@ export default function BusinessSecurityScreen() {
                 )}
               </div>
 
-              <div className="pb-4 space-y-4">
+              <div className="pb-6 space-y-4">
                 <Keypad onDigit={addDigit} onBack={removeDigit} />
 
                 <div className="flex justify-between items-center pt-1">
                   {hasBiometrics ? (
                     <button
                       onClick={() => { setMode('biometric'); setBioFailed(false); }}
-                      className="flex items-center gap-1.5 text-[#00c6ff] text-[12px] font-medium"
+                      className="flex items-center gap-1.5 text-[#9A6800] hover:text-[#7A5200] dark:text-[#F0B90B] dark:hover:text-[#FCD535] text-[12px] font-medium transition-colors"
                     >
                       <i className="fa-solid fa-fingerprint text-[16px]" />
                       Use biometrics
@@ -468,7 +467,7 @@ export default function BusinessSecurityScreen() {
 
                   <button
                     onClick={startRecovery}
-                    className="text-white/50 text-[12px] font-medium"
+                    className="text-[#64748B] dark:text-white/50 text-[12px] font-medium"
                   >
                     Forgot Business PIN?
                   </button>
@@ -494,15 +493,15 @@ export default function BusinessSecurityScreen() {
                 transition={{ duration: 2, repeat: Infinity }}
               >
                 <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
-                  <rect x="5" y="11" width="14" height="10" rx="2" fill="rgba(255,107,107,0.2)" stroke="#ff6b6b" strokeWidth="1.8" />
-                  <path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="#ff6b6b" strokeWidth="1.8" strokeLinecap="round" />
-                  <circle cx="12" cy="16" r="1.5" fill="#ff6b6b" />
+                  <rect x="5" y="11" width="14" height="10" rx="2" fill="rgba(255,107,107,0.2)" stroke="#ef4444" strokeWidth="1.8" />
+                  <path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" />
+                  <circle cx="12" cy="16" r="1.5" fill="#ef4444" />
                 </svg>
               </motion.div>
 
               <div className="text-center">
-                <p className="text-white text-[18px] font-bold">Access Temporarily Locked</p>
-                <p className="text-white/50 text-[12px] mt-2 leading-relaxed px-4">
+                <p className="text-[#181A20] dark:text-white text-[18px] font-bold">Access Temporarily Locked</p>
+                <p className="text-[#64748B] dark:text-white/50 text-[12px] mt-2 leading-relaxed px-4">
                   Too many incorrect PIN attempts. For your security, Business access has been locked.
                 </p>
               </div>
@@ -511,13 +510,13 @@ export default function BusinessSecurityScreen() {
                 className="rounded-2xl px-8 py-5 text-center"
                 style={{ background: 'rgba(255,107,107,0.1)', border: '1px solid rgba(255,107,107,0.25)' }}
               >
-                <p className="text-white/50 text-[11px] font-medium uppercase tracking-widest mb-1">Try again in</p>
-                <p className="text-[#ff6b6b] text-[36px] font-bold tracking-tight font-mono">{countdown}</p>
+                <p className="text-[#64748B] dark:text-white/50 text-[11px] font-medium uppercase tracking-widest mb-1">Try again in</p>
+                <p className="text-[#DC2626] dark:text-[#ff6b6b] text-[36px] font-bold tracking-tight font-mono">{countdown}</p>
               </div>
 
               <button
                 onClick={startRecovery}
-                className="text-[#00c6ff] text-[13px] font-semibold py-2"
+                className="text-[#9A6800] hover:text-[#7A5200] dark:text-[#F0B90B] dark:hover:text-[#FCD535] text-[13px] font-semibold py-2 transition-colors"
               >
                 Forgot Business PIN? Recover now
               </button>
@@ -536,9 +535,9 @@ export default function BusinessSecurityScreen() {
             >
               <div className="flex-1 flex flex-col items-center justify-center gap-5">
                 <div className="text-center">
-                  <p className="text-white/50 text-[11px] font-semibold uppercase tracking-widest mb-2">PIN Recovery · Step 1 of 3</p>
-                  <p className="text-white text-[16px] font-semibold">Verify Your Identity</p>
-                  <p className="text-white/40 text-[12px] mt-1">Enter your Vexa account passcode</p>
+                  <p className="text-[#64748B] dark:text-white/50 text-[11px] font-semibold uppercase tracking-widest mb-2">PIN Recovery · Step 1 of 3</p>
+                  <p className="text-[#181A20] dark:text-white text-[16px] font-semibold">Verify Your Identity</p>
+                  <p className="text-[#64748B] dark:text-white/40 text-[12px] mt-1">Enter your Vexa account passcode</p>
                 </div>
 
                 <PinDots value={recoveryInput} max={6} shake={recoveryShake} />
@@ -549,7 +548,7 @@ export default function BusinessSecurityScreen() {
                       initial={{ opacity: 0, y: -4 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0 }}
-                      className="text-[#ff6b6b] text-[12px] font-medium text-center px-4"
+                      className="text-[#DC2626] dark:text-[#ff6b6b] text-[12px] font-medium text-center px-4"
                     >
                       {recoveryError}
                     </motion.p>
@@ -557,10 +556,10 @@ export default function BusinessSecurityScreen() {
                 </AnimatePresence>
               </div>
 
-              <div className="pb-4 space-y-4">
+              <div className="pb-6 space-y-4">
                 <Keypad onDigit={addRecoveryDigit} onBack={removeRecoveryDigit} />
                 <div className="flex justify-center pt-1">
-                  <button onClick={() => setMode('pin')} className="text-white/40 text-[12px] font-medium">
+                  <button onClick={() => setMode('pin')} className="text-[#64748B] dark:text-white/40 text-[12px] font-medium">
                     Cancel
                   </button>
                 </div>
@@ -580,16 +579,16 @@ export default function BusinessSecurityScreen() {
             >
               <div className="flex-1 flex flex-col items-center justify-center gap-5">
                 <div className="text-center">
-                  <p className="text-white/50 text-[11px] font-semibold uppercase tracking-widest mb-2">PIN Recovery · Step 2 of 3</p>
-                  <p className="text-white text-[16px] font-semibold">Set New Business PIN</p>
-                  <p className="text-white/40 text-[12px] mt-1">Choose a new 6-digit Business PIN</p>
+                  <p className="text-[#64748B] dark:text-white/50 text-[11px] font-semibold uppercase tracking-widest mb-2">PIN Recovery · Step 2 of 3</p>
+                  <p className="text-[#181A20] dark:text-white text-[16px] font-semibold">Set New Business PIN</p>
+                  <p className="text-[#64748B] dark:text-white/40 text-[12px] mt-1">Choose a new 6-digit Business PIN</p>
                 </div>
                 <PinDots value={newPinValue} max={6} shake={false} />
               </div>
-              <div className="pb-4 space-y-4">
+              <div className="pb-6 space-y-4">
                 <Keypad onDigit={addRecoveryDigit} onBack={removeRecoveryDigit} />
                 <div className="flex justify-center pt-1">
-                  <button onClick={() => { setMode('recovery_passcode'); setNewPinValue(''); }} className="text-white/40 text-[12px] font-medium">
+                  <button onClick={() => { setMode('recovery_passcode'); setNewPinValue(''); }} className="text-[#64748B] dark:text-white/40 text-[12px] font-medium">
                     Back
                   </button>
                 </div>
@@ -609,9 +608,9 @@ export default function BusinessSecurityScreen() {
             >
               <div className="flex-1 flex flex-col items-center justify-center gap-5">
                 <div className="text-center">
-                  <p className="text-white/50 text-[11px] font-semibold uppercase tracking-widest mb-2">PIN Recovery · Step 3 of 3</p>
-                  <p className="text-white text-[16px] font-semibold">Confirm New PIN</p>
-                  <p className="text-white/40 text-[12px] mt-1">Re-enter your new Business PIN</p>
+                  <p className="text-[#64748B] dark:text-white/50 text-[11px] font-semibold uppercase tracking-widest mb-2">PIN Recovery · Step 3 of 3</p>
+                  <p className="text-[#181A20] dark:text-white text-[16px] font-semibold">Confirm New PIN</p>
+                  <p className="text-[#64748B] dark:text-white/40 text-[12px] mt-1">Re-enter your new Business PIN</p>
                 </div>
                 <PinDots value={confirmPinValue} max={6} shake={recoveryShake} />
                 <AnimatePresence>
@@ -620,17 +619,17 @@ export default function BusinessSecurityScreen() {
                       initial={{ opacity: 0, y: -4 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0 }}
-                      className="text-[#ff6b6b] text-[12px] font-medium text-center"
+                      className="text-[#DC2626] dark:text-[#ff6b6b] text-[12px] font-medium text-center"
                     >
                       {recoveryError}
                     </motion.p>
                   )}
                 </AnimatePresence>
               </div>
-              <div className="pb-4 space-y-4">
+              <div className="pb-6 space-y-4">
                 <Keypad onDigit={addRecoveryDigit} onBack={removeRecoveryDigit} />
                 <div className="flex justify-center pt-1">
-                  <button onClick={() => { setMode('recovery_new_pin'); setConfirmPinValue(''); setNewPinValue(''); }} className="text-white/40 text-[12px] font-medium">
+                  <button onClick={() => { setMode('recovery_new_pin'); setConfirmPinValue(''); setNewPinValue(''); }} className="text-[#64748B] dark:text-white/40 text-[12px] font-medium">
                     Back
                   </button>
                 </div>
@@ -640,13 +639,6 @@ export default function BusinessSecurityScreen() {
 
         </AnimatePresence>
       </div>
-
-      {/* Demo hint */}
-      {(mode === 'pin' || mode === 'biometric') && (
-        <div className="mx-5 mb-5 rounded-xl px-4 py-2.5" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
-          <p className="text-white/30 text-[10px] text-center">Demo Business PIN: <span className="text-white/50 font-mono font-semibold">123456</span></p>
-        </div>
-      )}
     </div>
   );
 }

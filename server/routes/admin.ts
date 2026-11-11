@@ -53,11 +53,22 @@ const ADMIN_TOTP_SECRET = process.env["ADMIN_TOTP_SECRET"] || "JBSWY3DPEHPK3PXPJ
 const ADMIN_RESCUE_CODE = process.env["ADMIN_RESCUE_CODE"] || "982710";
 
 // ── Cryptographic Security Core (PBKDF2-HMAC-SHA512 & AES-256-GCM) ──
+const DEFAULT_MASTER_ENCRYPTION_SECRET = "VEXA_SECURE_ADMIN_ENCRYPTION_MASTER_KEY_2026";
 const MASTER_ENCRYPTION_SECRET =
   process.env["ADMIN_ENCRYPTION_KEY"] ||
   process.env["SUPABASE_SERVICE_ROLE_KEY"] ||
-  "VEXA_SECURE_ADMIN_ENCRYPTION_MASTER_KEY_2026";
+  DEFAULT_MASTER_ENCRYPTION_SECRET;
 const ENCRYPTION_KEY = createHash("sha256").update(MASTER_ENCRYPTION_SECRET).digest();
+
+function getDecryptionCandidateKeys(): Buffer[] {
+  const secrets = [
+    MASTER_ENCRYPTION_SECRET,
+    process.env["SUPABASE_SERVICE_ROLE_KEY"],
+    DEFAULT_MASTER_ENCRYPTION_SECRET,
+  ].filter((s): s is string => Boolean(s && s.trim()));
+  const uniqueSecrets = Array.from(new Set(secrets));
+  return uniqueSecrets.map((secret) => createHash("sha256").update(secret).digest());
+}
 
 export function hashCredential(value: string, salt: string): string {
   return pbkdf2Sync(value, salt, 100000, 64, "sha512").toString("hex");
@@ -82,18 +93,21 @@ export function encryptTotpSecret(secret: string): { encrypted: string; iv: stri
 }
 
 export function decryptTotpSecret(encryptedHex: string, ivHex: string, tagHex: string): string {
-  try {
-    const iv = Buffer.from(ivHex, "hex");
-    const tag = Buffer.from(tagHex, "hex");
-    const decipher = createDecipheriv("aes-256-gcm", ENCRYPTION_KEY, iv);
-    decipher.setAuthTag(tag);
-    let decrypted = decipher.update(encryptedHex, "hex", "utf8");
-    decrypted += decipher.final("utf8");
-    return decrypted;
-  } catch (err) {
-    console.error("[AdminCrypto] Failed to decrypt TOTP secret:", err);
-    return "";
+  const iv = Buffer.from(ivHex, "hex");
+  const tag = Buffer.from(tagHex, "hex");
+  for (const key of getDecryptionCandidateKeys()) {
+    try {
+      const decipher = createDecipheriv("aes-256-gcm", key, iv);
+      decipher.setAuthTag(tag);
+      let decrypted = decipher.update(encryptedHex, "hex", "utf8");
+      decrypted += decipher.final("utf8");
+      if (decrypted) return decrypted;
+    } catch {
+      // Try next candidate key (e.g., schema-seeded credentials encrypted with DEFAULT_MASTER_ENCRYPTION_SECRET)
+    }
   }
+  console.error("[AdminCrypto] Failed to decrypt TOTP secret with all candidate keys.");
+  return "";
 }
 
 // In-Memory Secure Cryptographic Credentials Store
@@ -275,8 +289,8 @@ function generateTOTP(secretBase32: string, timeStep = 30, windowOffset = 0): st
 function verifyTOTP(token: string, secretBase32: string): boolean {
   const cleanToken = token.replace(/\s+/g, "");
   if (cleanToken === ADMIN_RESCUE_CODE) return true;
-  // Check windows -1, 0, +1 (±30s drift allowance)
-  for (let w = -1; w <= 1; w++) {
+  // Check windows -2..+2 (±60s drift allowance for device/server clock skew)
+  for (let w = -2; w <= 2; w++) {
     if (generateTOTP(secretBase32, 30, w) === cleanToken) {
       return true;
     }
@@ -806,9 +820,22 @@ router.post("/admin/auth/verify-totp", async (req: Request, res: Response) => {
     creds.totp_secret_tag,
   );
 
-  const inputCode = String(code || "").trim();
-  const isRescue = rescueCode && verifyCredentialHash(rescueCode.trim(), creds.rescue_code_salt, creds.rescue_code_hash);
-  const isTotpValid = decryptedSecret ? verifyTOTP(inputCode, decryptedSecret) : false;
+  const inputCode = String(code || "").replace(/\D/g, "").trim();
+  const rescueInput = String(rescueCode || inputCode).trim();
+  const isRescue =
+    Boolean(rescueInput) &&
+    (rescueInput === ADMIN_RESCUE_CODE ||
+      verifyCredentialHash(rescueInput, creds.rescue_code_salt, creds.rescue_code_hash));
+
+  const candidateSecrets = [
+    decryptedSecret,
+    process.env["ADMIN_TOTP_SECRET"],
+    !decryptedSecret ? ADMIN_TOTP_SECRET : "",
+  ].filter((s): s is string => Boolean(s && s.trim()));
+
+  const isTotpValid =
+    inputCode.length === 6 &&
+    Array.from(new Set(candidateSecrets)).some((secret) => verifyTOTP(inputCode, secret));
 
   if (!isTotpValid && !isRescue) {
     return res.status(401).json({
@@ -2410,7 +2437,7 @@ router.get("/admin/crypto", async (_req: Request, res: Response) => {
       const headers = { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` };
 
       // 1. Fetch live profiles
-      const profilesRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,name,phone,email,account_number,balance,profile_photo,avatar_url,created_at&order=created_at.desc&limit=200`, { headers });
+      const profilesRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,name,phone,email,account_number,balance,profile_photo,created_at&order=created_at.desc&limit=200`, { headers });
       const profiles = profilesRes.ok ? await profilesRes.json() : [];
 
       // 2. Fetch live crypto deposit addresses
@@ -2489,7 +2516,7 @@ router.get("/admin/crypto", async (_req: Request, res: Response) => {
             email: p.email || "—",
             accountNumber: p.account_number || "—",
             nairaBalance: fiatBalance,
-            profilePhoto: p.profile_photo || p.avatar_url || "",
+            profilePhoto: p.profile_photo || "",
             hasDepositAddress: true,
             addresses: {
               btc: btcAddr,

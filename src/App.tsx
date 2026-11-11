@@ -544,32 +544,21 @@ function PasscodeLockScreen({ onUnlock, onSignOut }: { onUnlock: () => void; onS
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex flex-col"
-      style={{ background: 'linear-gradient(170deg,#0f4f5c 0%,#083943 60%,#05242c 100%)', fontFamily:"'Inter',sans-serif" }}
+      className="vexa-security-screen fixed inset-0 z-[9999] flex flex-col"
+      style={{ fontFamily:"'Inter',sans-serif" }}
     >
       {/* Header area */}
       <div className="flex flex-col items-center pt-16 pb-4 px-6">
-        {/* Lock icon */}
-        <div className="w-12 h-12 rounded-full flex items-center justify-center mb-5"
-          style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)' }}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="5" y="11" width="14" height="10" rx="2"/>
-            <path d="M8 11V7a4 4 0 0 1 8 0v4"/>
-            <circle cx="12" cy="16" r="1.3" fill="rgba(255,255,255,0.5)"/>
-          </svg>
-        </div>
-
         {/* Avatar */}
-        <div className="w-[72px] h-[72px] rounded-full border-2 border-white/20 overflow-hidden flex items-center justify-center text-white text-[24px] font-bold mb-3 shrink-0"
-          style={{ background:'rgba(255,255,255,0.1)' }}>
+        <div className="w-[76px] h-[76px] rounded-full bg-[#E8ECF2] dark:bg-white/10 shadow-[0_0_0_2px_rgba(217,155,0,0.45)] dark:shadow-[0_0_0_2px_rgba(240,185,11,0.45)] overflow-hidden flex items-center justify-center text-[#181A20] dark:text-white text-[24px] font-bold mb-4 shrink-0">
           {profilePhoto
             ? <img src={profilePhoto} alt="" className="w-full h-full object-cover" />
             : initials}
         </div>
 
-        <p className="text-white/50 text-[13px] font-medium">Welcome back, {firstName}</p>
-        <p className="text-white text-[20px] font-bold mt-1 mb-0.5">Verify it's you</p>
-        <p className="text-white/35 text-[12px]">Session locked · enter your login passcode</p>
+        <p className="text-[#64748B] dark:text-[#848E9C] text-[13px] font-medium">Welcome back, {firstName}</p>
+        <p className="text-[#181A20] dark:text-[#EAECEF] text-[20px] font-bold mt-1 mb-0.5">Verify it's you</p>
+        <p className="text-[#64748B] dark:text-[#848E9C] text-[12px]">Session locked · enter your login passcode</p>
       </div>
 
       {/* PIN dots + error */}
@@ -581,30 +570,29 @@ function PasscodeLockScreen({ onUnlock, onSignOut }: { onUnlock: () => void; onS
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className={`w-[15px] h-[15px] rounded-full border-2 transition-all duration-150 ${
               i < pin.length
-                ? 'bg-white border-white shadow-[0_0_8px_rgba(255,255,255,0.5)] scale-110'
-                : 'border-white/25 bg-transparent'
+                ? 'bg-[#F0B90B] border-[#F0B90B] shadow-[0_0_8px_rgba(240,185,11,0.5)] scale-110'
+                : 'border-[#CBD5E1] bg-transparent dark:bg-white/20'
             }`} />
           ))}
         </div>
 
         <div className="h-5">
           {lockedOut ? (
-            <p className="text-orange-400 text-[12px] font-medium">
+            <p className="text-orange-600 dark:text-orange-400 text-[12px] font-medium">
               Locked — try again in <span className="font-bold tabular-nums">{Math.ceil(countdown / 1000)}s</span>
             </p>
           ) : errorMsg ? (
-            <p className="text-[#FF6B6B] text-[12px] font-medium">{errorMsg}</p>
+            <p className="text-[#DC2626] dark:text-[#FF6B6B] text-[12px] font-medium">{errorMsg}</p>
           ) : null}
         </div>
       </div>
 
       {/* Keypad */}
-      <div className="flex-1 flex flex-col justify-end pb-10 px-8">
-        <div className="grid grid-cols-3 gap-3 mb-3">
+      <div className="flex-1 flex flex-col justify-end pb-10 px-6">
+        <div className="grid grid-cols-3 gap-3 w-full max-w-[288px] mx-auto mb-3">
           {['1','2','3','4','5','6','7','8','9'].map(k => (
             <button key={k} onClick={() => addDigit(k)} disabled={lockedOut}
-              className="h-[62px] rounded-2xl text-[26px] font-semibold text-white transition-all active:scale-95 disabled:opacity-40"
-              style={{ background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.1)' }}>
+              className="h-[56px] rounded-2xl text-[24px] font-semibold bg-white dark:bg-white/10 border border-[#E2E8F0] dark:border-white/10 text-[#181A20] dark:text-white shadow-xs dark:shadow-none active:bg-[#F1F5F9] dark:active:bg-white/20 transition-all active:scale-95 disabled:opacity-40">
               {k}
             </button>
           ))}
@@ -613,24 +601,22 @@ function PasscodeLockScreen({ onUnlock, onSignOut }: { onUnlock: () => void; onS
           <div />
 
           <button onClick={() => addDigit('0')} disabled={lockedOut}
-            className="h-[62px] rounded-2xl text-[26px] font-semibold text-white transition-all active:scale-95 disabled:opacity-40"
-            style={{ background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.1)' }}>
+            className="h-[56px] rounded-2xl text-[24px] font-semibold bg-white dark:bg-white/10 border border-[#E2E8F0] dark:border-white/10 text-[#181A20] dark:text-white shadow-xs dark:shadow-none active:bg-[#F1F5F9] dark:active:bg-white/20 transition-all active:scale-95 disabled:opacity-40">
             0
           </button>
 
           <button onClick={removeDigit} disabled={lockedOut}
-            className="h-[62px] rounded-2xl flex items-center justify-center transition-all active:scale-95 disabled:opacity-40"
-            style={{ background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.1)' }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <path d="M20 12H8" stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
-              <path d="M13 7l-5 5 5 5" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+            className="h-[56px] rounded-2xl flex items-center justify-center bg-white dark:bg-white/10 border border-[#E2E8F0] dark:border-white/10 text-[#181A20] dark:text-white shadow-xs dark:shadow-none active:bg-[#F1F5F9] dark:active:bg-white/20 transition-all active:scale-95 disabled:opacity-40">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+              <path d="M20 12H8" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+              <path d="M13 7l-5 5 5 5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </button>
         </div>
 
         {/* Sign out link */}
         <button onClick={onSignOut}
-          className="mt-4 text-white/30 text-[13px] font-medium underline underline-offset-2 text-center">
+          className="mt-4 text-[#9A6800] hover:text-[#7A5200] dark:text-[#F0B90B]/85 dark:hover:text-[#F0B90B] text-[13px] font-medium underline underline-offset-2 text-center">
           Not you? Sign in with a different account
         </button>
       </div>
@@ -1701,8 +1687,8 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
         ) : (
           <div className="flex items-center gap-3 bg-white/10 rounded-2xl px-4 py-3">
             <div
-              className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-[14px] flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg,#0f4f5c,#0e7490)' }}
+              className="w-11 h-11 rounded-full flex items-center justify-center text-[#F0B90B] font-bold text-[14px] flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg,#181A20,#2B313A)' }}
             >
               {AGENT.avatar}
             </div>
@@ -1750,8 +1736,8 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
                     </div>
                   ) : (
                     <div
-                      className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[11px]"
-                      style={{ background: 'linear-gradient(135deg,#0f4f5c,#0e7490)' }}
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-[#F0B90B] font-bold text-[11px]"
+                      style={{ background: 'linear-gradient(135deg,#181A20,#2B313A)' }}
                     >
                       {AGENT.avatar}
                     </div>
@@ -1837,8 +1823,8 @@ function LiveChatModal({ onClose }: { onClose: () => void }) {
                 </div>
               ) : (
                 <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[11px]"
-                  style={{ background: 'linear-gradient(135deg,#0f4f5c,#0e7490)' }}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-[#F0B90B] font-bold text-[11px]"
+                  style={{ background: 'linear-gradient(135deg,#181A20,#2B313A)' }}
                 >
                   {AGENT.avatar}
                 </div>
@@ -3102,7 +3088,7 @@ function TransferPage() {
             {/* PIN dots */}
             <div className="flex gap-5">
               {[0,1,2,3].map(i => (
-                <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${i < pin.length ? 'bg-[#F0B90B] border-[#F0B90B] scale-110 shadow-xs' : 'border-[#CBD5E1] dark:border-[#3A4556] bg-transparent'}`} />
+                <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${i < pin.length ? 'bg-[#F0B90B] border-[#F0B90B] scale-110 shadow-xs' : 'border-[#CBD5E1] bg-transparent dark:bg-[#2B313A]'}`} />
               ))}
             </div>
             {(pinError || submitError) && (
@@ -3113,22 +3099,22 @@ function TransferPage() {
           </div>
 
           {/* Keypad */}
-          <div className="w-full max-w-xs">
+          <div className="w-full max-w-[288px]">
             <div className="grid grid-cols-3 gap-3 mb-4">
               {['1','2','3','4','5','6','7','8','9'].map(k => (
                 <button key={k} onClick={() => handlePinKey(k)}
-                  className="h-14 rounded-2xl bg-[#F2F3F5] text-[20px] font-semibold text-[#111] active:bg-[#E2E5EA] transition-colors">
+                  className="h-[54px] rounded-2xl bg-[#F2F3F5] text-[20px] font-semibold text-[#111] active:bg-[#E2E5EA] transition-colors">
                   {k}
                 </button>
               ))}
               <div />
               <button onClick={() => handlePinKey('0')}
-                className="h-14 rounded-2xl bg-[#F2F3F5] text-[20px] font-semibold text-[#111] active:bg-[#E2E5EA] transition-colors">
+                className="h-[54px] rounded-2xl bg-[#F2F3F5] text-[20px] font-semibold text-[#111] active:bg-[#E2E5EA] transition-colors">
                 0
               </button>
               <button onClick={handlePinBack}
-                className="h-14 rounded-2xl bg-[#F2F3F5] flex items-center justify-center active:bg-[#E2E5EA] transition-colors">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                className="h-[54px] rounded-2xl bg-[#F2F3F5] text-[#333] flex items-center justify-center active:bg-[#E2E5EA] transition-colors">
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 12H9M15 6l-6 6 6 6"/>
                 </svg>
               </button>
@@ -3554,20 +3540,20 @@ function PinModal({ amount, label, onSuccess, onClose }: { amount: string; label
         {blockedMessage && <p className="mb-4 rounded-xl bg-red-50 px-3 py-2.5 text-center text-[12px] font-semibold text-red-600">{blockedMessage}</p>}
         <div className="flex justify-center gap-5 mb-6">
           {[0,1,2,3].map(i => (
-            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${i < pin.length ? 'bg-[#F0B90B] border-[#F0B90B] scale-110' : 'border-[#CBD5E1] dark:border-[#3A4556]'}`} />
+            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${i < pin.length ? 'bg-[#F0B90B] border-[#F0B90B] scale-110' : 'border-[#CBD5E1] bg-transparent dark:bg-[#2B313A]'}`} />
           ))}
         </div>
-        <div className="grid grid-cols-3 gap-3 mb-4">
+        <div className="grid grid-cols-3 gap-2.5 w-full max-w-[288px] mx-auto mb-4">
           {['1','2','3','4','5','6','7','8','9'].map(k => (
             <button key={k} onClick={() => pin.length < 4 && setPin(p => p + k)}
-              className="h-13 py-3.5 rounded-2xl bg-[#F2F3F5] text-[20px] font-semibold text-[#111] active:bg-[#E2E5EA]">{k}</button>
+              className="h-[52px] rounded-2xl bg-[#F2F3F5] text-[20px] font-semibold text-[#111] active:bg-[#E2E5EA]">{k}</button>
           ))}
           <div />
           <button onClick={() => pin.length < 4 && setPin(p => p + '0')}
-            className="h-13 py-3.5 rounded-2xl bg-[#F2F3F5] text-[20px] font-semibold text-[#111] active:bg-[#E2E5EA]">0</button>
+            className="h-[52px] rounded-2xl bg-[#F2F3F5] text-[20px] font-semibold text-[#111] active:bg-[#E2E5EA]">0</button>
           <button onClick={() => setPin(p => p.slice(0, -1))}
-            className="h-13 py-3.5 rounded-2xl bg-[#F2F3F5] flex items-center justify-center active:bg-[#E2E5EA]">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12H9M15 6l-6 6 6 6"/></svg>
+            className="h-[52px] rounded-2xl bg-[#F2F3F5] text-[#333] flex items-center justify-center active:bg-[#E2E5EA]">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12H9M15 6l-6 6 6 6"/></svg>
           </button>
         </div>
         <button onClick={submit} disabled={pin.length < 4 || processing || movementBlocked}
@@ -4535,7 +4521,7 @@ function BudgetPage() {
     <PageShell title="Personal Budget" back="/">
       <div className="flex-1 overflow-y-auto px-4 py-4 pb-8" style={{ scrollbarWidth: 'none' }}>
         <div className="rounded-3xl p-5 text-white mb-4 overflow-hidden relative"
-          style={{ background: 'linear-gradient(135deg, #0f4f5c 0%, #0e7490 58%, #086477 100%)' }}>
+          style={{ background: 'linear-gradient(135deg, #22262F 0%, #181A20 58%, #0B0E11 100%)' }}>
           <div className="absolute -right-10 -top-12 w-36 h-36 rounded-full border-[20px] border-white/10" />
           <div className="relative">
             <div className="flex items-center justify-between mb-5">
@@ -4558,7 +4544,7 @@ function BudgetPage() {
               </div>
             </div>
             <div className="mt-5 h-2 bg-white/20 rounded-full overflow-hidden">
-              <div className={`h-full rounded-full ${overallPercent >= 90 ? 'bg-red-300' : 'bg-cyan-300'}`}
+              <div className={`h-full rounded-full ${overallPercent >= 90 ? 'bg-red-400' : 'bg-[#F0B90B]'}`}
                 style={{ width: `${overallPercent}%` }} />
             </div>
             <p className="text-white/60 text-[10px] mt-2">
@@ -4775,8 +4761,8 @@ function CardPage() {
           <section className="mt-5" aria-label="Card preview">
             <div
               data-testid="status-card-not-issued"
-              className="relative min-h-[194px] overflow-hidden rounded-[24px] p-5 text-white shadow-[0_16px_36px_rgba(15,79,92,0.18)]"
-              style={{ background: 'linear-gradient(135deg, #0f4f5c 0%, #0e7490 56%, #075a68 100%)' }}
+              className="relative min-h-[194px] overflow-hidden rounded-[24px] p-5 text-white shadow-[0_16px_36px_rgba(0,0,0,0.28)]"
+              style={{ background: 'linear-gradient(135deg, #22262F 0%, #181A20 56%, #0B0E11 100%)' }}
             >
               <div className="absolute -right-10 -top-14 h-48 w-48 rounded-full border border-white/10" />
               <div className="absolute -right-2 -top-7 h-32 w-32 rounded-full border border-white/10" />

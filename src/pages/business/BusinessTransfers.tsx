@@ -108,25 +108,24 @@ function TransferPinModal({ onSuccess, onClose }: { onSuccess: () => void; onClo
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: 100, opacity: 0 }}
         transition={{ type: 'spring', damping: 22, stiffness: 300 }}
-        className="relative rounded-t-3xl overflow-hidden z-10"
-        style={{ background: 'linear-gradient(180deg, #0e7490 0%, #0f4f5c 100%)' }}
+        className="theme-surface relative rounded-t-3xl overflow-hidden z-10 bg-white dark:bg-[#181A20] shadow-2xl"
       >
         {/* Handle */}
-        <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mt-3 mb-5" />
+        <div className="w-10 h-1 bg-[#D9DDE5] dark:bg-white/20 rounded-full mx-auto mt-3 mb-5" />
 
         <div className="px-6 pb-3">
           {/* Icon */}
           <div className="flex flex-col items-center mb-5">
             <div className="w-14 h-14 rounded-full flex items-center justify-center mb-3"
-              style={{ background: 'rgba(14,116,144,0.18)', border: '1px solid rgba(14,116,144,0.45)' }}>
+              style={{ background: 'rgba(240,185,11,0.14)', border: '1px solid rgba(217,155,0,0.4)' }}>
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-                <rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="#0e7490" strokeWidth="1.8"/>
-                <path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="#0e7490" strokeWidth="1.8" strokeLinecap="round"/>
-                <circle cx="12" cy="16" r="1.5" fill="#0e7490"/>
+                <rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="#B7791F" strokeWidth="1.8" className="dark:stroke-[#F0B90B]"/>
+                <path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="#B7791F" strokeWidth="1.8" strokeLinecap="round" className="dark:stroke-[#F0B90B]"/>
+                <circle cx="12" cy="16" r="1.5" fill="#B7791F" className="dark:fill-[#F0B90B]"/>
               </svg>
             </div>
-            <p className="text-white text-[16px] font-bold">Enter Transfer PIN</p>
-            <p className="text-white/50 text-[12px] mt-1">Confirm with your 6-digit Business PIN</p>
+            <p className="text-[#181A20] dark:text-white text-[16px] font-bold">Enter Transfer PIN</p>
+            <p className="text-[#64748B] dark:text-white/50 text-[12px] mt-1">Confirm with your 6-digit Business PIN</p>
           </div>
 
           {/* PIN dots */}
@@ -137,7 +136,7 @@ function TransferPinModal({ onSuccess, onClose }: { onSuccess: () => void; onClo
           >
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${
-                i < digits.length ? 'bg-[#00c6ff] border-[#00c6ff]' : 'border-white/30 bg-transparent'
+                i < digits.length ? 'bg-[#F0B90B] border-[#F0B90B]' : 'border-[#CBD5E1] bg-transparent dark:bg-white/20'
               }`} />
             ))}
           </motion.div>
@@ -145,39 +144,39 @@ function TransferPinModal({ onSuccess, onClose }: { onSuccess: () => void; onClo
           <AnimatePresence>
             {error && (
               <motion.p initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                className="text-[#ff6b6b] text-[12px] font-medium text-center mb-3">
+                className="text-[#DC2626] dark:text-[#ff6b6b] text-[12px] font-medium text-center mb-3">
                 {error}
               </motion.p>
             )}
           </AnimatePresence>
 
           {/* Keypad */}
-          <div className="grid grid-cols-3 gap-2 mb-3">
+          <div className="grid grid-cols-3 gap-2.5 w-full max-w-[288px] mx-auto mb-3">
             {['1','2','3','4','5','6','7','8','9'].map(k => (
               <button key={k} onClick={() => addKey(k)}
-                className="h-[52px] rounded-2xl bg-white/10 border border-white/10 text-[22px] font-semibold text-white active:bg-white/25 transition-colors select-none">
+                className="h-[50px] rounded-2xl bg-[#F4F5F7] dark:bg-white/10 border border-[#E2E8F0] dark:border-white/10 text-[21px] font-semibold text-[#181A20] dark:text-white active:bg-[#E5E7EB] dark:active:bg-white/25 transition-colors select-none">
                 {k}
               </button>
             ))}
             <div />
             <button onClick={() => addKey('0')}
-              className="h-[52px] rounded-2xl bg-white/10 border border-white/10 text-[22px] font-semibold text-white active:bg-white/25 transition-colors select-none">
+              className="h-[50px] rounded-2xl bg-[#F4F5F7] dark:bg-white/10 border border-[#E2E8F0] dark:border-white/10 text-[21px] font-semibold text-[#181A20] dark:text-white active:bg-[#E5E7EB] dark:active:bg-white/25 transition-colors select-none">
               0
             </button>
             <button onClick={removeKey}
-              className="h-[52px] rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/25 transition-colors select-none">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              className="h-[50px] rounded-2xl bg-[#F4F5F7] dark:bg-white/10 border border-[#E2E8F0] dark:border-white/10 text-[#181A20] dark:text-white flex items-center justify-center active:bg-[#E5E7EB] dark:active:bg-white/25 transition-colors select-none">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 12H9M15 6l-6 6 6 6"/>
               </svg>
             </button>
           </div>
 
           <button onClick={handleManualSubmit} disabled={digits.length < 6}
-            className="w-full h-[48px] rounded-xl bg-[#00c6ff]/20 border border-[#00c6ff]/40 text-[#00c6ff] text-[14px] font-bold mb-3 disabled:opacity-40 transition-opacity">
+            className="w-full h-[48px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[14px] font-bold mb-3 disabled:opacity-40 transition-all">
             Confirm Transfer
           </button>
 
-          <button onClick={onClose} className="w-full text-white/40 text-[13px] py-2 mb-2">Cancel</button>
+          <button onClick={onClose} className="w-full text-[#64748B] dark:text-white/40 text-[13px] py-2 mb-2">Cancel</button>
         </div>
       </motion.div>
     </div>

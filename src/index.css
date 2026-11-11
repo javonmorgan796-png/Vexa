@@ -231,9 +231,9 @@
   --theme-control: #EEF2F7;
   --theme-control-active: #FFFFFF;
   --theme-control-focus: #E8F4EF;
-  --theme-selected-control: #EAF2FF;
-  --theme-selected-text: #1D4ED8;
-  --theme-brand-text: #10535B;
+  --theme-selected-control: #FFF8E6;
+  --theme-selected-text: #9A6800;
+  --theme-brand-text: #9A6800;
 }
 
 .dark {
@@ -278,6 +278,16 @@ body {
 .theme-page {
   background-color: var(--theme-page) !important;
   color: var(--theme-primary-text);
+}
+
+.vexa-security-screen {
+  background: linear-gradient(180deg, #FFFFFF 0%, #F2F4F7 100%);
+  color: #181A20;
+}
+
+.dark .vexa-security-screen {
+  background: radial-gradient(circle at 50% 25%, #22262F 0%, #181A20 55%, #0B0E11 100%);
+  color: #EAECEF;
 }
 
 .theme-surface {

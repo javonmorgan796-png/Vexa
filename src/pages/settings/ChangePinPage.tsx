@@ -98,7 +98,7 @@ export default function ChangePinPage() {
         {/* PIN dots */}
         <div className="flex justify-center gap-5 mb-4">
           {[0, 1, 2, 3].map(i => (
-            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${i < activePin.length ? 'bg-[#F0B90B] border-[#F0B90B] scale-110' : 'border-[#CBD5E1] dark:border-[#3A4556]'}`} />
+            <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${i < activePin.length ? 'bg-[#F0B90B] border-[#F0B90B] scale-110' : 'border-[#CBD5E1] bg-transparent dark:bg-[#2B313A]'}`} />
           ))}
         </div>
 
@@ -109,21 +109,21 @@ export default function ChangePinPage() {
         <div className="flex-1" />
 
         {/* Keypad */}
-        <div className="grid grid-cols-3 gap-3 mb-4">
+        <div className="grid grid-cols-3 gap-3 w-full max-w-[288px] mx-auto mb-4">
           {['1','2','3','4','5','6','7','8','9'].map(k => (
             <button key={k} onClick={() => handleKey(k)}
-              className="h-[56px] rounded-2xl bg-white border border-[#F0F0F0] text-[22px] font-semibold text-[#111] active:bg-[#E2E5EA] shadow-sm transition-colors">
+              className="h-[54px] rounded-2xl bg-white border border-[#F0F0F0] text-[21px] font-semibold text-[#111] active:bg-[#E2E5EA] shadow-sm transition-colors">
               {k}
             </button>
           ))}
           <div />
           <button onClick={() => handleKey('0')}
-            className="h-[56px] rounded-2xl bg-white border border-[#F0F0F0] text-[22px] font-semibold text-[#111] active:bg-[#E2E5EA] shadow-sm transition-colors">
+            className="h-[54px] rounded-2xl bg-white border border-[#F0F0F0] text-[21px] font-semibold text-[#111] active:bg-[#E2E5EA] shadow-sm transition-colors">
             0
           </button>
           <button onClick={handleBack}
-            className="h-[56px] rounded-2xl bg-white border border-[#F0F0F0] flex items-center justify-center active:bg-[#E2E5EA] shadow-sm transition-colors">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12H9M15 6l-6 6 6 6"/></svg>
+            className="h-[54px] rounded-2xl bg-white border border-[#F0F0F0] text-[#333] flex items-center justify-center active:bg-[#E2E5EA] shadow-sm transition-colors">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12H9M15 6l-6 6 6 6"/></svg>
           </button>
         </div>
 

@@ -106,7 +106,23 @@ export const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }
 
   // Handle TOTP input changes
   const handleOtpChange = (index: number, value: string) => {
-    const digit = value.replace(/\D/g, '').slice(-1);
+    const digitsOnly = value.replace(/\D/g, '');
+    if (digitsOnly.length > 1) {
+      const updated = [...totpDigits];
+      const slice = digitsOnly.slice(0, 6 - index);
+      for (let i = 0; i < slice.length; i++) {
+        updated[index + i] = slice[i];
+      }
+      setTotpDigits(updated);
+      const nextIndex = Math.min(index + slice.length, 5);
+      otpInputRefs.current[nextIndex]?.focus();
+      if (updated.every((d) => d !== '')) {
+        verifyTotpCode(updated.join(''));
+      }
+      return;
+    }
+
+    const digit = digitsOnly.slice(-1);
     const updated = [...totpDigits];
     updated[index] = digit;
     setTotpDigits(updated);
@@ -491,7 +507,7 @@ export const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }
                     }}
                     type="text"
                     inputMode="numeric"
-                    maxLength={1}
+                    autoComplete={idx === 0 ? 'one-time-code' : 'off'}
                     value={digit}
                     onChange={(e) => handleOtpChange(idx, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(idx, e)}

@@ -126,6 +126,7 @@ type DepositAddress = {
   provider?: 'tatum' | 'unconfigured';
   networkMode?: 'mainnet' | 'testnet';
   liveDepositEnabled?: boolean;
+  directSyncEnabled?: boolean;
   subscriptionStatus?: string;
   subscriptionError?: string;
   missingConfig?: string[];
@@ -216,6 +217,8 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
     generateDeterministicDepositAddress(userIdentifier, 'BTC')
   );
   const [addressLoading, setAddressLoading] = useState(false);
+  const [syncingDeposits, setSyncingDeposits] = useState(false);
+  const [syncNotice, setSyncNotice] = useState('');
   const [selectedActivity, setSelectedActivity] = useState<CryptoTransaction | null>(null);
 
   const fetchPrices = useCallback(async () => {
@@ -375,9 +378,82 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
     }
   }, [asset, moneyMovementLocked, securityState.freezeActive, user?.id, userIdentifier]);
 
+  const syncDeposits = useCallback(async (targetAsset?: CryptoAsset, manual = false) => {
+    if (moneyMovementLocked || !user?.id) return;
+    setSyncingDeposits(true);
+    if (manual) {
+      setSyncNotice('');
+      setFormError('');
+      setMessage('');
+    }
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+      const response = await fetch('/api/crypto/sync-deposits', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify(targetAsset ? { asset: targetAsset } : {}),
+      });
+      if (!response.ok) {
+        if (manual) {
+          const errBody = await response.json().catch(() => null);
+          setFormError(errBody?.message || 'Could not check blockchain deposits right now.');
+        }
+        return;
+      }
+      const result = (await response.json()) as {
+        creditedCount?: number;
+        pendingCount?: number;
+        newlyCredited?: Array<{ asset: CryptoAsset; amount: string }>;
+        pendingDeposits?: Array<{ asset: CryptoAsset; amount: string; confirmations: number; requiredConfirmations: number }>;
+      };
+      if ((result.creditedCount ?? 0) > 0) {
+        const creditedSummary = (result.newlyCredited ?? [])
+          .map(item => `${item.amount} ${item.asset}`)
+          .join(', ');
+        setMessage(`Deposit credited: ${creditedSummary} added to your Exchange wallet.`);
+        setSyncNotice('');
+        await refreshFinance();
+      } else if ((result.pendingCount ?? 0) > 0 && result.pendingDeposits?.[0]) {
+        const firstPending = result.pendingDeposits[0];
+        setSyncNotice(
+          `${firstPending.amount} ${firstPending.asset} detected (${firstPending.confirmations}/${firstPending.requiredConfirmations} confirmations). It will credit automatically once confirmed.`,
+        );
+      } else if (manual) {
+        setSyncNotice(
+          targetAsset
+            ? `Checked blockchain for ${targetAsset} deposits — none detected on this address yet.`
+            : 'Checked blockchain for BTC, ETH & USDT deposits — no new transactions detected yet.',
+        );
+      }
+    } catch {
+      if (manual) {
+        setFormError('Could not check blockchain deposits right now.');
+      }
+    } finally {
+      setSyncingDeposits(false);
+    }
+  }, [moneyMovementLocked, refreshFinance, user?.id]);
+
   useEffect(() => {
     if (view === 'receive') void loadDepositAddress(asset);
   }, [view, asset, loadDepositAddress]);
+
+  useEffect(() => {
+    if ((view === 'overview' || view === 'receive') && user?.id && !moneyMovementLocked) {
+      const targetAsset = view === 'receive' ? asset : undefined;
+      void syncDeposits(targetAsset, false);
+      const timer = window.setInterval(() => {
+        void syncDeposits(targetAsset, false);
+      }, 20000);
+      return () => window.clearInterval(timer);
+    }
+    return undefined;
+  }, [asset, moneyMovementLocked, syncDeposits, user?.id, view]);
 
   const submitDeposit = async () => {
     if (moneyMovementLocked) return setFormError('Money movement is blocked by account security.');
@@ -562,7 +638,17 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
                 <p className="text-[16px] font-bold theme-text-primary">Your assets</p>
                  <p className="text-[11px] theme-text-secondary mt-0.5">Reference rates in {fiatCurrency === 'NGN' ? 'Naira' : 'US Dollars'}</p>
               </div>
-              <button onClick={() => void refreshFinance()} className="text-[#B7791F] dark:text-[#F0B90B] p-2.5 rounded-full hover:bg-black/5 dark:hover:bg-[#2B313A]" aria-label="Refresh exchange balance"><RefreshCw className="w-4 h-4" /></button>
+              <button
+                type="button"
+                onClick={() => {
+                  void refreshFinance();
+                  void syncDeposits(undefined, false);
+                }}
+                className="text-[#B7791F] dark:text-[#F0B90B] p-2.5 rounded-full hover:bg-black/5 dark:hover:bg-[#2B313A]"
+                aria-label="Refresh exchange balance"
+              >
+                <RefreshCw className={`w-4 h-4 ${syncingDeposits ? 'animate-spin' : ''}`} />
+              </button>
             </div>
             <div className="space-y-2">
               {(Object.keys(ASSET_META) as CryptoAsset[]).map(item => {
@@ -872,15 +958,20 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
                 <div className="inline-flex rounded-2xl bg-white p-3 border border-[#E8EBF0] shadow-xs">
                   <QRCodeSVG value={depositAddress.address} size={180} includeMargin />
                 </div>
-                <div className="mt-3 flex items-center justify-center gap-2">
+                <div className="mt-3 flex items-center justify-center gap-2 flex-wrap">
                   <p className="text-[12px] font-bold theme-text-primary">{depositAddress.network}</p>
-                  {depositAddress.liveDepositEnabled ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#159669] bg-emerald-50 dark:bg-[#15352D] dark:text-[#0ECB81] px-2 py-0.5 rounded-full border border-emerald-200">
+                  {depositAddress.networkMode === 'testnet' ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 dark:bg-[#362918] dark:text-[#FCD38A] px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-700/40">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                      Testnet Mode
+                    </span>
+                  ) : depositAddress.liveDepositEnabled || depositAddress.directSyncEnabled ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#159669] bg-emerald-50 dark:bg-[#15352D] dark:text-[#0ECB81] px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800/40">
                       <span className="w-1.5 h-1.5 rounded-full bg-[#0ECB81]" />
                       Custody Vault
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 dark:bg-[#362918] dark:text-[#FCD38A] px-2 py-0.5 rounded-full border border-amber-200">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 dark:bg-[#362918] dark:text-[#FCD38A] px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-700/40">
                       <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                       Deposit Listener Inactive
                     </span>
@@ -900,23 +991,39 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
                     <Copy className="w-4 h-4" />
                   </button>
                 </div>
+                <button
+                  type="button"
+                  disabled={syncingDeposits || addressLoading || moneyMovementLocked}
+                  onClick={() => void syncDeposits(asset, true)}
+                  data-testid="button-check-deposit"
+                  className="mt-3 w-full py-2.5 px-3 rounded-xl border theme-border theme-surface hover:bg-[#F5F7FA] dark:hover:bg-[#232933] text-[12px] font-bold theme-text-primary inline-flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 text-[#B7791F] dark:text-[#F0B90B] ${syncingDeposits ? 'animate-spin' : ''}`} />
+                  {syncingDeposits ? `Checking ${asset} blockchain…` : `Check for ${asset} Deposit`}
+                </button>
+                {syncNotice && (
+                  <p className="mt-2.5 rounded-xl bg-blue-50 dark:bg-[#172636] border border-blue-200 dark:border-blue-800/40 px-3 py-2 text-left text-[11px] text-blue-800 dark:text-blue-200">
+                    {syncNotice}
+                  </p>
+                )}
                 {addressLoading && (
                   <p className="text-[10px] text-[#B7791F] dark:text-[#F0B90B] mt-2 font-medium">Syncing custody vault verification…</p>
                 )}
                 {!addressLoading && (!depositAddress.liveDepositEnabled || depositAddress.networkMode === 'testnet' || depositAddress.subscriptionError) && (
-                  <div className="mt-3 rounded-xl bg-amber-50 dark:bg-[#362918] border border-amber-200 px-3 py-2.5 text-left text-[10.5px] text-amber-800 dark:text-[#FCD38A] leading-relaxed">
-                    {!depositAddress.liveDepositEnabled ? (
+                  <div className="mt-3 rounded-xl bg-amber-50 dark:bg-[#362918] border border-amber-200 dark:border-amber-700/40 px-3 py-2.5 text-left text-[10.5px] text-amber-800 dark:text-[#FCD38A] leading-relaxed">
+                    {depositAddress.networkMode === 'testnet' ? (
                       <>
-                        <b>Live blockchain deposits are not active yet.</b>{' '}
-                        {depositAddress.missingConfig && depositAddress.missingConfig.length > 0
-                          ? `Missing server secrets: ${depositAddress.missingConfig.join(', ')}. `
-                          : depositAddress.subscriptionError
-                            ? `${depositAddress.subscriptionError}. `
-                            : 'Tatum custody webhook subscription is pending. '}
+                        <b>Testnet API Key Active:</b> Your server is using a Tatum Testnet key (<code>t-...</code>). Only Testnet coins (Bitcoin Testnet <code>tb1q...</code>, Ethereum Sepolia, Tron Shasta/Nile) can arrive here. Real mainnet coins sent from live exchanges will not appear until you switch <code>TATUM_API_KEY</code> to a Tatum Mainnet key.
                       </>
-                    ) : depositAddress.networkMode === 'testnet' ? (
+                    ) : !depositAddress.liveDepositEnabled ? (
                       <>
-                        <b>Testnet API Key Detected:</b> This wallet is connected to Tatum Testnet (for example, Bitcoin <code>tb1q...</code>). Mainnet coins cannot be sent to a testnet address. Switch to a Tatum Mainnet API key for real mainnet deposits.
+                        <b>Automatic webhook pending</b>
+                        {depositAddress.missingConfig && depositAddress.missingConfig.length > 0
+                          ? ` (missing server secrets: ${depositAddress.missingConfig.join(', ')}). `
+                          : depositAddress.subscriptionError
+                            ? ` (${depositAddress.subscriptionError}). `
+                            : '. '}
+                        {depositAddress.directSyncEnabled && 'Use "Check for Deposit" above after sending to verify and credit your deposit directly from the blockchain.'}
                       </>
                     ) : (
                       <>

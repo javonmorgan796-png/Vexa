@@ -433,7 +433,12 @@ const KNOWN_TRON_USDT_CONTRACTS = new Set(
 function eventMatchesDepositAsset(depositAsset: Asset, event: Record<string, unknown>): boolean {
   const eventType = (stringValue(event.type) ?? "").toLowerCase();
   const eventAsset = (stringValue(event.asset) ?? stringValue(event.tokenSymbol) ?? "").trim();
-  const contractAddress = (stringValue(event.contractAddress) ?? "").trim();
+  const contractAddress = (
+    stringValue(event.contractAddress) ??
+    stringValue(event.tokenAddress) ??
+    stringValue(event.counterAddress) ??
+    ""
+  ).trim();
 
   if (depositAsset === "BTC") {
     if (eventType && !["native", "utxo", "incoming", "coin"].includes(eventType)) return false;
@@ -443,18 +448,477 @@ function eventMatchesDepositAsset(depositAsset: Asset, event: Record<string, unk
 
   if (depositAsset === "ETH") {
     if (["token", "erc20", "trc20", "bep20", "nft", "erc721", "erc1155"].includes(eventType)) return false;
-    if (contractAddress) return false;
+    if (stringValue(event.contractAddress) || stringValue(event.tokenAddress)) return false;
     if (eventAsset && !["eth", "ethereum", "seth"].includes(eventAsset.toLowerCase())) return false;
     return true;
   }
 
   // USDT on Tron (TRC-20)
   if (eventType === "native" || eventAsset.toUpperCase() === "TRX") return false;
+  const upperAsset = eventAsset.toUpperCase();
+  if (upperAsset === "USDT" || upperAsset === "USDT_TRON") return true;
   const candidateContract = contractAddress || eventAsset;
   if (!candidateContract) return true;
   const upper = candidateContract.toUpperCase();
   if (upper === "USDT" || upper === "USDT_TRON") return true;
   return KNOWN_TRON_USDT_CONTRACTS.has(upper);
+}
+
+function tokenUnitsToDecimalString(rawValue: string | number | bigint, decimals: number): string | null {
+  try {
+    const raw = String(rawValue).trim();
+    if (!raw) return null;
+    if (raw.includes(".")) {
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) && parsed > 0 ? raw : null;
+    }
+    if (!/^\d+$/.test(raw)) return null;
+    const units = BigInt(raw);
+    if (units <= 0n) return null;
+    if (decimals <= 0) return units.toString();
+    const base = 10n ** BigInt(decimals);
+    const whole = units / base;
+    const frac = (units % base).toString().padStart(decimals, "0").replace(/0+$/, "");
+    return frac ? `${whole}.${frac}` : `${whole}`;
+  } catch {
+    return null;
+  }
+}
+
+type OnChainIncomingTx = {
+  txHash: string;
+  amount: string;
+  confirmations: number;
+};
+
+async function fetchJsonWithTimeout<T = any>(url: string, headers: Record<string, string> = {}, timeoutMs = 10000): Promise<T | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const resp = await fetch(url, { headers, signal: controller.signal });
+    if (!resp.ok) return null;
+    return (await resp.json().catch(() => null)) as T | null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function getBtcCurrentBlockHeight(isTestnet: boolean): Promise<number> {
+  if (TATUM_API_KEY) {
+    const info = await fetchJsonWithTimeout<{ blocks?: number }>(
+      "https://api.tatum.io/v3/bitcoin/info",
+      { accept: "application/json", "x-api-key": TATUM_API_KEY },
+    );
+    if (typeof info?.blocks === "number" && info.blocks > 0) return info.blocks;
+  }
+  const mempoolBase = isTestnet ? "https://mempool.space/testnet/api" : "https://mempool.space/api";
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const resp = await fetch(`${mempoolBase}/blocks/tip/height`, { signal: controller.signal });
+    clearTimeout(timer);
+    if (resp.ok) {
+      const height = Number(await resp.text());
+      if (Number.isFinite(height) && height > 0) return height;
+    }
+  } catch {
+    // Ignore mempool fallback timeout
+  }
+  return 0;
+}
+
+async function getEthCurrentBlockHeight(): Promise<number> {
+  if (!TATUM_API_KEY) return 0;
+  const data = await fetchJsonWithTimeout<number | { blockNumber?: number }>(
+    "https://api.tatum.io/v3/ethereum/block/current",
+    { accept: "application/json", "x-api-key": TATUM_API_KEY },
+  );
+  if (typeof data === "number" && Number.isFinite(data)) return data;
+  if (data && typeof data === "object" && typeof data.blockNumber === "number") return data.blockNumber;
+  return 0;
+}
+
+async function getTronCurrentBlockHeight(isTestnet: boolean): Promise<number> {
+  if (TATUM_API_KEY) {
+    const info = await fetchJsonWithTimeout<{ blockNumber?: number }>(
+      "https://api.tatum.io/v3/tron/info",
+      { accept: "application/json", "x-api-key": TATUM_API_KEY },
+    );
+    if (typeof info?.blockNumber === "number" && info.blockNumber > 0) return info.blockNumber;
+  }
+  const tronGridBase = isTestnet ? "https://api.shasta.trongrid.io" : "https://api.trongrid.io";
+  const blockData = await fetchJsonWithTimeout<{ block_header?: { raw_data?: { number?: number } } }>(
+    `${tronGridBase}/wallet/getnowblock`,
+    { accept: "application/json" },
+  );
+  const num = blockData?.block_header?.raw_data?.number;
+  return typeof num === "number" && Number.isFinite(num) ? num : 0;
+}
+
+async function fetchIncomingBtcTxs(address: string, isTestnet: boolean): Promise<OnChainIncomingTx[]> {
+  const addrLower = address.toLowerCase();
+  const currentHeight = await getBtcCurrentBlockHeight(isTestnet);
+  const found: OnChainIncomingTx[] = [];
+  const seen = new Set<string>();
+
+  if (TATUM_API_KEY) {
+    const txs = await fetchJsonWithTimeout<Array<{
+      hash?: string;
+      blockNumber?: number;
+      inputs?: Array<{ coin?: { address?: string; value?: number | string } }>;
+      outputs?: Array<{ address?: string; value?: number | string }>;
+    }>>(
+      `https://api.tatum.io/v3/bitcoin/transaction/address/${encodeURIComponent(address)}?pageSize=25`,
+      { accept: "application/json", "x-api-key": TATUM_API_KEY },
+    );
+    if (Array.isArray(txs)) {
+      for (const tx of txs) {
+        const txHash = stringValue(tx.hash);
+        if (!txHash || seen.has(txHash)) continue;
+        let receivedSats = 0n;
+        let spentSats = 0n;
+        for (const out of tx.outputs ?? []) {
+          if (out.address?.toLowerCase() === addrLower && out.value !== undefined) {
+            const rawStr = String(out.value).trim();
+            if (rawStr.includes(".")) {
+              receivedSats += BigInt(Math.round(Number(rawStr) * 1e8));
+            } else if (/^\d+$/.test(rawStr)) {
+              receivedSats += BigInt(rawStr);
+            }
+          }
+        }
+        for (const inp of tx.inputs ?? []) {
+          if (inp.coin?.address?.toLowerCase() === addrLower && inp.coin?.value !== undefined) {
+            const rawStr = String(inp.coin.value).trim();
+            if (rawStr.includes(".")) {
+              spentSats += BigInt(Math.round(Number(rawStr) * 1e8));
+            } else if (/^\d+$/.test(rawStr)) {
+              spentSats += BigInt(rawStr);
+            }
+          }
+        }
+        const netSats = receivedSats - spentSats;
+        if (netSats <= 0n) continue;
+        const amount = tokenUnitsToDecimalString(netSats, 8);
+        if (!amount) continue;
+        const blockNum = typeof tx.blockNumber === "number" && tx.blockNumber > 0 ? tx.blockNumber : 0;
+        const confirmations = blockNum > 0 && currentHeight >= blockNum ? currentHeight - blockNum + 1 : blockNum > 0 ? 1 : 0;
+        seen.add(txHash);
+        found.push({ txHash, amount, confirmations });
+      }
+    }
+  }
+
+  // Fallback / supplement via Mempool.space if Tatum returned nothing
+  if (found.length === 0) {
+    const bases = isTestnet
+      ? ["https://mempool.space/testnet/api", "https://mempool.space/testnet4/api"]
+      : ["https://mempool.space/api"];
+    for (const base of bases) {
+      const txs = await fetchJsonWithTimeout<Array<{
+        txid?: string;
+        status?: { confirmed?: boolean; block_height?: number };
+        vin?: Array<{ prevout?: { scriptpubkey_address?: string; value?: number } }>;
+        vout?: Array<{ scriptpubkey_address?: string; value?: number }>;
+      }>>(`${base}/address/${encodeURIComponent(address)}/txs`, { accept: "application/json" });
+      if (!Array.isArray(txs) || txs.length === 0) continue;
+
+      let mempoolHeight = currentHeight;
+      if (mempoolHeight === 0) {
+        try {
+          const r = await fetch(`${base}/blocks/tip/height`);
+          if (r.ok) mempoolHeight = Number(await r.text()) || 0;
+        } catch {
+          // ignore
+        }
+      }
+      for (const tx of txs) {
+        const txHash = stringValue(tx.txid);
+        if (!txHash || seen.has(txHash)) continue;
+        let receivedSats = 0n;
+        let spentSats = 0n;
+        for (const out of tx.vout ?? []) {
+          if (out.scriptpubkey_address?.toLowerCase() === addrLower && typeof out.value === "number") {
+            receivedSats += BigInt(Math.round(out.value));
+          }
+        }
+        for (const inp of tx.vin ?? []) {
+          if (inp.prevout?.scriptpubkey_address?.toLowerCase() === addrLower && typeof inp.prevout?.value === "number") {
+            spentSats += BigInt(Math.round(inp.prevout.value));
+          }
+        }
+        const netSats = receivedSats - spentSats;
+        if (netSats <= 0n) continue;
+        const amount = tokenUnitsToDecimalString(netSats, 8);
+        if (!amount) continue;
+        const blockHeight = tx.status?.block_height ?? 0;
+        const confirmations = tx.status?.confirmed
+          ? (blockHeight > 0 && mempoolHeight >= blockHeight ? mempoolHeight - blockHeight + 1 : 3)
+          : 0;
+        seen.add(txHash);
+        found.push({ txHash, amount, confirmations });
+      }
+      if (found.length > 0) break;
+    }
+  }
+
+  return found;
+}
+
+async function fetchIncomingEthTxs(address: string): Promise<OnChainIncomingTx[]> {
+  if (!TATUM_API_KEY) return [];
+  const addrLower = address.toLowerCase();
+  const [currentHeight, txs] = await Promise.all([
+    getEthCurrentBlockHeight(),
+    fetchJsonWithTimeout<Array<{
+      hash?: string;
+      transactionHash?: string;
+      from?: string;
+      to?: string;
+      value?: string | number;
+      blockNumber?: number;
+      status?: boolean;
+    }> | { result?: Array<Record<string, unknown>> }>(
+      `https://api.tatum.io/v3/ethereum/account/transaction/${encodeURIComponent(address)}?pageSize=25`,
+      { accept: "application/json", "x-api-key": TATUM_API_KEY },
+    ),
+  ]);
+
+  const list = Array.isArray(txs) ? txs : Array.isArray((txs as { result?: unknown[] } | null)?.result) ? (txs as { result: any[] }).result : [];
+  const found: OnChainIncomingTx[] = [];
+  for (const tx of list) {
+    if (tx.status === false) continue;
+    const to = stringValue(tx.to);
+    const from = stringValue(tx.from);
+    if (!to || to.toLowerCase() !== addrLower) continue;
+    if (from && from.toLowerCase() === addrLower) continue;
+    const txHash = stringValue(tx.hash) ?? stringValue(tx.transactionHash);
+    if (!txHash || tx.value === undefined || tx.value === null) continue;
+    const amount = tokenUnitsToDecimalString(tx.value, 18);
+    if (!amount) continue;
+    const blockNum = typeof tx.blockNumber === "number" && tx.blockNumber > 0 ? tx.blockNumber : 0;
+    const confirmations = blockNum > 0 && currentHeight >= blockNum ? currentHeight - blockNum + 1 : blockNum > 0 ? 1 : 0;
+    found.push({ txHash, amount, confirmations });
+  }
+  return found;
+}
+
+async function fetchIncomingTronUsdtTxs(address: string, isTestnet: boolean): Promise<OnChainIncomingTx[]> {
+  const currentHeight = await getTronCurrentBlockHeight(isTestnet);
+  const items: Array<{
+    txID?: string;
+    transaction_id?: string;
+    hash?: string;
+    from?: string;
+    to?: string;
+    value?: string | number;
+    blockNumber?: number;
+    block_timestamp?: number;
+    contractAddress?: string;
+    tokenInfo?: { symbol?: string; address?: string; decimals?: number | string };
+    token_info?: { symbol?: string; address?: string; decimals?: number | string };
+  }> = [];
+
+  if (TATUM_API_KEY) {
+    const tatumResp = await fetchJsonWithTimeout<
+      | { transactions?: typeof items; data?: typeof items }
+      | typeof items
+    >(
+      `https://api.tatum.io/v3/tron/transaction/account/${encodeURIComponent(address)}/trc20`,
+      { accept: "application/json", "x-api-key": TATUM_API_KEY },
+    );
+    if (Array.isArray(tatumResp)) items.push(...tatumResp);
+    else if (Array.isArray(tatumResp?.transactions)) items.push(...tatumResp.transactions);
+    else if (Array.isArray(tatumResp?.data)) items.push(...tatumResp.data);
+  }
+
+  // Fallback to TronGrid if Tatum TRC-20 index returned nothing
+  if (items.length === 0) {
+    const bases = isTestnet
+      ? ["https://api.shasta.trongrid.io", "https://nile.trongrid.io"]
+      : ["https://api.trongrid.io"];
+    for (const base of bases) {
+      const gridResp = await fetchJsonWithTimeout<{ data?: typeof items }>(
+        `${base}/v1/accounts/${encodeURIComponent(address)}/transactions/trc20?limit=25&only_to=true&only_confirmed=true`,
+        { accept: "application/json" },
+      );
+      if (Array.isArray(gridResp?.data) && gridResp.data.length > 0) {
+        items.push(...gridResp.data);
+        break;
+      }
+    }
+  }
+
+  const found: OnChainIncomingTx[] = [];
+  const seen = new Set<string>();
+
+  for (const tx of items) {
+    const txHash = stringValue(tx.txID) ?? stringValue(tx.transaction_id) ?? stringValue(tx.hash);
+    if (!txHash || seen.has(txHash)) continue;
+    if (tx.to !== address) continue;
+    if (tx.from && tx.from === address) continue;
+
+    const tokenInfo = tx.tokenInfo ?? tx.token_info;
+    const tokenAddr = (tokenInfo?.address ?? tx.contractAddress ?? "").trim().toUpperCase();
+    const tokenSym = (tokenInfo?.symbol ?? "").trim().toUpperCase();
+    if (!KNOWN_TRON_USDT_CONTRACTS.has(tokenAddr) && tokenSym !== "USDT") {
+      continue;
+    }
+
+    const decimals = Number.isFinite(Number(tokenInfo?.decimals)) ? Number(tokenInfo?.decimals) : 6;
+    if (tx.value === undefined || tx.value === null) continue;
+    const amount = tokenUnitsToDecimalString(tx.value, decimals);
+    if (!amount) continue;
+
+    let confirmations = 0;
+    let failedTx = false;
+    if (typeof tx.blockNumber === "number" && tx.blockNumber > 0) {
+      confirmations = currentHeight >= tx.blockNumber ? currentHeight - tx.blockNumber + 1 : 1;
+    } else if (TATUM_API_KEY) {
+      const txDetail = await fetchJsonWithTimeout<{
+        blockNumber?: number;
+        ret?: Array<{ contractRet?: string }>;
+      }>(
+        `https://api.tatum.io/v3/tron/transaction/${encodeURIComponent(txHash)}`,
+        { accept: "application/json", "x-api-key": TATUM_API_KEY },
+      );
+      const contractRet = txDetail?.ret?.[0]?.contractRet;
+      if (contractRet && contractRet !== "SUCCESS") {
+        failedTx = true;
+      } else if (typeof txDetail?.blockNumber === "number" && txDetail.blockNumber > 0) {
+        confirmations = currentHeight >= txDetail.blockNumber ? currentHeight - txDetail.blockNumber + 1 : 1;
+      }
+    } else if (typeof tx.block_timestamp === "number" && Date.now() - tx.block_timestamp > 60_000) {
+      confirmations = 20;
+    }
+
+    if (failedTx) continue;
+    // Tron TRC-20 block time is ~3s; if TronGrid returned only_confirmed=true after >60s, credit even if currentHeight lookup timed out
+    if (confirmations === 0 && typeof tx.block_timestamp === "number" && Date.now() - tx.block_timestamp > 60_000) {
+      confirmations = 20;
+    }
+    seen.add(txHash);
+    found.push({ txHash, amount, confirmations });
+  }
+
+  return found;
+}
+
+async function fetchIncomingOnChainTxs(row: DepositAddressRow): Promise<OnChainIncomingTx[]> {
+  const isTestnet = IS_TATUM_TESTNET || (row.asset === "BTC" && /^(tb1|[mn2])/i.test(row.address));
+  if (row.asset === "BTC") return fetchIncomingBtcTxs(row.address, isTestnet);
+  if (row.asset === "ETH") return fetchIncomingEthTxs(row.address);
+  return fetchIncomingTronUsdtTxs(row.address, isTestnet);
+}
+
+async function verifyIncomingTxOnChain(row: DepositAddressRow, txHash: string): Promise<OnChainIncomingTx | null> {
+  const incoming = await fetchIncomingOnChainTxs(row);
+  const match = incoming.find((item) => item.txHash.toLowerCase() === txHash.toLowerCase());
+  return match ?? null;
+}
+
+async function recordAndCreditDeposit(
+  depositAddress: DepositAddressRow,
+  txHash: string,
+  amount: string,
+  confirmations: number,
+) {
+  const isTestnet = IS_TATUM_TESTNET || (depositAddress.asset === "BTC" && /^(tb1|[mn2])/i.test(depositAddress.address));
+  const config = assetConfig(depositAddress.asset, isTestnet);
+  const result = await supabaseRpc("process_tatum_crypto_deposit", {
+    p_deposit_reference: `${depositAddress.network}:${txHash}:${depositAddress.address}:${depositAddress.asset}`,
+    p_user_id: depositAddress.user_id,
+    p_asset: depositAddress.asset,
+    p_network: depositAddress.network,
+    p_address: depositAddress.address,
+    p_transaction_hash: txHash,
+    p_amount: amount,
+    p_confirmations: Math.max(0, Math.floor(confirmations)),
+    p_required_confirmations: config.confirmations,
+  });
+  if (!result.ok) {
+    throw new Error(`Deposit processing failed (${result.status})`);
+  }
+  const body = (await result.json()) as {
+    status?: string;
+    confirmations?: number;
+    required_confirmations?: number;
+    notified?: boolean;
+  };
+
+  if (!body.notified) {
+    const txShort = txHash.slice(0, 10);
+    const displayAmount = formatCryptoAmountDisplay(amount);
+    if (body.status === "pending") {
+      await insertCryptoNotification(
+        depositAddress.user_id,
+        `${depositAddress.asset} deposit incoming`,
+        `${displayAmount} ${depositAddress.asset} detected on ${depositAddress.network} (${body.confirmations ?? 0}/${body.required_confirmations ?? config.confirmations} confirmations · Tx ${txShort}…).`,
+        txShort,
+      );
+    } else if (body.status === "credited") {
+      await insertCryptoNotification(
+        depositAddress.user_id,
+        `${depositAddress.asset} deposit received`,
+        `${displayAmount} ${depositAddress.asset} received on ${depositAddress.network} and credited to your Exchange wallet (Tx ${txShort}…).`,
+        txShort,
+      );
+    }
+  }
+
+  return body;
+}
+
+export async function syncUserCryptoDeposits(userId: string, filterAsset?: Asset) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("Deposit storage is not configured");
+  }
+  const assetClause = filterAsset ? `&asset=eq.${encodeURIComponent(filterAsset)}` : "";
+  const addrRes = await supabaseRequest(
+    `crypto_deposit_addresses?user_id=eq.${encodeURIComponent(userId)}${assetClause}&select=id,user_id,asset,address,network,created_at,tatum_subscription_id,tatum_subscription_status`,
+  );
+  if (!addrRes.ok) {
+    throw new Error("Could not read user deposit addresses");
+  }
+  const addresses = (await safeJson<DepositAddressRow[]>(addrRes)) ?? [];
+
+  let creditedCount = 0;
+  let pendingCount = 0;
+  const newlyCredited: Array<{ asset: Asset; amount: string; txHash: string }> = [];
+  const pendingDeposits: Array<{ asset: Asset; amount: string; txHash: string; confirmations: number; requiredConfirmations: number }> = [];
+
+  for (const addrRow of addresses) {
+    const isTestnet = IS_TATUM_TESTNET || (addrRow.asset === "BTC" && /^(tb1|[mn2])/i.test(addrRow.address));
+    const config = assetConfig(addrRow.asset, isTestnet);
+    const txs = await fetchIncomingOnChainTxs(addrRow);
+    for (const tx of txs) {
+      const processed = await recordAndCreditDeposit(addrRow, tx.txHash, tx.amount, tx.confirmations);
+      if (processed.status === "credited") {
+        creditedCount += 1;
+        newlyCredited.push({ asset: addrRow.asset, amount: tx.amount, txHash: tx.txHash });
+      } else if (processed.status === "pending") {
+        pendingCount += 1;
+        pendingDeposits.push({
+          asset: addrRow.asset,
+          amount: tx.amount,
+          txHash: tx.txHash,
+          confirmations: processed.confirmations ?? tx.confirmations,
+          requiredConfirmations: processed.required_confirmations ?? config.confirmations,
+        });
+      }
+    }
+  }
+
+  return {
+    checkedAddresses: addresses.length,
+    creditedCount,
+    pendingCount,
+    newlyCredited,
+    pendingDeposits,
+    networkMode: IS_TATUM_TESTNET ? "testnet" : "mainnet",
+  };
 }
 
 router.get("/crypto/deposit-address", async (req, res) => {
@@ -512,6 +976,7 @@ router.get("/crypto/deposit-address", async (req, res) => {
               provider: TATUM_API_KEY && activeSubId ? "tatum" : "unconfigured",
               networkMode: isTestnetAddr ? "testnet" : "mainnet",
               liveDepositEnabled: missingConfig.length === 0 && Boolean(webhookUrl) && Boolean(activeSubId),
+              directSyncEnabled: Boolean(TATUM_API_KEY && SUPABASE_URL && process.env["SUPABASE_SERVICE_ROLE_KEY"]),
               subscriptionStatus,
               subscriptionError,
               webhookUrl: webhookUrl || undefined,
@@ -557,6 +1022,7 @@ router.get("/crypto/deposit-address", async (req, res) => {
     // 4. Only persist real Tatum-backed addresses to database
     let savedRow: DepositAddressRow | null = null;
     let subscriptionStatus = "pending";
+    let activeSubId: string | null = null;
     if (generatedFromTatum && userId && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
       try {
         const insert = await supabaseRequest("crypto_deposit_addresses", {
@@ -581,7 +1047,7 @@ router.get("/crypto/deposit-address", async (req, res) => {
     let subscriptionError: string | undefined;
     if (savedRow && TATUM_API_KEY) {
       try {
-        await createTatumSubscription(savedRow, webhookUrl || req);
+        activeSubId = await createTatumSubscription(savedRow, webhookUrl || req);
         subscriptionStatus = "active";
       } catch (subErr) {
         subscriptionError = subErr instanceof Error ? subErr.message : "Tatum subscription failed";
@@ -605,7 +1071,8 @@ router.get("/crypto/deposit-address", async (req, res) => {
       createdAt: savedRow?.created_at ?? new Date().toISOString(),
       provider: generatedFromTatum ? "tatum" : "unconfigured",
       networkMode: isTestnetAddr ? "testnet" : "mainnet",
-      liveDepositEnabled: generatedFromTatum && missingConfig.length === 0 && Boolean(webhookUrl),
+      liveDepositEnabled: generatedFromTatum && missingConfig.length === 0 && Boolean(webhookUrl) && Boolean(activeSubId),
+      directSyncEnabled: Boolean(TATUM_API_KEY && SUPABASE_URL && process.env["SUPABASE_SERVICE_ROLE_KEY"]),
       subscriptionStatus,
       subscriptionError,
       webhookUrl: webhookUrl || undefined,
@@ -708,27 +1175,80 @@ router.post("/crypto/notify-transfer-recipient", async (req, res) => {
   }
 });
 
+router.post("/crypto/sync-deposits", async (req, res) => {
+  res.setHeader("Content-Type", "application/json");
+  try {
+    const userId = await getUserId(bearer(req));
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    const rawAsset = typeof req.body?.asset === "string" ? req.body.asset.trim().toUpperCase() : "";
+    const filterAsset = ["BTC", "ETH", "USDT"].includes(rawAsset) ? (rawAsset as Asset) : undefined;
+    const summary = await syncUserCryptoDeposits(userId, filterAsset);
+    return res.status(200).json({ success: true, ...summary });
+  } catch (error) {
+    req.log?.error?.({ err: error }, "crypto deposit sync error");
+    return res.status(500).json({
+      message: error instanceof Error ? error.message : "Could not check blockchain deposits right now",
+    });
+  }
+});
+
 router.post("/crypto/webhooks/tatum", async (req, res) => {
   const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from("");
   try {
     const payload = JSON.parse(rawBody.toString("utf8")) as Record<string, unknown>;
     const event = nestedWebhookEvent(payload);
-    if (!event || !verifyTatumSignature(rawBody, event, req.header("x-payload-hash"))) {
-      res.status(401).json({ message: "Invalid webhook signature" });
+    if (!event) {
+      res.status(400).json({ message: "Webhook payload is empty" });
       return;
     }
+
+    const signatureValid = verifyTatumSignature(rawBody, event, req.header("x-payload-hash"));
+
     const address = stringValue(event.address) ?? stringValue(event.to) ?? stringValue(event.destinationAddress);
     const txHash =
       stringValue(event.txId) ??
       stringValue(event.txHash) ??
       stringValue(event.transactionHash) ??
       stringValue(event.hash);
-    const amount =
+    const rawAmount =
       stringValue(event.amount) ??
       stringValue(event.value) ??
       (numberValue(event.amount)?.toString() ?? numberValue(event.value)?.toString() ?? null);
-    if (!address || !txHash || !amount) {
+
+    if (!address || !txHash) {
+      if (!signatureValid) {
+        res.status(401).json({ message: "Invalid webhook signature" });
+        return;
+      }
       res.status(400).json({ message: "Webhook is missing transaction details" });
+      return;
+    }
+
+    const depositAddress = await findAddress(address);
+    if (!depositAddress) {
+      if (!signatureValid) {
+        res.status(401).json({ message: "Invalid webhook signature" });
+        return;
+      }
+      req.log.warn({ address }, "Tatum webhook address is not a Vexa deposit address");
+      res.status(200).json({ received: true, ignored: true });
+      return;
+    }
+
+    let verifiedOnChain: OnChainIncomingTx | null = null;
+    if (!signatureValid) {
+      verifiedOnChain = await verifyIncomingTxOnChain(depositAddress, txHash);
+      if (!verifiedOnChain) {
+        res.status(401).json({ message: "Invalid webhook signature" });
+        return;
+      }
+    }
+
+    const amount = verifiedOnChain?.amount ?? rawAmount;
+    if (!amount) {
+      res.status(400).json({ message: "Webhook is missing transaction amount" });
       return;
     }
 
@@ -746,20 +1266,15 @@ router.post("/crypto/webhooks/tatum", async (req, res) => {
       return;
     }
 
-    const depositAddress = await findAddress(address);
-    if (!depositAddress) {
-      req.log.warn({ address }, "Tatum webhook address is not a Vexa deposit address");
-      res.status(200).json({ received: true, ignored: true });
-      return;
-    }
-    const config = assetConfig(depositAddress.asset);
+    const isTestnetAddr = IS_TATUM_TESTNET || (depositAddress.asset === "BTC" && /^(tb1|[mn2])/i.test(depositAddress.address));
+    const config = assetConfig(depositAddress.asset, isTestnetAddr);
     const chain = stringValue(event.chain);
     if (!chainMatchesAsset(depositAddress.asset, chain)) {
       req.log.warn({ address, chain, asset: depositAddress.asset }, "Tatum webhook chain does not match deposit address");
       res.status(400).json({ message: "Webhook chain does not match deposit address" });
       return;
     }
-    if (!eventMatchesDepositAsset(depositAddress.asset, event)) {
+    if (!verifiedOnChain && !eventMatchesDepositAsset(depositAddress.asset, event)) {
       req.log.warn(
         { address, asset: depositAddress.asset, eventAsset: event.asset, eventType: event.type },
         "Tatum webhook asset/token does not match deposit address",
@@ -767,10 +1282,11 @@ router.post("/crypto/webhooks/tatum", async (req, res) => {
       res.status(200).json({ received: true, ignored: true, reason: "asset_mismatch" });
       return;
     }
+
     const finality = stringValue(event.finality) ?? stringValue(event.status);
     const blockNumber = numberValue(event.blockNumber);
     const isMempool = event.mempool === true;
-    const confirmations =
+    const webhookConfirmations =
       numberValue(event.confirmations) ??
       numberValue(event.confirmationCount) ??
       (isMempool
@@ -778,45 +1294,11 @@ router.post("/crypto/webhooks/tatum", async (req, res) => {
         : finality === "final" || event.confirmed === true || (blockNumber !== null && blockNumber > 0)
           ? config.confirmations
           : 0);
-    const result = await supabaseRpc("process_tatum_crypto_deposit", {
-      p_deposit_reference: `${depositAddress.network}:${txHash}:${depositAddress.address}:${depositAddress.asset}`,
-      p_user_id: depositAddress.user_id,
-      p_asset: depositAddress.asset,
-      p_network: depositAddress.network,
-      p_address: depositAddress.address,
-      p_transaction_hash: txHash,
-      p_amount: amount,
-      p_confirmations: Math.max(0, Math.floor(confirmations)),
-      p_required_confirmations: config.confirmations,
-    });
-    if (!result.ok) throw new Error(`Deposit processing failed (${result.status})`);
-    const body = (await result.json()) as {
-      status?: string;
-      confirmations?: number;
-      required_confirmations?: number;
-      notified?: boolean;
-    };
+    const confirmations = verifiedOnChain
+      ? Math.max(verifiedOnChain.confirmations, webhookConfirmations)
+      : webhookConfirmations;
 
-    if (!body.notified) {
-      const txShort = txHash.slice(0, 10);
-      const displayAmount = formatCryptoAmountDisplay(amount);
-      if (body.status === "pending") {
-        await insertCryptoNotification(
-          depositAddress.user_id,
-          `${depositAddress.asset} deposit incoming`,
-          `${displayAmount} ${depositAddress.asset} detected on ${depositAddress.network} (${body.confirmations ?? 0}/${body.required_confirmations ?? config.confirmations} confirmations · Tx ${txShort}…).`,
-          txShort,
-        );
-      } else if (body.status === "credited") {
-        await insertCryptoNotification(
-          depositAddress.user_id,
-          `${depositAddress.asset} deposit received`,
-          `${displayAmount} ${depositAddress.asset} received on ${depositAddress.network} and credited to your Exchange wallet (Tx ${txShort}…).`,
-          txShort,
-        );
-      }
-    }
-
+    const body = await recordAndCreditDeposit(depositAddress, txHash, amount, confirmations);
     res.status(200).json({ received: true, status: body.status ?? "processed" });
   } catch (error) {
     req.log.error({ err: error }, "Tatum webhook processing failed");
