@@ -70,8 +70,9 @@ const appUrlOrigin = (() => {
 })();
 
 // Secure Cross-Origin Resource Sharing
-app.use(
-  cors({
+app.use((req, res, next) => {
+  const reqHost = (req.get("x-forwarded-host") || req.get("host") || "").split(",")[0].trim().toLowerCase();
+  const corsMiddleware = cors({
     origin(origin, callback) {
       if (!origin) return callback(null, true);
       if (configuredOrigins.length > 0 && configuredOrigins.includes(origin)) {
@@ -81,9 +82,13 @@ app.use(
         return callback(null, true);
       }
       try {
-        const hostname = new URL(origin).hostname.toLowerCase();
+        const parsed = new URL(origin);
+        const hostname = parsed.hostname.toLowerCase();
+        const originHost = parsed.host.toLowerCase();
         if (
+          (reqHost && originHost === reqHost) ||
           hostname.endsWith(".run.app") ||
+          hostname.endsWith(".ai.studio") ||
           hostname.endsWith(".aistudio.google.com") ||
           (process.env["NODE_ENV"] !== "production" &&
             (hostname === "localhost" || hostname === "127.0.0.1"))
@@ -96,8 +101,9 @@ app.use(
       return callback(null, false);
     },
     credentials: true,
-  }),
-);
+  });
+  return corsMiddleware(req, res, next);
+});
 
 // Tatum & Paystack sign the exact raw bytes they send. Capture these routes before
 // the JSON parser so webhook handlers can verify signatures safely.

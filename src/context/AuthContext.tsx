@@ -41,7 +41,7 @@ interface AuthContextType {
   profileError: string | null;
   refreshProfile: () => Promise<void>;
   twoFactorPending: boolean;
-  signIn: (phone: string, passcode: string) => Promise<{ success: boolean; error?: string; lockedUntil?: number }>;
+  signIn: (phone: string, passcode: string) => Promise<{ success: boolean; error?: string; lockedUntil?: number; isProfileError?: boolean }>;
   signUp: (name: string, phone: string, passcode: string) => Promise<{ success: boolean; error?: string }>;
   verifyPasscode: (passcode: string) => Promise<boolean>;
   verifyPasscodeForAppReturn: (passcode: string) => Promise<{ success: boolean; lockedUntil?: number; error?: string }>;
@@ -368,7 +368,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setSession(session);
       if (session?.user) {
-        await fetchProfile(session.user);
+        await fetchProfile(session.user, session.access_token);
       } else {
         setLoading(false);
       }
@@ -380,7 +380,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!mounted) return;
       setSession(session);
       if (session?.user) {
-        void fetchProfile(session.user);
+        void fetchProfile(session.user, session.access_token);
       } else {
         setUser(null);
         setProfilePhoto(null);
@@ -400,11 +400,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function fetchProfile(
     authUser: { id: string; email?: string | null; user_metadata?: Record<string, unknown> | null },
+    accessToken?: string,
   ): Promise<{ success: boolean; error?: string }> {
     const existing = profileRequestRef.current;
     if (existing?.userId === authUser.id) return existing.promise;
 
-    const promise = hydrateProfile(authUser);
+    const promise = hydrateProfile(authUser, accessToken);
     profileRequestRef.current = { userId: authUser.id, promise };
     try {
       return await promise;
@@ -416,17 +417,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const refreshProfile = useCallback(async () => {
-    if (session?.user) await fetchProfile(session.user);
+    if (session?.user) await fetchProfile(session.user, session.access_token);
   }, [session]);
 
   async function hydrateProfile(
     authUser: { id: string; email?: string | null; user_metadata?: Record<string, unknown> | null },
+    accessToken?: string,
   ): Promise<{ success: boolean; error?: string }> {
     setLoading(true);
     setProfileError(null);
 
-    const { data: { session: activeSession } } = await supabase.auth.getSession();
-    const token = activeSession?.access_token;
+    let token = accessToken;
+    if (!token) {
+      const { data: { session: activeSession } } = await supabase.auth.getSession();
+      token = activeSession?.access_token;
+    }
     if (!token) {
       setLoading(false);
       setProfileError('Your session has expired. Please sign in again.');
@@ -449,6 +454,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     let profile: ProfilePayload | null = null;
+    let shouldTryRlsFallback = false;
+    let apiErrorMessage = '';
 
     try {
       const resp = await fetch('/api/auth/profile', {
@@ -457,19 +464,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           Authorization: `Bearer ${token}`,
         },
       });
-      const body = await resp.json().catch(() => null) as { profile?: ProfilePayload; message?: string } | null;
-      if (!resp.ok || !body?.profile) {
-        console.error('[Auth] fetchProfile error:', body?.message || resp.status);
+      const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+      const body = contentType.includes('application/json')
+        ? ((await resp.json().catch(() => null)) as { profile?: ProfilePayload; message?: string } | null)
+        : null;
+
+      if (resp.ok && body?.profile) {
+        profile = body.profile;
+      } else if (resp.status === 401) {
         setLoading(false);
-        setProfileError('We could not load your profile. Your session is still active.');
-        return { success: false, error: body?.message || 'Could not load your account profile' };
+        setProfileError('Your session has expired. Please sign in again.');
+        return { success: false, error: body?.message || 'Your session has expired. Please sign in again.' };
+      } else {
+        apiErrorMessage = body?.message || '';
+        shouldTryRlsFallback = !contentType.includes('application/json') || resp.status >= 404;
+        console.warn('[Auth] /api/auth/profile unavailable:', resp.status, apiErrorMessage || contentType);
       }
-      profile = body.profile;
     } catch (err) {
-      console.error('[Auth] fetchProfile network error:', err);
+      shouldTryRlsFallback = true;
+      console.warn('[Auth] /api/auth/profile network error:', err);
+    }
+
+    // Safe read-only RLS fallback selecting ONLY permitted non-PIN columns
+    // (pin & pin_hash are never requested or exposed to the frontend).
+    if (!profile && shouldTryRlsFallback) {
+      const { data: row, error: rlsError } = await supabase
+        .from('profiles')
+        .select('id, name, email, phone, account_number, level, verified, balance, profile_photo, referral_code, two_factor_enabled')
+        .eq('id', authUser.id)
+        .maybeSingle();
+
+      if (!rlsError && row) {
+        profile = {
+          id: String(row.id),
+          name: String(row.name ?? 'Vexa User'),
+          email: String(row.email || authUser.email || ''),
+          phone: String(row.phone ?? ''),
+          balance: Number(row.balance ?? 0),
+          accountNumber: String(row.account_number ?? ''),
+          referralCode: String(row.referral_code ?? ''),
+          hasPin: true,
+          level: Number(row.level ?? 1),
+          verified: Boolean(row.verified),
+          twoFactorEnabled: Boolean(row.two_factor_enabled),
+          profilePhoto: typeof row.profile_photo === 'string' ? row.profile_photo : null,
+        };
+      } else if (rlsError) {
+        console.error('[Auth] RLS profile fallback error:', rlsError.message);
+      }
+    }
+
+    if (!profile) {
       setLoading(false);
       setProfileError('We could not load your profile. Your session is still active.');
-      return { success: false, error: 'Could not load your account profile' };
+      return { success: false, error: apiErrorMessage || 'Could not load your account profile' };
     }
 
     const referralCode = profile.referralCode || `VEXA-${String(profile.accountNumber ?? '').slice(-4)}`;
@@ -516,7 +564,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { success: true };
   }
 
-  const signIn = async (phone: string, passcode: string): Promise<{ success: boolean; error?: string; lockedUntil?: number }> => {
+  const signIn = async (phone: string, passcode: string): Promise<{ success: boolean; error?: string; lockedUntil?: number; isProfileError?: boolean }> => {
     const candidates = phoneToEmailCandidates(phone);
     if (!candidates.length || passcode.length !== 6) {
       return { success: false, error: 'Enter a valid phone number and 6-digit passcode' };
@@ -540,13 +588,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         continue;
       }
 
+      await clearRemoteLoginFailures(normalizedPhone);
       // Wait for the profile before reporting success. The route guard relies
       // on this state and must not redirect a valid user back to sign-in.
-      const profileResult = await fetchProfile(data.user);
+      const profileResult = await fetchProfile(data.user, data.session?.access_token);
       if (!profileResult.success) {
-        return { success: false, error: profileResult.error };
+        return { success: false, error: profileResult.error, isProfileError: true };
       }
-      await clearRemoteLoginFailures(normalizedPhone);
       return { success: true };
     }
 
@@ -609,7 +657,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
     }
 
-    await fetchProfile(data.user);
+    await fetchProfile(data.user, data.session.access_token);
 
     return { success: true };
   };

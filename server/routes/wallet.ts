@@ -166,7 +166,7 @@ router.get("/auth/profile", async (req: Request, res: Response) => {
           email: authUser.email || "",
           phone: rawPhone || "",
           account_number: acctNum,
-          pin: "0000",
+          pin: "",
           level: 1,
           verified: false,
           balance: 0,

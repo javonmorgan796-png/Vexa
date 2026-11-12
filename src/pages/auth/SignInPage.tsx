@@ -164,6 +164,9 @@ export default function SignInPage() {
       if (res.success) {
         clearAttempts(cleanPhone);
         navigate('/');
+      } else if (res.isProfileError) {
+        clearAttempts(cleanPhone);
+        setError(res.error ?? 'Could not load your account profile. Please try again.');
       } else {
         const updated = res.lockedUntil
           ? { count: LOGIN_FAILURE_LIMIT, lockedUntil: res.lockedUntil }
