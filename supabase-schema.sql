@@ -41,6 +41,7 @@ GRANT SELECT (
 DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
 DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Service role full access to profiles" ON public.profiles;
 CREATE POLICY "Users can view own profile"
   ON public.profiles FOR SELECT TO authenticated
   USING (auth.uid() = id);
@@ -133,6 +134,7 @@ GRANT ALL ON public.cashback_history TO service_role;
 DROP POLICY IF EXISTS "Users can view own cashback" ON public.cashback_history;
 DROP POLICY IF EXISTS "Users can insert own cashback" ON public.cashback_history;
 DROP POLICY IF EXISTS "Users can update own cashback" ON public.cashback_history;
+DROP POLICY IF EXISTS "Service role full access to cashback" ON public.cashback_history;
 CREATE POLICY "Users can view own cashback"
   ON public.cashback_history FOR SELECT TO authenticated
   USING (auth.uid() = user_id);
@@ -160,6 +162,7 @@ GRANT ALL ON public.referrals TO service_role;
 
 DROP POLICY IF EXISTS "Users can view own referrals" ON public.referrals;
 DROP POLICY IF EXISTS "Users can insert own referrals" ON public.referrals;
+DROP POLICY IF EXISTS "Service role full access to referrals" ON public.referrals;
 CREATE POLICY "Users can view own referrals"
   ON public.referrals FOR SELECT TO authenticated
   USING (auth.uid() = referrer_id);
@@ -187,7 +190,9 @@ GRANT ALL ON public.notifications TO service_role;
 DROP POLICY IF EXISTS "Users can view own notifications" ON public.notifications;
 DROP POLICY IF EXISTS "Users can insert own notifications" ON public.notifications;
 DROP POLICY IF EXISTS "Users can update own notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Users can mark own notifications read" ON public.notifications;
 DROP POLICY IF EXISTS "own notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Service role full access to notifications" ON public.notifications;
 CREATE POLICY "Users can view own notifications"
   ON public.notifications FOR SELECT TO authenticated
   USING (auth.uid() = user_id);
@@ -227,6 +232,7 @@ GRANT ALL ON public.transactions TO service_role;
 DROP POLICY IF EXISTS "Users can view own transactions" ON public.transactions;
 DROP POLICY IF EXISTS "Users can insert own transactions" ON public.transactions;
 DROP POLICY IF EXISTS "own transactions" ON public.transactions;
+DROP POLICY IF EXISTS "Service role full access to transactions" ON public.transactions;
 CREATE POLICY "Users can view own transactions"
   ON public.transactions FOR SELECT TO authenticated
   USING (auth.uid() = user_id);
@@ -401,6 +407,8 @@ REVOKE ALL ON public.crypto_accounts FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.crypto_accounts TO authenticated;
 GRANT ALL ON public.crypto_accounts TO service_role;
 DROP POLICY IF EXISTS "Users can manage own crypto account" ON public.crypto_accounts;
+DROP POLICY IF EXISTS "Users can view own crypto account" ON public.crypto_accounts;
+DROP POLICY IF EXISTS "Service role full access to crypto_accounts" ON public.crypto_accounts;
 CREATE POLICY "Users can view own crypto account"
   ON public.crypto_accounts FOR SELECT TO authenticated
   USING (auth.uid() = user_id);
@@ -412,6 +420,8 @@ REVOKE ALL ON public.crypto_balances FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.crypto_balances TO authenticated;
 GRANT ALL ON public.crypto_balances TO service_role;
 DROP POLICY IF EXISTS "Users can manage own crypto balances" ON public.crypto_balances;
+DROP POLICY IF EXISTS "Users can view own crypto balances" ON public.crypto_balances;
+DROP POLICY IF EXISTS "Service role full access to crypto_balances" ON public.crypto_balances;
 CREATE POLICY "Users can view own crypto balances"
   ON public.crypto_balances FOR SELECT TO authenticated
   USING (auth.uid() = user_id);
@@ -423,6 +433,7 @@ REVOKE ALL ON public.crypto_transactions FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.crypto_transactions TO authenticated;
 GRANT ALL ON public.crypto_transactions TO service_role;
 DROP POLICY IF EXISTS "Users can view own crypto transactions" ON public.crypto_transactions;
+DROP POLICY IF EXISTS "Service role full access to crypto_transactions" ON public.crypto_transactions;
 CREATE POLICY "Users can view own crypto transactions"
   ON public.crypto_transactions FOR SELECT TO authenticated
   USING (auth.uid() = user_id);
@@ -795,6 +806,8 @@ GRANT SELECT ON public.business_accounts TO authenticated;
 GRANT ALL ON public.business_accounts TO service_role;
 
 DROP POLICY IF EXISTS "Business owners can manage their business" ON public.business_accounts;
+DROP POLICY IF EXISTS "Business owners can view their business" ON public.business_accounts;
+DROP POLICY IF EXISTS "Service role full access to business_accounts" ON public.business_accounts;
 CREATE POLICY "Business owners can view their business"
   ON public.business_accounts FOR SELECT TO authenticated
   USING (auth.uid() = owner_id);
@@ -827,6 +840,8 @@ GRANT SELECT ON public.employees TO authenticated;
 GRANT ALL ON public.employees TO service_role;
 
 DROP POLICY IF EXISTS "Business owners can manage employees" ON public.employees;
+DROP POLICY IF EXISTS "Business owners can view employees" ON public.employees;
+DROP POLICY IF EXISTS "Service role full access to employees" ON public.employees;
 CREATE POLICY "Business owners can view employees"
   ON public.employees FOR SELECT TO authenticated
   USING (
@@ -858,6 +873,8 @@ GRANT SELECT ON public.payroll_schedules TO authenticated;
 GRANT ALL ON public.payroll_schedules TO service_role;
 
 DROP POLICY IF EXISTS "Business owners can manage payroll schedules" ON public.payroll_schedules;
+DROP POLICY IF EXISTS "Business owners can view payroll schedules" ON public.payroll_schedules;
+DROP POLICY IF EXISTS "Service role full access to payroll_schedules" ON public.payroll_schedules;
 CREATE POLICY "Business owners can view payroll schedules"
   ON public.payroll_schedules FOR SELECT TO authenticated
   USING (
@@ -889,6 +906,8 @@ GRANT SELECT ON public.business_transactions TO authenticated;
 GRANT ALL ON public.business_transactions TO service_role;
 
 DROP POLICY IF EXISTS "Business owners can manage business transactions" ON public.business_transactions;
+DROP POLICY IF EXISTS "Business owners can view business transactions" ON public.business_transactions;
+DROP POLICY IF EXISTS "Service role full access to business_transactions" ON public.business_transactions;
 CREATE POLICY "Business owners can view business transactions"
   ON public.business_transactions FOR SELECT TO authenticated
   USING (
@@ -918,6 +937,7 @@ REVOKE ALL ON public.business_security FROM PUBLIC, anon, authenticated;
 GRANT ALL ON public.business_security TO service_role;
 
 DROP POLICY IF EXISTS "Users can manage own business security" ON public.business_security;
+DROP POLICY IF EXISTS "Service role full access to business_security" ON public.business_security;
 CREATE POLICY "Service role full access to business_security"
   ON public.business_security FOR ALL TO service_role
   USING (true) WITH CHECK (true);
@@ -941,6 +961,7 @@ CREATE OR REPLACE FUNCTION public.login_identifier_hash(p_identifier TEXT)
 RETURNS TEXT
 LANGUAGE SQL
 IMMUTABLE
+SET search_path = public, extensions
 AS $$
   SELECT encode(digest(lower(trim(coalesce(p_identifier, ''))), 'sha256'), 'hex');
 $$;
