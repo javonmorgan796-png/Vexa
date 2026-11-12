@@ -51,9 +51,23 @@ app.use((_req, res, next) => {
   res.setHeader("X-XSS-Protection", "1; mode=block");
   res.setHeader("Permissions-Policy", "camera=*, microphone=(), geolocation=()");
   // Protect against clickjacking while allowing verified same-origin and AI Studio frames
-  res.setHeader("Content-Security-Policy", "frame-ancestors 'self' https: http:;");
+  const frameAncestors =
+    process.env["NODE_ENV"] === "production"
+      ? "frame-ancestors 'self' https:;"
+      : "frame-ancestors 'self' https: http://localhost:* http://127.0.0.1:*;";
+  res.setHeader("Content-Security-Policy", frameAncestors);
   next();
 });
+
+const appUrlOrigin = (() => {
+  const raw = process.env["APP_URL"]?.trim();
+  if (!raw) return "";
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return "";
+  }
+})();
 
 // Secure Cross-Origin Resource Sharing
 app.use(
@@ -63,23 +77,32 @@ app.use(
       if (configuredOrigins.length > 0 && configuredOrigins.includes(origin)) {
         return callback(null, true);
       }
-      if (
-        origin.endsWith(".run.app") ||
-        origin.endsWith(".google.com") ||
-        origin.includes("localhost") ||
-        origin.includes("127.0.0.1")
-      ) {
+      if (appUrlOrigin && origin === appUrlOrigin) {
         return callback(null, true);
       }
-      return callback(null, true);
+      try {
+        const hostname = new URL(origin).hostname.toLowerCase();
+        if (
+          hostname.endsWith(".run.app") ||
+          hostname.endsWith(".aistudio.google.com") ||
+          (process.env["NODE_ENV"] !== "production" &&
+            (hostname === "localhost" || hostname === "127.0.0.1"))
+        ) {
+          return callback(null, true);
+        }
+      } catch {
+        return callback(null, false);
+      }
+      return callback(null, false);
     },
     credentials: true,
   }),
 );
 
-// Tatum signs the exact bytes it sends. Capture this route before the JSON
-// parser so the webhook handler can verify x-payload-hash correctly.
+// Tatum & Paystack sign the exact raw bytes they send. Capture these routes before
+// the JSON parser so webhook handlers can verify signatures safely.
 app.use("/api/crypto/webhooks/tatum", express.raw({ type: "application/json", limit: "100kb" }));
+app.use("/api/paystack/webhooks", express.raw({ type: "application/json", limit: "100kb" }));
 app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 

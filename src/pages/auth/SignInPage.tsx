@@ -192,6 +192,15 @@ export default function SignInPage() {
     setError('Biometric sign-in is not set up for this account yet. Use your phone and passcode.');
   }
 
+  function handleForgotPasscode() {
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.length >= 10) {
+      navigate(`/forgot-passcode?phone=${encodeURIComponent(phone.trim())}`);
+      return;
+    }
+    navigate('/forgot-passcode');
+  }
+
   const passcodeComplete = passcode.every(d => d !== '');
   const isLocked = lockRemaining > 0;
 
@@ -263,7 +272,13 @@ export default function SignInPage() {
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-[12px] font-semibold text-[#444]">Passcode</label>
-                <button type="button" className="theme-brand-text text-[12px] font-semibold">Forgot Passcode?</button>
+                <button
+                  type="button"
+                  onClick={handleForgotPasscode}
+                  className="theme-brand-text text-[12px] font-semibold hover:underline focus:outline-none"
+                >
+                  Forgot Passcode?
+                </button>
               </div>
               <div className="flex gap-2.5 justify-between" onPaste={handlePaste}>
                 {passcode.map((digit, idx) => (

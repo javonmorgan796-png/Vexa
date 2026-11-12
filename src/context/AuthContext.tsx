@@ -16,7 +16,7 @@ export interface User {
   balance: number;
   accountNumber: string;
   referralCode: string;
-  pin: string;
+  hasPin: boolean;
   level: number;
   verified: boolean;
   twoFactorEnabled: boolean;
@@ -48,6 +48,7 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   updatePin: (oldPin: string, newPin: string) => Promise<{ success: boolean; error?: string }>;
   setInitialTransferPin: (newPin: string) => Promise<{ success: boolean; error?: string }>;
+  verifyTransactionPin: (pin: string) => Promise<{ verified: boolean; message?: string }>;
   updatePassword: (oldPass: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
   updateProfile: (name: string, email: string, phone: string) => Promise<{ success: boolean; error?: string }>;
   updateProfilePhoto: (photo: string | null) => Promise<{ success: boolean; error?: string }>;
@@ -423,107 +424,83 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   ): Promise<{ success: boolean; error?: string }> {
     setLoading(true);
     setProfileError(null);
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', authUser.id)
-      .maybeSingle();
 
-    if (error) {
-      console.error('[Auth] fetchProfile error:', error?.message);
+    const { data: { session: activeSession } } = await supabase.auth.getSession();
+    const token = activeSession?.access_token;
+    if (!token) {
+      setLoading(false);
+      setProfileError('Your session has expired. Please sign in again.');
+      return { success: false, error: 'Your session has expired' };
+    }
+
+    type ProfilePayload = {
+      id: string;
+      name: string;
+      email: string;
+      phone: string;
+      balance: number;
+      accountNumber: string;
+      referralCode: string;
+      hasPin: boolean;
+      level: number;
+      verified: boolean;
+      twoFactorEnabled: boolean;
+      profilePhoto?: string | null;
+    };
+
+    let profile: ProfilePayload | null = null;
+
+    try {
+      const resp = await fetch('/api/auth/profile', {
+        headers: {
+          accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const body = await resp.json().catch(() => null) as { profile?: ProfilePayload; message?: string } | null;
+      if (!resp.ok || !body?.profile) {
+        console.error('[Auth] fetchProfile error:', body?.message || resp.status);
+        setLoading(false);
+        setProfileError('We could not load your profile. Your session is still active.');
+        return { success: false, error: body?.message || 'Could not load your account profile' };
+      }
+      profile = body.profile;
+    } catch (err) {
+      console.error('[Auth] fetchProfile network error:', err);
       setLoading(false);
       setProfileError('We could not load your profile. Your session is still active.');
       return { success: false, error: 'Could not load your account profile' };
     }
 
-    // A profile is normally created by the database trigger. If an older
-    // Supabase project does not have that trigger, create the row from the
-    // authenticated user's metadata so the rest of the app can still use
-    // one consistent, database-backed profile.
-    let profile = data;
-    if (!profile) {
-      const metadata = authUser.user_metadata ?? {};
-      const accountNumber = typeof metadata.account_number === 'string'
-        ? metadata.account_number
-        : genAccountNumber();
-      const referralCode = typeof metadata.referral_code === 'string' && metadata.referral_code
-        ? metadata.referral_code
-        : `VEXA-${accountNumber.slice(-4)}`;
-      const { data: createdProfile, error: createError } = await supabase
-        .from('profiles')
-        .upsert({
-          id: authUser.id,
-          name: typeof metadata.name === 'string' ? metadata.name : 'Vexa User',
-          email: typeof metadata.email === 'string' ? metadata.email : '',
-          phone: typeof metadata.phone === 'string' ? metadata.phone : '',
-          account_number: accountNumber,
-          pin: '0000',
-          level: 1,
-          verified: false,
-          balance: 0,
-          referral_code: referralCode,
-        }, { onConflict: 'id' })
-        .select('*')
-        .single();
-
-      if (createError || !createdProfile) {
-        console.error('[Auth] profile creation error:', createError?.message);
-        setLoading(false);
-        setProfileError('We could not create your account profile. Your session is still active.');
-        return { success: false, error: 'Could not create your account profile' };
-      }
-      profile = createdProfile;
-    }
-
-    const storedReferralCode = typeof profile.referral_code === 'string' ? profile.referral_code : '';
-    const referralCode = storedReferralCode || `VEXA-${String(profile.account_number ?? '').slice(-4)}`;
+    const referralCode = profile.referralCode || `VEXA-${String(profile.accountNumber ?? '').slice(-4)}`;
     const profileEmail = profile.email || authUser.email || '';
 
-    // Older rows may have an empty referral code or email. Persist these
-    // values once so every screen reads the same data that is stored in
-    // Supabase, while never overwriting a user-entered profile email.
-    if ((!storedReferralCode && referralCode !== 'VEXA-') || (!profile.email && authUser.email)) {
-      const { error: referralError } = await supabase
-        .from('profiles')
-        .update({
-          ...(storedReferralCode ? {} : { referral_code: referralCode }),
-          ...(profile.email || !authUser.email ? {} : { email: authUser.email }),
-        })
-        .eq('id', authUser.id);
-      if (referralError) {
-        console.warn('[Auth] profile backfill error:', referralError.message);
-      }
-    }
-
     setUser({
-      id:            profile.id,
-      name:          profile.name ?? 'Vexa User',
-      email:         profileEmail,
-      phone:         profile.phone ?? '',
-      balance:       Number(profile.balance ?? 0),
-      accountNumber: profile.account_number ?? '',
+      id: profile.id,
+      name: profile.name ?? 'Vexa User',
+      email: profileEmail,
+      phone: profile.phone ?? '',
+      balance: Number(profile.balance ?? 0),
+      accountNumber: profile.accountNumber ?? '',
       referralCode,
-      pin:           profile.pin ?? '0000',
-      level:         Number(profile.level ?? 1),
-      verified:      Boolean(profile.verified),
-      twoFactorEnabled: Boolean(profile.two_factor_enabled),
+      hasPin: Boolean(profile.hasPin),
+      level: Number(profile.level ?? 1),
+      verified: Boolean(profile.verified),
+      twoFactorEnabled: Boolean(profile.twoFactorEnabled),
     });
-    if (profile.two_factor_enabled && verifiedTwoFactorUser.current !== authUser.id) {
+    if (profile.twoFactorEnabled && verifiedTwoFactorUser.current !== authUser.id) {
       setTwoFactorPending(true);
     }
-    setProfilePhoto(profile.profile_photo ?? null);
+    setProfilePhoto(profile.profilePhoto ?? null);
     setProfileError(null);
     setLoading(false);
 
-    // Supabase Auth is the credential/identity record. Keep the safe,
-    // non-secret account fields visible in raw_user_meta_data too, while
-    // public.profiles remains the source of truth for the app.
     const currentMetadata = authUser.user_metadata ?? {};
     const mirroredMetadata = {
       ...currentMetadata,
       name: profile.name ?? 'Vexa User',
       phone: profile.phone ?? '',
-      account_number: profile.account_number ?? '',
+      account_number: profile.accountNumber ?? '',
       referral_code: referralCode,
     };
     const metadataKeys = ['name', 'phone', 'account_number', 'referral_code'] as const;
@@ -632,14 +609,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
     }
 
-    // The DB trigger (handle_new_user) creates the profile automatically.
-    // If there is a session (email confirmation OFF), also upsert to ensure
-    // all fields are correct in case the trigger ran with partial data.
-    await supabase.from('profiles').upsert({
-      id: data.user.id, name, email, phone: normalizePhone(phone),
-      account_number: accountNumber, pin: '0000',
-      level: 1, verified: false, balance: 0, referral_code: referralCode,
-    }, { onConflict: 'id' });
     await fetchProfile(data.user);
 
     return { success: true };
@@ -761,11 +730,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const updateTwoFactorEnabled = async (enabled: boolean): Promise<{ success: boolean; error?: string }> => {
     if (!user) return { success: false, error: 'Not authenticated' };
-    const { error } = await supabase.from('profiles').update({
-      two_factor_enabled: enabled,
-      two_factor_phone: enabled ? user.phone : null,
-    }).eq('id', user.id);
-    if (error) return { success: false, error: 'Could not update two-factor authentication' };
+    const { data: { session: activeSession } } = await supabase.auth.getSession();
+    if (!activeSession?.access_token) return { success: false, error: 'Session expired' };
+
+    const resp = await fetch('/api/auth/2fa', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${activeSession.access_token}`,
+      },
+      body: JSON.stringify({ enabled }),
+    });
+    const body = await resp.json().catch(() => null) as { message?: string } | null;
+    if (!resp.ok) return { success: false, error: body?.message || 'Could not update two-factor authentication' };
+
     setUser(prev => prev ? { ...prev, twoFactorEnabled: enabled } : null);
     if (!enabled) setTwoFactorPending(false);
     return { success: true };
@@ -815,30 +793,69 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const setInitialTransferPin = async (newPin: string): Promise<{ success: boolean; error?: string }> => {
     if (!user) return { success: false, error: 'Not authenticated' };
-    if (user.pin !== '0000') return { success: false, error: 'Use Change PIN to update an existing PIN' };
-    const { error } = await supabase.from('profiles').update({ pin: newPin }).eq('id', user.id);
-    if (error) return { success: false, error: 'Failed to save PIN. Please try again.' };
-    setUser(prev => prev ? { ...prev, pin: newPin } : null);
+    const { data: { session: activeSession } } = await supabase.auth.getSession();
+    if (!activeSession?.access_token) return { success: false, error: 'Your session has expired. Please sign in again.' };
+
+    const resp = await fetch('/api/auth/pin/set', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${activeSession.access_token}`,
+      },
+      body: JSON.stringify({ newPin }),
+    });
+    const body = await resp.json().catch(() => null) as { message?: string } | null;
+    if (!resp.ok) return { success: false, error: body?.message || 'Failed to save PIN. Please try again.' };
+
+    setUser(prev => prev ? { ...prev, hasPin: true } : null);
     return { success: true };
   };
 
   const updatePin = async (oldPin: string, newPin: string): Promise<{ success: boolean; error?: string }> => {
     if (!user) return { success: false, error: 'Not authenticated' };
-    if (user.pin !== oldPin) return { success: false, error: 'Current PIN is incorrect' };
+    const { data: { session: activeSession } } = await supabase.auth.getSession();
+    if (!activeSession?.access_token) return { success: false, error: 'Your session has expired. Please sign in again.' };
 
-    const { error } = await supabase.from('profiles').update({ pin: newPin }).eq('id', user.id);
-    if (error) return { success: false, error: 'Failed to update PIN' };
+    const resp = await fetch('/api/auth/pin/change', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${activeSession.access_token}`,
+      },
+      body: JSON.stringify({ oldPin, newPin }),
+    });
+    const body = await resp.json().catch(() => null) as { message?: string } | null;
+    if (!resp.ok) return { success: false, error: body?.message || 'Failed to update PIN' };
 
-    setUser(prev => prev ? { ...prev, pin: newPin } : null);
+    setUser(prev => prev ? { ...prev, hasPin: true } : null);
     return { success: true };
+  };
+
+  const verifyTransactionPin = async (pin: string): Promise<{ verified: boolean; message?: string }> => {
+    if (!user) return { verified: false, message: 'Not authenticated' };
+    const { data: { session: activeSession } } = await supabase.auth.getSession();
+    if (!activeSession?.access_token) return { verified: false, message: 'Your session has expired. Please sign in again.' };
+
+    const resp = await fetch('/api/auth/pin/verify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${activeSession.access_token}`,
+      },
+      body: JSON.stringify({ pin }),
+    });
+    const body = await resp.json().catch(() => null) as { verified?: boolean; message?: string } | null;
+    if (!resp.ok || !body?.verified) {
+      return { verified: false, message: body?.message || 'Incorrect transaction PIN' };
+    }
+    return { verified: true };
   };
 
   const updatePassword = async (oldPass: string, newPass: string): Promise<{ success: boolean; error?: string }> => {
     if (!user) return { success: false, error: 'Not authenticated' };
 
-    // Verify old password
     const { error: verifyError } = await supabase.auth.signInWithPassword({
-      email:    phoneToEmail(user.phone),
+      email: phoneToEmail(user.phone),
       password: oldPass,
     });
     if (verifyError) return { success: false, error: 'Current passcode is incorrect' };
@@ -851,29 +868,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const updateProfile = async (name: string, email: string, phone: string): Promise<{ success: boolean; error?: string }> => {
     if (!user) return { success: false, error: 'Not authenticated' };
-    const { error } = await supabase.from('profiles').update({ name, email, phone }).eq('id', user.id);
-    if (error) return { success: false, error: 'Failed to save profile. Please try again.' };
-    setUser(prev => prev ? { ...prev, name, email, phone } : null);
+    const { data: { session: activeSession } } = await supabase.auth.getSession();
+    if (!activeSession?.access_token) return { success: false, error: 'Your session has expired.' };
 
-    const { error: metadataError } = await supabase.auth.updateUser({
-      data: {
-        name,
-        phone,
-        account_number: user.accountNumber,
-        referral_code: user.referralCode,
+    const resp = await fetch('/api/auth/profile/update', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${activeSession.access_token}`,
       },
+      body: JSON.stringify({ name, email, phone }),
     });
-    if (metadataError) {
-      console.warn('[Auth] profile metadata sync error:', metadataError.message);
-    }
+    const body = await resp.json().catch(() => null) as { name?: string; email?: string; phone?: string; message?: string } | null;
+    if (!resp.ok) return { success: false, error: body?.message || 'Failed to save profile. Please try again.' };
 
+    setUser(prev => prev ? {
+      ...prev,
+      name: body?.name ?? name,
+      email: body?.email ?? email,
+      phone: body?.phone ?? phone,
+    } : null);
     return { success: true };
   };
 
   const updateProfilePhoto = async (photo: string | null): Promise<{ success: boolean; error?: string }> => {
     if (!user) return { success: false, error: 'Not authenticated' };
-    const { error } = await supabase.from('profiles').update({ profile_photo: photo }).eq('id', user.id);
-    if (error) return { success: false, error: 'Failed to save profile photo. Please try again.' };
+    const { data: { session: activeSession } } = await supabase.auth.getSession();
+    if (!activeSession?.access_token) return { success: false, error: 'Your session has expired.' };
+
+    const resp = await fetch('/api/auth/profile/photo', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${activeSession.access_token}`,
+      },
+      body: JSON.stringify({ photo }),
+    });
+    const body = await resp.json().catch(() => null) as { message?: string } | null;
+    if (!resp.ok) return { success: false, error: body?.message || 'Failed to save profile photo. Please try again.' };
     setProfilePhoto(photo);
     return { success: true };
   };
@@ -882,7 +914,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider value={{
        user, session, isAuthenticated: !!user, profilePhoto, loading, profileError, refreshProfile, twoFactorPending,
        signIn, signUp, verifyPasscode, verifyPasscodeForAppReturn, signOut,
-       updatePin, setInitialTransferPin, updatePassword, updateProfile, updateProfilePhoto,
+       updatePin, setInitialTransferPin, verifyTransactionPin, updatePassword, updateProfile, updateProfilePhoto,
         sendTwoFactorCode, verifyTwoFactorCode, updateTwoFactorEnabled,
         activeSessions, sessionsLoading, sessionsError, refreshSessions, revokeSession, revokeOtherSessions,
     }}>

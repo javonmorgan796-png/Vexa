@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useAdmin } from './AdminContext';
+import { useAuth } from '@/context/AuthContext';
 import {
   ShieldAlert,
   ArrowLeft,
@@ -20,6 +21,7 @@ import {
 
 export const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAdmin, loading, isElevated, elevateAdminSession, adminTheme, toggleAdminTheme } = useAdmin();
+  const { session } = useAuth();
   const [, navigate] = useLocation();
 
   const isDark = adminTheme === 'dark';
@@ -73,9 +75,15 @@ export const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }
 
     try {
       setSubmitting(true);
+      if (!session?.access_token) {
+        throw new Error('Your login session has expired. Please sign in again.');
+      }
       const res = await fetch('/api/admin/auth/verify-password', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify({ password }),
       });
 
@@ -172,9 +180,15 @@ export const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }
     try {
       setSubmitting(true);
       setErrorMessage('');
+      if (!session?.access_token) {
+        throw new Error('Your login session has expired. Please sign in again.');
+      }
       const res = await fetch('/api/admin/auth/verify-totp', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify({
           code,
           tempChallengeToken,
@@ -204,9 +218,15 @@ export const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }
     try {
       setSubmitting(true);
       setErrorMessage('');
+      if (!session?.access_token) {
+        throw new Error('Your login session has expired. Please sign in again.');
+      }
       const res = await fetch('/api/admin/auth/verify-totp', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify({
           code: rescueCodeInput.trim(),
           tempChallengeToken,

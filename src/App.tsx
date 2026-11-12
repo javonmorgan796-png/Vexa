@@ -18,9 +18,11 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
 import AdminDashboardPage from '@/pages/admin/AdminDashboardPage';
 import SignInPage from '@/pages/auth/SignInPage';
 import SignUpPage from '@/pages/auth/SignUpPage';
+import ForgotPasscodePage from '@/pages/auth/ForgotPasscodePage';
 import ProfilePage from '@/pages/settings/ProfilePage';
 import LimitsPage from '@/pages/settings/LimitsPage';
 import ChangePinPage from '@/pages/settings/ChangePinPage';
@@ -32,10 +34,11 @@ import { IncomingCryptoPage, OutgoingCryptoPage } from '@/pages/crypto/CryptoHis
 import VexaTransferPage from '@/pages/transfer/VexaTransferPage';
 import BankSelectionPage from '@/pages/transfer/BankSelectionPage';
 import { TransferConfirmationModal, PaymentPinModal } from '@/components/transfer/TransferModals';
-import { BankLogoBadge } from '@/components/BankLogoBadge';
+import { BankLogoBadge, resolveBankLogoUrl } from '@/components/BankLogoBadge';
 import { BankingTransferReceipt } from '@/components/transfer/BankingTransferReceipt';
 import { InsufficientFundsModal, TransferSuccessfulModal } from '@/components/common/BankingStatusModals';
 import { TelecomCheckoutModal } from '@/components/telecom/TelecomCheckoutModal';
+import { CryptoDepositToastContainer } from '@/components/crypto/CryptoDepositToast';
 import { BusinessProvider } from '@/context/BusinessContext';
 import BusinessDashboard from '@/pages/business/BusinessDashboard';
 import BusinessOnboarding from '@/pages/business/BusinessOnboarding';
@@ -461,7 +464,15 @@ function clearReturnLockout(phone: string | undefined) {
 }
 
 /* ── Passcode Lock Screen ─────────────────────────────────────────────── */
-function PasscodeLockScreen({ onUnlock, onSignOut }: { onUnlock: () => void; onSignOut: () => void }) {
+function PasscodeLockScreen({
+  onUnlock,
+  onSignOut,
+  onForgotPasscode,
+}: {
+  onUnlock: () => void;
+  onSignOut: () => void;
+  onForgotPasscode: () => void;
+}) {
   const { user, profilePhoto, verifyPasscodeForAppReturn } = useAuth();
   const [pin, setPin]           = useState('');
   const [shake, setShake]       = useState(false);
@@ -616,11 +627,23 @@ function PasscodeLockScreen({ onUnlock, onSignOut }: { onUnlock: () => void; onS
           </button>
         </div>
 
-        {/* Sign out link */}
-        <button onClick={onSignOut}
-          className="mt-4 text-[#9A6800] hover:text-[#7A5200] dark:text-[#F0B90B]/85 dark:hover:text-[#F0B90B] text-[13px] font-medium underline underline-offset-2 text-center">
-          Not you? Sign in with a different account
-        </button>
+        {/* Recovery & sign out links */}
+        <div className="mt-4 flex flex-col items-center gap-2">
+          <button
+            type="button"
+            onClick={onForgotPasscode}
+            className="text-[#9A6800] hover:text-[#7A5200] dark:text-[#F0B90B] dark:hover:text-[#FCD535] text-[13px] font-semibold text-center"
+          >
+            Forgot Passcode?
+          </button>
+          <button
+            type="button"
+            onClick={onSignOut}
+            className="text-[#64748B] hover:text-[#181A20] dark:text-white/60 dark:hover:text-white/85 text-[12px] font-medium underline underline-offset-2 text-center"
+          >
+            Not you? Sign in with a different account
+          </button>
+        </div>
       </div>
 
       <style>{`
@@ -1081,29 +1104,33 @@ type SettingsSection = { heading: string; items: { icon: React.ReactNode; label:
 function SettingsPage() {
   const [, navigate] = useLocation();
   const { user, session, loading, signOut, profilePhoto } = useAuth();
-  const [isAdmin, setIsAdmin] = useState(() => {
-    return user?.phone?.includes('9067212032') || user?.phone === '09067212032';
-  });
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    if (!user) {
+    if (!user || !session?.access_token) {
       setIsAdmin(false);
       return;
     }
-    const isDirect = user.phone?.includes('9067212032') || user.phone === '09067212032';
-    if (isDirect) setIsAdmin(true);
 
+    let cancelled = false;
     fetch('/api/admin/auth/check', {
       headers: {
-        'x-vexa-phone': user.phone || '',
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        Authorization: `Bearer ${session.access_token}`,
       },
     })
       .then((r) => r.json())
       .then((d) => {
-        if (d && d.isAdmin) setIsAdmin(true);
+        if (!cancelled) {
+          setIsAdmin(Boolean(d?.isAdmin));
+        }
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setIsAdmin(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [user, session]);
 
   const { themeMode, resolvedThemeMode } = useThemeMode();
@@ -2618,6 +2645,7 @@ export interface TransferReceiptData {
   transaction: AppTransaction;
   recipientName: string;
   bank: string;
+  bankLogo?: string | null;
   accountNumber: string;
   senderName: string;
   senderAccountNumber: string;
@@ -2813,6 +2841,23 @@ export async function createTransferReceiptImage(receipt: TransferReceiptData, r
   ctx.arc(cardX + cardW, dashY, 10, Math.PI / 2, -Math.PI / 2);
   ctx.fill();
 
+  // Attempt to load real-time bank logo image
+  let bankLogoImg: HTMLImageElement | null = null;
+  const resolvedBankLogo = receipt.bankLogo || resolveBankLogoUrl(receipt.bank);
+  if (resolvedBankLogo) {
+    try {
+      bankLogoImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = resolvedBankLogo;
+      });
+    } catch {
+      bankLogoImg = null;
+    }
+  }
+
   // Details Table
   let currentY = dashY + 30;
   const rowLeft = cardX + 28;
@@ -2835,7 +2880,52 @@ export async function createTransferReceiptImage(receipt: TransferReceiptData, r
   };
 
   drawRow('Recipient Name', receipt.recipientName.toUpperCase(), true);
-  drawRow('Recipient Bank', receipt.bank.toUpperCase(), true);
+
+  // Recipient Bank with Real-Time Bank Logo
+  {
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#6B7280';
+    ctx.font = '500 13px Inter, sans-serif';
+    ctx.fillText('Recipient Bank', rowLeft, currentY);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#111827';
+    ctx.font = '800 13.5px Inter, sans-serif';
+    const bankText = receipt.bank.toUpperCase();
+    ctx.fillText(bankText, rowRight, currentY);
+
+    const bankTextWidth = ctx.measureText(bankText).width;
+    const logoSize = 18;
+    const logoX = rowRight - bankTextWidth - logoSize - 8;
+    const logoY = currentY - logoSize / 2;
+
+    if (bankLogoImg) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(bankLogoImg, logoX, logoY, logoSize, logoSize);
+      ctx.restore();
+      ctx.strokeStyle = '#E2E8F0';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = '#162353';
+      ctx.beginPath();
+      ctx.arc(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '700 9px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText((receipt.bank[0] || 'B').toUpperCase(), logoX + logoSize / 2, currentY);
+    }
+
+    currentY += rowH;
+  }
+
   drawRow('Account Number', receipt.accountNumber, false, '#111827');
   drawRow('Sender Name', (receipt.senderName || 'Account Holder').toUpperCase(), true);
   drawRow('Sender Account', `Vexa · ${receipt.senderAccountNumber || 'Main'}`, false);
@@ -2924,8 +3014,14 @@ function TransferPage() {
     setLookupError('');
     const timer = window.setTimeout(async () => {
       try {
+        const { data: { session } } = await supabase.auth.getSession();
         const params = new URLSearchParams({ accountNumber: acctNo, bankCode });
+        const headers: Record<string, string> = {};
+        if (session?.access_token) {
+          headers.Authorization = `Bearer ${session.access_token}`;
+        }
         const response = await fetch(`/api/paystack/resolve-account?${params.toString()}`, {
+          headers,
           signal: controller.signal,
         });
         const body = await response.json().catch(() => null) as { accountName?: string; message?: string } | null;
@@ -2958,12 +3054,6 @@ function TransferPage() {
       setShowInsufficientPopup(true);
       return;
     }
-    // Validate against user's saved PIN
-    if (pin !== (user?.pin ?? '')) {
-      setPinError(true);
-      setPin('');
-      return;
-    }
     setProcessing(true);
     setSubmitError('');
     const balanceBeforeTransfer = balance;
@@ -2977,6 +3067,7 @@ function TransferPage() {
     });
     if (!result.success || !result.transaction) {
       setProcessing(false);
+      setPinError(true);
       setSubmitError(result.error ?? 'Transfer could not be completed. Your balance was not changed.');
       setPin('');
       return;
@@ -3005,10 +3096,6 @@ function TransferPage() {
       setShowInsufficientPopup(true);
       return;
     }
-    if (user?.pin && user.pin !== '0000' && enteredPin !== user.pin) {
-      setPinModalError('Incorrect PIN. Please try again.');
-      return;
-    }
     setPinModalError('');
     setProcessing(true);
     setSubmitError('');
@@ -3033,6 +3120,7 @@ function TransferPage() {
       transaction: result.transaction,
       recipientName: resolvedName,
       bank,
+      bankLogo: bankLogo || initialBank?.logoUrl || resolveBankLogoUrl(bank),
       accountNumber: acctNo,
       senderName: user?.name ?? 'Vexa account',
       senderAccountNumber: user?.accountNumber ?? '—',
@@ -3224,9 +3312,9 @@ function TransferPage() {
           onClose={() => setShowInsufficientPopup(false)}
           amount={amtNum + 10.75}
           action="send money"
-          accountNumber={user?.accountNumber || '9067212032'}
-          accountName={user?.name?.toUpperCase() || 'CHIBUZOR EMMANUEL DIKE'}
-          bankName="Moniepoint MFB"
+          accountNumber={user?.accountNumber || '—'}
+          accountName={user?.name?.toUpperCase() || 'VEXA USER'}
+          bankName="Vexa"
         />
 
         {/* Transfer Successful Modal matching user reference screenshot */}
@@ -3324,7 +3412,7 @@ function TransferPage() {
                   setShowInsufficientPopup(true);
                   return;
                 }
-                if (user?.pin === '0000') {
+                if (!user?.hasPin) {
                   setStep('create_pin');
                 } else {
                   setShowConfirmPopup(true);
@@ -3380,9 +3468,9 @@ function TransferPage() {
           onClose={() => setShowInsufficientPopup(false)}
           amount={amtNum + 10.75}
           action="send money"
-          accountNumber={user?.accountNumber || '9067212032'}
-          accountName={user?.name?.toUpperCase() || 'CHIBUZOR EMMANUEL DIKE'}
-          bankName="Moniepoint MFB"
+          accountNumber={user?.accountNumber || '—'}
+          accountName={user?.name?.toUpperCase() || 'VEXA USER'}
+          bankName="Vexa"
         />
 
         {/* Transfer Successful Modal matching user reference screenshot */}
@@ -3555,6 +3643,7 @@ function TransactionReceiptPage() {
     transaction,
     recipientName: transaction.name,
     bank: transaction.recipient_bank ?? 'Bank transfer',
+    bankLogo: resolveBankLogoUrl(transaction.recipient_bank ?? ''),
     accountNumber: transaction.recipient_account ?? 'Not recorded',
     senderName: transaction.sender_name ?? user?.name ?? 'Vexa account',
     senderAccountNumber: transaction.sender_account ?? user?.accountNumber ?? '—',
@@ -3601,7 +3690,7 @@ function PinModal({
   onAuthorize?: (pin: string) => Promise<{ success: boolean; error?: string }>;
   onClose: () => void;
 }) {
-  const { user } = useAuth();
+  const { user, verifyTransactionPin } = useAuth();
   const { balance } = useUserData();
   const { state: securityState } = useAccountSecurity();
   const [pin, setPin] = useState('');
@@ -3643,7 +3732,19 @@ function PinModal({
       return;
     }
     setProcessing(true);
-    setTimeout(() => { setProcessing(false); onSuccess(); }, 1500);
+    try {
+      const check = await verifyTransactionPin(pin);
+      setProcessing(false);
+      if (!check.verified) {
+        setBlockedMessage(check.message || 'Incorrect transaction PIN.');
+        setPin('');
+        return;
+      }
+      onSuccess();
+    } catch {
+      setProcessing(false);
+      setBlockedMessage('Network error. Please try again.');
+    }
   }
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
@@ -3688,9 +3789,9 @@ function PinModal({
         onClose={() => setShowInsufficient(false)}
         amount={amount}
         action={label.toLowerCase()}
-        accountNumber={user?.accountNumber || '9067212032'}
-        accountName={user?.name?.toUpperCase() || 'CHIBUZOR EMMANUEL DIKE'}
-        bankName="Moniepoint MFB"
+        accountNumber={user?.accountNumber || '—'}
+        accountName={user?.name?.toUpperCase() || 'VEXA USER'}
+        bankName="Vexa"
       />
     </div>
   );
@@ -4285,9 +4386,9 @@ function BettingPage() {
         onClose={() => setShowInsufficient(false)}
         amount={amount}
         action="fund betting wallet"
-        accountNumber={user?.accountNumber || '9067212032'}
-        accountName={user?.name?.toUpperCase() || 'CHIBUZOR EMMANUEL DIKE'}
-        bankName="Moniepoint MFB"
+        accountNumber={user?.accountNumber || '—'}
+        accountName={user?.name?.toUpperCase() || 'VEXA USER'}
+        bankName="Vexa"
       />
     </PageShell>
   );
@@ -5904,8 +6005,14 @@ function Router() {
       <Route path="/admin/crypto-logs">
         <AdminDashboardPage tab="crypto-logs" />
       </Route>
+      <Route path="/admin/referrals">
+        <AdminDashboardPage tab="referrals" />
+      </Route>
+      <Route path="/admin/cashback">
+        <AdminDashboardPage tab="cashback" />
+      </Route>
       <Route path="/admin/rewards">
-        <AdminDashboardPage tab="rewards" />
+        <AdminDashboardPage tab="referrals" />
       </Route>
       <Route path="/admin/kyc">
         <AdminDashboardPage tab="kyc" />
@@ -5940,6 +6047,7 @@ function Router() {
       {/* Auth routes */}
       <Route path="/signin" component={SignInPage} />
       <Route path="/signup" component={SignUpPage} />
+      <Route path="/forgot-passcode" component={ForgotPasscodePage} />
       {/* Settings sub-pages */}
       <Route path="/profile" component={ProfilePage} />
       <Route path="/limits" component={LimitsPage} />
@@ -6053,10 +6161,11 @@ function AppShell() {
   }, [isAuthenticated, loading, splashDone]);
 
   useEffect(() => {
-    if (splashDone && !loading && !session && !isAuthenticated) {
+    const isPublicAuthRoute = path === '/signin' || path === '/signup' || path === '/forgot-passcode';
+    if (splashDone && !loading && !session && !isAuthenticated && !isPublicAuthRoute) {
       navigate('/signin');
     }
-  }, [splashDone, loading, session, isAuthenticated, navigate]);
+  }, [splashDone, loading, session, isAuthenticated, path, navigate]);
 
   // Clear business verification when the user navigates away from the business section
   useEffect(() => {
@@ -6081,11 +6190,20 @@ function AppShell() {
       )}
       <Router />
       <AccountSecurityBanner />
+      <CryptoDepositToastContainer enabled={isAuthenticated && !locked} />
       {twoFactorPending && <TwoFactorChallenge />}
       {locked && (
         <PasscodeLockScreen
           onUnlock={() => setLocked(false)}
           onSignOut={() => { setLocked(false); signOut(); navigate('/signin'); }}
+          onForgotPasscode={() => {
+            const lockedPhone = (() => {
+              try { return localStorage.getItem('vexa_last_login_phone') ?? ''; } catch { return ''; }
+            })();
+            setLocked(false);
+            void signOut();
+            navigate(lockedPhone ? `/forgot-passcode?phone=${encodeURIComponent(lockedPhone)}` : '/forgot-passcode');
+          }}
         />
       )}
     </>

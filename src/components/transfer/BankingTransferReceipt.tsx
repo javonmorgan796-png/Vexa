@@ -248,8 +248,8 @@ export function BankingTransferReceipt({
 
               <div className="flex items-center justify-between gap-3">
                 <span className="text-slate-500 shrink-0">Recipient Bank</span>
-                <div className="flex items-center gap-1.5 font-bold text-[#111]">
-                  <BankLogoBadge bankName={bank} size="sm" />
+                <div className="flex items-center gap-2 font-bold text-[#111]">
+                  <BankLogoBadge bankName={bank} bankLogo={receipt.bankLogo} size="sm" />
                   <span>{bank}</span>
                 </div>
               </div>

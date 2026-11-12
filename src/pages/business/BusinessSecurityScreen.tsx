@@ -140,7 +140,7 @@ export default function BusinessSecurityScreen() {
   const [mode, setMode] = useState<Mode>(() => {
     const now = Date.now();
     if (pinState.lockedUntil && now < pinState.lockedUntil) return 'locked';
-    return hasBiometrics ? 'biometric' : 'pin';
+    return hasBiometrics && pinState.hasCustomPin ? 'biometric' : 'pin';
   });
 
   /* PIN entry */
@@ -164,10 +164,10 @@ export default function BusinessSecurityScreen() {
 
   /* ── Effects ─────────────────────────── */
 
-  // Sync mode when biometrics check resolves
+  // Sync mode when biometrics or custom PIN status resolves
   useEffect(() => {
-    if (mode === 'biometric' && !hasBiometrics) setMode('pin');
-  }, [hasBiometrics]);
+    if (mode === 'biometric' && (!hasBiometrics || !pinState.hasCustomPin)) setMode('pin');
+  }, [hasBiometrics, pinState.hasCustomPin, mode]);
 
   // No auto-trigger — user must tap the biometric button explicitly
 
@@ -218,8 +218,8 @@ export default function BusinessSecurityScreen() {
     setPinError('');
   }
 
-  function submitPin(p: string) {
-    const result = verifyPin(p);
+  async function submitPin(p: string) {
+    const result = await verifyPin(p);
     if (result.success) return; // gate unmounts
     triggerShake();
     setPin('');
@@ -243,7 +243,7 @@ export default function BusinessSecurityScreen() {
       const next = recoveryInput + k;
       setRecoveryInput(next);
       setRecoveryError('');
-      if (next.length === 6) setTimeout(() => submitRecoveryPasscode(next), 80);
+      if (next.length === 6) setTimeout(() => { void submitRecoveryPasscode(next); }, 80);
     } else if (mode2 === 'recovery_new_pin') {
       if (newPinValue.length >= 6) return;
       const next = newPinValue + k;
@@ -254,7 +254,7 @@ export default function BusinessSecurityScreen() {
       const next = confirmPinValue + k;
       setConfirmPinValue(next);
       setRecoveryError('');
-      if (next.length === 6) setTimeout(() => submitRecoveryConfirm(next), 80);
+      if (next.length === 6) setTimeout(() => { void submitRecoveryConfirm(next); }, 80);
     }
   }
 
@@ -276,7 +276,7 @@ export default function BusinessSecurityScreen() {
     setMode('recovery_new_pin');
   }
 
-  function submitRecoveryConfirm(confirm: string) {
+  async function submitRecoveryConfirm(confirm: string) {
     if (confirm !== newPinValue) {
       setRecoveryShake(true);
       setTimeout(() => setRecoveryShake(false), 500);
@@ -286,13 +286,23 @@ export default function BusinessSecurityScreen() {
       setNewPinValue('');
       return;
     }
-    resetBusinessPin(newPinValue);
-    // Reset recovery state and go back to PIN mode (now verified)
+    const resetRes = await resetBusinessPin(newPinValue, recoveryInput);
+    if (!resetRes.success) {
+      setRecoveryShake(true);
+      setTimeout(() => setRecoveryShake(false), 500);
+      setConfirmPinValue('');
+      setRecoveryError(resetRes.error || 'Could not update Business PIN.');
+      return;
+    }
+    const pinJustSet = newPinValue;
     setRecoveryInput('');
     setNewPinValue('');
     setConfirmPinValue('');
-    // Auto-verify after successful reset
-    verifyPin(newPinValue);
+    const verifyRes = await verifyPin(pinJustSet);
+    if (!verifyRes.success) {
+      setMode('pin');
+      setPinError(verifyRes.error ?? 'Business PIN updated. Enter your new PIN.');
+    }
   }
 
   function startRecovery() {
@@ -417,9 +427,25 @@ export default function BusinessSecurityScreen() {
             >
               <div className="flex-1 flex flex-col items-center justify-center gap-5">
                 <div className="text-center">
-                  <p className="text-[#181A20] dark:text-white text-[16px] font-semibold">Enter Business PIN</p>
-                  <p className="text-[#64748B] dark:text-white/40 text-[12px] mt-1">Enter your 6-digit Business PIN</p>
+                  <p className="text-[#181A20] dark:text-white text-[16px] font-semibold">
+                    {pinState.hasCustomPin ? 'Enter Business PIN' : 'Business PIN Not Set'}
+                  </p>
+                  <p className="text-[#64748B] dark:text-white/40 text-[12px] mt-1">
+                    {pinState.hasCustomPin
+                      ? 'Enter your 6-digit Business PIN'
+                      : 'Set a custom 6-digit Business PIN to unlock'}
+                  </p>
                 </div>
+
+                {!pinState.hasCustomPin && (
+                  <button
+                    type="button"
+                    onClick={startRecovery}
+                    className="px-5 py-2.5 rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] text-[#181A20] text-[13px] font-bold shadow-xs transition-colors"
+                  >
+                    Create 6-Digit Business PIN
+                  </button>
+                )}
 
                 <PinDots value={pin} max={6} shake={shake} />
 
@@ -455,7 +481,7 @@ export default function BusinessSecurityScreen() {
                 <Keypad onDigit={addDigit} onBack={removeDigit} />
 
                 <div className="flex justify-between items-center pt-1">
-                  {hasBiometrics ? (
+                  {hasBiometrics && pinState.hasCustomPin ? (
                     <button
                       onClick={() => { setMode('biometric'); setBioFailed(false); }}
                       className="flex items-center gap-1.5 text-[#9A6800] hover:text-[#7A5200] dark:text-[#F0B90B] dark:hover:text-[#FCD535] text-[12px] font-medium transition-colors"
@@ -469,7 +495,7 @@ export default function BusinessSecurityScreen() {
                     onClick={startRecovery}
                     className="text-[#64748B] dark:text-white/50 text-[12px] font-medium"
                   >
-                    Forgot Business PIN?
+                    {pinState.hasCustomPin ? 'Forgot Business PIN?' : 'Set Business PIN'}
                   </button>
                 </div>
               </div>

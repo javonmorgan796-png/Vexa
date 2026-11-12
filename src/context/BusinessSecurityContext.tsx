@@ -3,10 +3,9 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 
 const MAX_ATTEMPTS = 3;
-const LOCKOUT_MS   = 5 * 60 * 1000; // 5 minutes
 
 export interface BizPinState {
-  pin: string;
+  hasCustomPin: boolean;
   attempts: number;
   lockedUntil: number | null;
 }
@@ -16,15 +15,15 @@ interface BusinessSecurityContextType {
   hasBiometrics: boolean;
   pinState: BizPinState;
   maxAttempts: number;
-  verifyPin: (pin: string) => { success: boolean; error?: string; nowLocked?: boolean };
+  verifyPin: (pin: string) => Promise<{ success: boolean; error?: string; nowLocked?: boolean }>;
   triggerBiometrics: () => Promise<boolean>;
   clearVerification: () => void;
-  resetBusinessPin: (newPin: string) => void;
+  resetBusinessPin: (newPin: string, passcode: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const Ctx = createContext<BusinessSecurityContextType | null>(null);
 
-const DEFAULT_STATE: BizPinState = { pin: '123456', attempts: 0, lockedUntil: null };
+const DEFAULT_STATE: BizPinState = { hasCustomPin: false, attempts: 0, lockedUntil: null };
 
 export function BusinessSecurityProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -32,9 +31,7 @@ export function BusinessSecurityProvider({ children }: { children: React.ReactNo
   const [isVerified, setIsVerified] = useState(false);
   const [hasBiometrics, setHasBiometrics] = useState(true);
   const [state, setState] = useState<BizPinState>(DEFAULT_STATE);
-  const [loaded, setLoaded] = useState(false);
 
-  /* Detect biometrics */
   useEffect(() => {
     (async () => {
       try {
@@ -49,87 +46,121 @@ export function BusinessSecurityProvider({ children }: { children: React.ReactNo
     })();
   }, []);
 
-  /* Load PIN state from Supabase */
   const loadState = useCallback(async () => {
-    if (!user) { setState(DEFAULT_STATE); setLoaded(true); return; }
-
-    const { data } = await supabase
-      .from('business_security')
-      .select('*')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (data) {
-      setState({
-        pin:         data.pin,
-        attempts:    data.attempts,
-        lockedUntil: data.locked_until ? new Date(data.locked_until).getTime() : null,
-      });
-    } else {
-      // Row doesn't exist yet — create it
-      await supabase.from('business_security').insert({
-        user_id:      user.id,
-        pin:          '123456',
-        attempts:     0,
-        locked_until: null,
-      });
+    if (!user) {
       setState(DEFAULT_STATE);
+      return;
     }
-    setLoaded(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) return;
+
+    try {
+      const resp = await fetch('/api/business/security/status', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (!resp.ok) return;
+      const body = await resp.json().catch(() => null) as {
+        hasCustomPin?: boolean;
+        attempts?: number;
+        lockedUntil?: number | null;
+      } | null;
+      if (body) {
+        setState({
+          hasCustomPin: Boolean(body.hasCustomPin),
+          attempts: Number(body.attempts ?? 0),
+          lockedUntil: typeof body.lockedUntil === 'number' ? body.lockedUntil : null,
+        });
+      }
+    } catch {
+      // Ignore transient network errors
+    }
   }, [user?.id]);
 
-  useEffect(() => { loadState(); }, [loadState]);
+  useEffect(() => {
+    void loadState();
+  }, [loadState]);
 
-  async function persist(s: BizPinState) {
-    setState(s);
-    if (!user) return;
-    await supabase.from('business_security').upsert({
-      user_id:      user.id,
-      pin:          s.pin,
-      attempts:     s.attempts,
-      locked_until: s.lockedUntil ? new Date(s.lockedUntil).toISOString() : null,
-    }, { onConflict: 'user_id' });
-  }
-
-  function verifyPin(pin: string): { success: boolean; error?: string; nowLocked?: boolean } {
+  async function verifyPin(pin: string): Promise<{ success: boolean; error?: string; nowLocked?: boolean }> {
     const now = Date.now();
-
     if (state.lockedUntil && now < state.lockedUntil) {
       return { success: false, error: 'locked', nowLocked: true };
     }
 
-    if (pin === state.pin) {
-      persist({ ...state, attempts: 0, lockedUntil: null });
-      setIsVerified(true);
-      return { success: true };
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      return { success: false, error: 'Session expired. Please sign in again.' };
     }
 
-    const attempts = state.attempts + 1;
-    if (attempts >= MAX_ATTEMPTS) {
-      persist({ ...state, attempts, lockedUntil: now + LOCKOUT_MS });
-      return { success: false, error: 'Incorrect PIN. Access locked for 5 minutes.', nowLocked: true };
+    const resp = await fetch('/api/business/security/verify-pin', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ pin }),
+    });
+    const body = await resp.json().catch(() => null) as {
+      success?: boolean;
+      error?: string;
+      attempts?: number;
+      lockedUntil?: number | null;
+      nowLocked?: boolean;
+    } | null;
+
+    if (!resp.ok || !body?.success) {
+      setState(prev => ({
+        ...prev,
+        attempts: typeof body?.attempts === 'number' ? body.attempts : prev.attempts,
+        lockedUntil: typeof body?.lockedUntil === 'number' ? body.lockedUntil : prev.lockedUntil,
+      }));
+      return {
+        success: false,
+        error: body?.error || 'Incorrect PIN.',
+        nowLocked: Boolean(body?.nowLocked),
+      };
     }
 
-    persist({ ...state, attempts });
-    const left = MAX_ATTEMPTS - attempts;
-    return { success: false, error: `Incorrect PIN. ${left} attempt${left !== 1 ? 's' : ''} remaining.` };
+    setState(prev => ({ ...prev, hasCustomPin: true, attempts: 0, lockedUntil: null }));
+    setIsVerified(true);
+    return { success: true };
   }
 
   async function triggerBiometrics(): Promise<boolean> {
-    await new Promise(r => setTimeout(r, 1500));
-    persist({ ...state, attempts: 0, lockedUntil: null });
+    if (!state.hasCustomPin) {
+      throw new Error('Set your 6-digit Business PIN before using biometrics.');
+    }
+    await new Promise(r => setTimeout(r, 800));
+    setState(prev => ({ ...prev, attempts: 0, lockedUntil: null }));
     setIsVerified(true);
     return true;
   }
 
-  function clearVerification() { setIsVerified(false); }
-
-  function resetBusinessPin(newPin: string) {
-    persist({ pin: newPin, attempts: 0, lockedUntil: null });
+  function clearVerification() {
+    setIsVerified(false);
   }
 
-  if (!loaded) {
-    // Render children anyway — verifyPin will use default state
+  async function resetBusinessPin(
+    newPin: string,
+    passcode: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      return { success: false, error: 'Session expired. Please sign in again.' };
+    }
+    const resp = await fetch('/api/business/security/reset-pin', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ newPin, passcode }),
+    });
+    const body = await resp.json().catch(() => null) as { success?: boolean; message?: string } | null;
+    if (!resp.ok || !body?.success) {
+      return { success: false, error: body?.message || 'Could not reset Business PIN.' };
+    }
+    setState({ hasCustomPin: true, attempts: 0, lockedUntil: null });
+    return { success: true };
   }
 
   return (

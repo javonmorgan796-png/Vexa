@@ -8,7 +8,7 @@ const FREQ_LABELS: Record<PayrollFrequency, string> = { monthly: 'Monthly', biwe
 
 export default function PayrollManagement() {
   const [, navigate] = useLocation();
-  const { employees, payrollSchedules, transactions, addPayrollSchedule, updatePayrollSchedule, deletePayrollSchedule, runPayroll, business } = useBusiness();
+  const { employees, payrollSchedules, transactions, addPayrollSchedule, updatePayrollSchedule, deletePayrollSchedule, runPayroll, runBulkPayroll } = useBusiness();
   const [tab, setTab] = useState<'schedules' | 'bulk' | 'history'>('schedules');
   const [showNewSchedule, setShowNewSchedule] = useState(false);
   const [schedName, setSchedName] = useState('');
@@ -36,28 +36,22 @@ export default function PayrollManagement() {
     setShowNewSchedule(false); setSchedName(''); setSelectedEmpIds([]); setError('');
   }
 
-  function handleRunSchedule(id: string) {
-    const result = runPayroll(id);
+  async function handleRunSchedule(id: string) {
+    const result = await runPayroll(id);
     setRunResult({ msg: result.message, ok: result.success });
     setTimeout(() => setRunResult(null), 4000);
   }
 
-  function handleBulkPay() {
+  async function handleBulkPay() {
     if (bulkSelected.length === 0) return;
     setBulkRunning(true);
-    setTimeout(() => {
-      const emps = activeEmployees.filter(e => bulkSelected.includes(e.id));
-      const total = emps.reduce((s, e) => s + e.salary, 0);
-      if (business && business.balance >= total) {
-        emps.forEach(e => {});
-        setBulkResult(`✅ ₦${total.toLocaleString()} paid to ${emps.length} employees`);
-      } else {
-        setBulkResult('❌ Insufficient balance for bulk payment');
-      }
-      setBulkRunning(false);
+    const result = await runBulkPayroll(bulkSelected);
+    setBulkResult(result.success ? `✅ ${result.message}` : `❌ ${result.message}`);
+    setBulkRunning(false);
+    if (result.success) {
       setBulkSelected([]);
-      setTimeout(() => setBulkResult(null), 5000);
-    }, 1500);
+    }
+    setTimeout(() => setBulkResult(null), 5000);
   }
 
   return (
@@ -135,7 +129,7 @@ export default function PayrollManagement() {
                       className="flex-1 py-3 text-[12px] font-semibold text-[#555] border-r border-[#F5F5F5] hover:bg-[#F9F9F9]">
                       {s.active ? 'Pause' : 'Resume'}
                     </button>
-                    <button onClick={() => handleRunSchedule(s.id)}
+                    <button onClick={() => { void handleRunSchedule(s.id); }}
                       className="flex-1 py-3 text-[12px] font-bold text-[#162353] border-r border-[#F5F5F5] hover:bg-[#F0F4FF]">
                       Run Now
                     </button>
@@ -189,7 +183,7 @@ export default function PayrollManagement() {
                   <span className="text-[12px] text-[#888]">Selected ({bulkSelected.length})</span>
                   <span className="text-[13px] font-bold text-[#111]">{fmt(activeEmployees.filter(e => bulkSelected.includes(e.id)).reduce((s, e) => s + e.salary, 0))}</span>
                 </div>
-                <button onClick={handleBulkPay} disabled={bulkRunning}
+                <button onClick={() => { void handleBulkPay(); }} disabled={bulkRunning}
                   className="w-full h-[48px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[14px] font-bold shadow-sm disabled:opacity-45 transition-all">
                   {bulkRunning ? (
                     <span className="flex items-center justify-center gap-2">

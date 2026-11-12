@@ -1,4 +1,14 @@
-import { Router, type IRouter } from "express";
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { Router, type IRouter, type Request, type Response } from "express";
+import {
+  extractBearerToken,
+  isSupabaseAdminConfigured,
+  isUuid,
+  supabaseRest,
+  supabaseRpc,
+  verifySupabaseUser,
+} from "../lib/supabaseAdmin";
+import { resolveAccountRateLimiter } from "../lib/rateLimit";
 
 const router: IRouter = Router();
 const PAYSTACK_SECRET_KEY = process.env["PAYSTACK_SECRET_KEY"]?.trim();
@@ -64,7 +74,13 @@ async function paystackRequest(path: string) {
   return body;
 }
 
-router.get("/paystack/resolve-account", async (req, res) => {
+router.get("/paystack/resolve-account", resolveAccountRateLimiter, async (req, res) => {
+  const user = await verifySupabaseUser(extractBearerToken(req));
+  if (!user) {
+    res.status(401).json({ message: "Authentication required to verify bank accounts" });
+    return;
+  }
+
   const accountNumber = String(req.query.accountNumber ?? "").replace(/\D/g, "");
   const requestedBankCode = String(req.query.bankCode ?? "").trim();
   // Paystack's test environment only allows the dedicated test bank for
@@ -223,6 +239,168 @@ router.get("/paystack/banks", async (req, res) => {
     res.status(503).json({
       message: error instanceof Error ? error.message : "Bank list is temporarily unavailable",
     });
+  }
+});
+
+function verifyPaystackSignature(rawBody: Buffer, signatureHeader: string | undefined): boolean {
+  if (!PAYSTACK_SECRET_KEY || !signatureHeader) return false;
+  const supplied = signatureHeader.trim().toLowerCase();
+  if (!/^[a-f0-9]{128}$/.test(supplied)) return false;
+  const expected = createHmac("sha512", PAYSTACK_SECRET_KEY).update(rawBody).digest("hex").toLowerCase();
+  const a = Buffer.from(supplied, "utf8");
+  const b = Buffer.from(expected, "utf8");
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+router.post("/paystack/webhooks", async (req: Request, res: Response) => {
+  if (!PAYSTACK_SECRET_KEY) {
+    return res.status(503).json({ message: "Paystack webhook verification key is not configured" });
+  }
+  if (!isSupabaseAdminConfigured()) {
+    return res.status(503).json({ message: "Database admin service is not configured" });
+  }
+
+  const rawBuffer = Buffer.isBuffer(req.body)
+    ? req.body
+    : typeof req.body === "string"
+      ? Buffer.from(req.body, "utf8")
+      : Buffer.from("");
+
+  if (rawBuffer.length === 0) {
+    return res.status(400).json({ message: "Empty webhook payload" });
+  }
+
+  const sig = req.header("x-paystack-signature");
+  if (!verifyPaystackSignature(rawBuffer, sig)) {
+    req.log?.warn?.("Rejected Paystack webhook due to invalid signature");
+    return res.status(401).json({ message: "Invalid webhook signature" });
+  }
+
+  let payload: Record<string, unknown>;
+  try {
+    payload = JSON.parse(rawBuffer.toString("utf8")) as Record<string, unknown>;
+  } catch {
+    return res.status(400).json({ message: "Invalid JSON webhook payload" });
+  }
+
+  const eventName = typeof payload.event === "string" ? payload.event : "";
+  if (eventName !== "charge.success") {
+    return res.status(200).json({ received: true, ignored: true, reason: "non_charge_success_event" });
+  }
+
+  const data = (payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)
+    ? payload.data
+    : null) as Record<string, unknown> | null;
+  if (!data) {
+    return res.status(400).json({ message: "Missing Paystack charge data" });
+  }
+
+  const status = typeof data.status === "string" ? data.status.toLowerCase() : "";
+  const currency = typeof data.currency === "string" ? data.currency.toUpperCase() : "NGN";
+  const reference = typeof data.reference === "string" ? data.reference.trim() : "";
+  const amountKobo = Number(data.amount);
+
+  if (status !== "success" || currency !== "NGN" || !reference || !Number.isFinite(amountKobo) || amountKobo <= 0) {
+    return res.status(400).json({ message: "Invalid or non-NGN charge event" });
+  }
+
+  const amountNaira = Math.round(amountKobo) / 100;
+  const meta = (data.metadata && typeof data.metadata === "object" ? data.metadata : {}) as Record<string, unknown>;
+  const customer = (data.customer && typeof data.customer === "object" ? data.customer : {}) as Record<string, unknown>;
+
+  let targetUserId = typeof meta.user_id === "string" && isUuid(meta.user_id.trim()) ? meta.user_id.trim() : "";
+  const customerEmail = typeof customer.email === "string" ? customer.email.trim().toLowerCase() : "";
+
+  try {
+    if (!targetUserId && customerEmail) {
+      const pRes = await supabaseRest(
+        `profiles?email=ilike.${encodeURIComponent(customerEmail)}&select=id&limit=1`,
+      );
+      if (pRes.ok) {
+        const rows = (await pRes.json().catch(() => [])) as Array<{ id?: string }>;
+        if (rows[0]?.id) targetUserId = rows[0].id;
+      }
+    }
+
+    if (!targetUserId) {
+      req.log?.warn?.({ reference }, "Paystack charge.success user not matched");
+      return res.status(200).json({ received: true, ignored: true, reason: "user_not_found" });
+    }
+
+    // Prefer atomic idempotent Postgres RPC
+    const rpcRes = await supabaseRpc("process_paystack_deposit", {
+      p_reference: reference,
+      p_user_id: targetUserId,
+      p_amount_ngn: amountNaira,
+      p_channel: typeof data.channel === "string" ? data.channel : "paystack",
+    });
+
+    if (rpcRes.ok) {
+      const result = (await rpcRes.json().catch(() => ({}))) as Record<string, unknown>;
+      return res.status(200).json({ received: true, ...result });
+    }
+
+    const errBody = (await rpcRes.json().catch(() => null)) as { code?: string; message?: string } | null;
+    const isMissingFn =
+      rpcRes.status === 404 ||
+      errBody?.code === "PGRST202" ||
+      errBody?.code === "42883" ||
+      String(errBody?.message || "").toLowerCase().includes("could not find the function");
+
+    if (!isMissingFn) {
+      return res.status(500).json({ message: errBody?.message || "Failed to credit deposit" });
+    }
+
+    // Idempotent CAS fallback when process_paystack_deposit RPC isn't migrated yet
+    const refTag = `Paystack Ref: ${reference}`;
+    const dupCheck = await supabaseRest(
+      `transactions?user_id=eq.${encodeURIComponent(targetUserId)}&note=eq.${encodeURIComponent(refTag)}&select=id&limit=1`,
+    );
+    if (dupCheck.ok) {
+      const existing = (await dupCheck.json().catch(() => [])) as Array<unknown>;
+      if (existing.length > 0) {
+        return res.status(200).json({ received: true, status: "already_processed" });
+      }
+    }
+
+    const pRes = await supabaseRest(`profiles?id=eq.${encodeURIComponent(targetUserId)}&select=id,balance&limit=1`);
+    const pRows = pRes.ok ? ((await pRes.json().catch(() => [])) as Array<{ balance: number }>) : [];
+    if (!pRows[0]) return res.status(200).json({ received: true, ignored: true, reason: "user_not_found" });
+
+    const newBalance = Math.round((Number(pRows[0].balance) + amountNaira) * 100) / 100;
+    await supabaseRest(`profiles?id=eq.${encodeURIComponent(targetUserId)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ balance: newBalance }),
+    });
+
+    await Promise.all([
+      supabaseRest("transactions", {
+        method: "POST",
+        body: JSON.stringify({
+          user_id: targetUserId,
+          type: "in",
+          name: "Wallet Deposit (Paystack)",
+          amount: amountNaira,
+          note: refTag,
+        }),
+      }),
+      supabaseRest("notifications", {
+        method: "POST",
+        body: JSON.stringify({
+          user_id: targetUserId,
+          type: "credit",
+          title: "Deposit received",
+          body: `₦${amountNaira.toLocaleString("en-NG", { minimumFractionDigits: 2 })} added to your Vexa wallet.`,
+          read: false,
+        }),
+      }),
+    ]);
+
+    return res.status(200).json({ received: true, status: "credited" });
+  } catch (error) {
+    req.log?.error?.({ err: error, reference }, "Paystack webhook processing failed");
+    return res.status(500).json({ message: "Failed to process webhook" });
   }
 });
 

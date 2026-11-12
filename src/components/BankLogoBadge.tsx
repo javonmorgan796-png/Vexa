@@ -1,12 +1,137 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { cleanBankName } from '@/pages/transfer/BankSelectionPage';
 
-interface BankLogoBadgeProps {
+export interface BankLogoBadgeProps {
   bankName: string;
   bankLogo?: string | null;
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
   fallbackInitial?: string;
+}
+
+const BANK_LOGO_DEV_TOKEN = 'pk_cR2PYu8JS-SjpWBeeNOQIg';
+const VEXA_OFFICIAL_LOGO = '/assets/aistudio/fe78fa28-9eb7-49b5-a568-6e1afbae67cb_ac4d9ede.png';
+
+// Pre-warmed mapping for instant real-time bank logo rendering without waiting for network
+const PREWARMED_BANK_LOGOS: Record<string, string> = {
+  'opay': `https://img.logo.dev/name/OPay?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'palmpay': `https://img.logo.dev/name/PalmPay?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'moniepoint': `https://img.logo.dev/name/Moniepoint?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'moniepoint mfb': `https://img.logo.dev/name/Moniepoint?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'kuda bank': `https://img.logo.dev/name/Kuda%20Bank?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'kuda': `https://img.logo.dev/name/Kuda%20Bank?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'gtbank': `https://img.logo.dev/name/GTBank?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'guaranty trust bank': `https://img.logo.dev/name/GTBank?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'access bank': `https://img.logo.dev/name/Access%20Bank?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'zenith bank': `https://img.logo.dev/name/Zenith%20Bank?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'uba': `https://img.logo.dev/name/UBA?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'united bank for africa': `https://img.logo.dev/name/UBA?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'first bank': `https://img.logo.dev/name/First%20Bank?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'first bank of nigeria': `https://img.logo.dev/name/First%20Bank?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'fcmb': `https://img.logo.dev/name/FCMB?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'first city monument bank': `https://img.logo.dev/name/FCMB?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'stanbic ibtc': `https://img.logo.dev/name/Stanbic%20IBTC?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'stanbic ibtc bank': `https://img.logo.dev/name/Stanbic%20IBTC?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'wema bank': `https://img.logo.dev/name/Wema%20Bank?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'providus bank': `https://img.logo.dev/name/Providus%20Bank?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'sterling bank': `https://img.logo.dev/name/Sterling%20Bank?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'fidelity bank': `https://img.logo.dev/name/Fidelity%20Bank?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'union bank': `https://img.logo.dev/name/Union%20Bank?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'polaris bank': `https://img.logo.dev/name/Polaris%20Bank?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'keystone bank': `https://img.logo.dev/name/Keystone%20Bank?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'jaiz bank': `https://img.logo.dev/name/Jaiz%20Bank?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'taj bank': `https://img.logo.dev/name/TAJ%20Bank?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'lotus bank': `https://img.logo.dev/name/Lotus%20Bank?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'heritage bank': `https://img.logo.dev/name/Heritage%20Bank?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'unity bank': `https://img.logo.dev/name/Unity%20Bank?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'fairmoney': `https://img.logo.dev/name/FairMoney?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'carbon': `https://img.logo.dev/name/Carbon?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'paga': `https://img.logo.dev/name/Paga?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`,
+  'vexa': VEXA_OFFICIAL_LOGO,
+  'vexa bank': VEXA_OFFICIAL_LOGO,
+};
+
+// Global bank logos cache populated from Paystack API
+const globalBankLogos = new Map<string, string>();
+let banksFetchPromise: Promise<void> | null = null;
+
+export function resolveBankLogoUrl(rawBankName: string, directLogo?: string | null): string | null {
+  if (directLogo) return directLogo;
+  if (!rawBankName) return null;
+
+  const rawLower = rawBankName.trim().toLowerCase();
+  if (rawLower.includes('vexa')) return VEXA_OFFICIAL_LOGO;
+
+  const cleaned = cleanBankName(rawBankName);
+  const cleanLower = cleaned.toLowerCase();
+
+  // Check prewarmed dictionary first
+  if (PREWARMED_BANK_LOGOS[rawLower]) return PREWARMED_BANK_LOGOS[rawLower];
+  if (PREWARMED_BANK_LOGOS[cleanLower]) return PREWARMED_BANK_LOGOS[cleanLower];
+
+  // Check dynamic cache from /api/paystack/banks
+  if (globalBankLogos.has(cleanLower)) return globalBankLogos.get(cleanLower)!;
+  if (globalBankLogos.has(rawLower)) return globalBankLogos.get(rawLower)!;
+
+  // Fallback direct logo.dev URL by clean bank name
+  if (cleaned) {
+    return `https://img.logo.dev/name/${encodeURIComponent(cleaned)}?token=${BANK_LOGO_DEV_TOKEN}&size=96&format=png`;
+  }
+  return null;
+}
+
+export function useRealtimeBankLogo(bankName?: string, propLogo?: string | null): string | null {
+  const [logo, setLogo] = useState<string | null>(() => resolveBankLogoUrl(bankName || '', propLogo));
+
+  useEffect(() => {
+    if (propLogo) {
+      setLogo(propLogo);
+      return;
+    }
+    if (!bankName) {
+      setLogo(null);
+      return;
+    }
+
+    const immediate = resolveBankLogoUrl(bankName, propLogo);
+    if (immediate) {
+      setLogo(immediate);
+    }
+
+    // Lazy load full Paystack bank list to guarantee exact match for all 290+ licensed institutions
+    if (!banksFetchPromise && globalBankLogos.size === 0) {
+      banksFetchPromise = fetch('/api/paystack/banks', { headers: { accept: 'application/json' } })
+        .then(async (res) => {
+          if (!res.ok) return;
+          const body = (await res.json().catch(() => null)) as {
+            banks?: Array<{ name: string; legalName?: string; logoUrl: string | null }>;
+          } | null;
+          (body?.banks ?? []).forEach((b) => {
+            if (b.logoUrl) {
+              globalBankLogos.set(b.name.toLowerCase(), b.logoUrl);
+              const clean = cleanBankName(b.name).toLowerCase();
+              if (clean) globalBankLogos.set(clean, b.logoUrl);
+              if (b.legalName) {
+                globalBankLogos.set(b.legalName.toLowerCase(), b.logoUrl);
+              }
+            }
+          });
+        })
+        .catch(() => {})
+        .finally(() => {
+          banksFetchPromise = null;
+        });
+    }
+
+    if (banksFetchPromise) {
+      banksFetchPromise.then(() => {
+        const afterFetch = resolveBankLogoUrl(bankName, propLogo);
+        if (afterFetch) setLogo(afterFetch);
+      });
+    }
+  }, [bankName, propLogo]);
+
+  return logo;
 }
 
 export function getBankBrand(rawBankName: string) {
@@ -142,6 +267,11 @@ export function BankLogoBadge({
 }: BankLogoBadgeProps) {
   const [imgError, setImgError] = useState(false);
   const brand = getBankBrand(bankName);
+  const activeLogo = useRealtimeBankLogo(bankName, bankLogo);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [bankName, activeLogo]);
 
   const sizeClasses = {
     xs: 'w-4 h-4 text-[8px]',
@@ -159,22 +289,25 @@ export function BankLogoBadge({
     xl: 36,
   }[size];
 
-  if (bankLogo && !imgError) {
+  // Render real-time logo if resolved and image loads successfully
+  if (activeLogo && !imgError) {
     return (
       <div
-        className={`${sizeClasses} rounded-full bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-xs border border-slate-100 ${className}`}
+        className={`${sizeClasses} rounded-full bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-xs border border-slate-200/80 dark:border-[#2B313A] ${className}`}
+        title={brand.name}
       >
         <img
-          src={bankLogo}
-          alt={bankName}
-          className="w-full h-full object-contain p-1"
+          src={activeLogo}
+          alt={`${brand.name} logo`}
+          referrerPolicy="no-referrer"
+          className="w-full h-full object-contain p-0.5 rounded-full"
           onError={() => setImgError(true)}
         />
       </div>
     );
   }
 
-  // Authentic custom SVGs for major institutions
+  // Authentic custom SVGs for major institutions (fallback)
   const renderSvgContent = () => {
     switch (brand.type) {
       case 'opay':

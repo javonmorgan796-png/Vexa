@@ -1,20 +1,10 @@
-import { timingSafeEqual } from "node:crypto";
 import { Router, type IRouter, type Request, type Response } from "express";
+import { verifyUserTransactionPin } from "../lib/pinSecurity";
+import { pinRateLimiter } from "../lib/rateLimit";
 
 const router: IRouter = Router();
-const SUPABASE_URL = process.env["SUPABASE_URL"]?.replace(/\/$/, "");
-const SUPABASE_SERVICE_ROLE_KEY = process.env["SUPABASE_SERVICE_ROLE_KEY"];
-
-const telecomPinAttempts = new Map<string, { attempts: number; lockedUntil?: number }>();
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [id, tracker] of telecomPinAttempts) {
-    if (tracker.lockedUntil && tracker.lockedUntil <= now) {
-      telecomPinAttempts.delete(id);
-    }
-  }
-}, 60_000).unref();
+const SUPABASE_URL = (process.env["SUPABASE_URL"] || process.env["VITE_SUPABASE_URL"] || "").replace(/\/$/, "");
+const SUPABASE_SERVICE_ROLE_KEY = process.env["SUPABASE_SERVICE_ROLE_KEY"]?.trim();
 
 function extractBearer(req: Request): string {
   const value = req.header("authorization") ?? "";
@@ -68,54 +58,7 @@ function formatCashbackDate(): string {
   });
 }
 
-async function verifyUserPin(
-  userId: string,
-  suppliedPin: unknown,
-  savedPin: string | null | undefined,
-): Promise<{ ok: boolean; error?: string }> {
-  const now = Date.now();
-  const tracker = telecomPinAttempts.get(userId);
-  if (tracker?.lockedUntil && tracker.lockedUntil > now) {
-    const waitSec = Math.ceil((tracker.lockedUntil - now) / 1000);
-    return {
-      ok: false,
-      error: `Too many incorrect PIN attempts. Try again in ${waitSec}s.`,
-    };
-  }
-
-  if (typeof suppliedPin !== "string" || !/^\d{4}$/.test(suppliedPin)) {
-    return { ok: false, error: "Enter a valid 4-digit transaction PIN." };
-  }
-
-  const expectedStr = typeof savedPin === "string" ? savedPin : "";
-  const provided = Buffer.from(suppliedPin);
-  const expected = Buffer.from(expectedStr);
-  const matches =
-    expected.length === 4 &&
-    provided.length === expected.length &&
-    timingSafeEqual(provided, expected);
-
-  if (!matches) {
-    const current = (tracker?.attempts ?? 0) + 1;
-    if (current >= 5) {
-      telecomPinAttempts.set(userId, {
-        attempts: current,
-        lockedUntil: now + 15 * 60 * 1000,
-      });
-      return {
-        ok: false,
-        error: "Too many incorrect PIN attempts. Locked for 15 minutes.",
-      };
-    }
-    telecomPinAttempts.set(userId, { attempts: current });
-    return { ok: false, error: "Incorrect transaction PIN." };
-  }
-
-  telecomPinAttempts.delete(userId);
-  return { ok: true };
-}
-
-router.post("/telecom/purchase", async (req: Request, res: Response) => {
+router.post("/telecom/purchase", pinRateLimiter, async (req: Request, res: Response) => {
   try {
     const token = extractBearer(req);
     const userId = await getAuthenticatedUserId(token);
@@ -171,9 +114,9 @@ router.post("/telecom/purchase", async (req: Request, res: Response) => {
       }
     }
 
-    // 2. Load user's profile (balance & PIN)
+    // 2. Load user's profile balance
     const profileResp = await supabaseRest(
-      `profiles?id=eq.${encodeURIComponent(userId)}&select=id,balance,pin&limit=1`,
+      `profiles?id=eq.${encodeURIComponent(userId)}&select=id,balance&limit=1`,
     );
     if (!profileResp.ok) {
       return res.status(503).json({ message: "Could not load your account profile." });
@@ -181,17 +124,18 @@ router.post("/telecom/purchase", async (req: Request, res: Response) => {
     const profileRows = (await profileResp.json().catch(() => [])) as Array<{
       id: string;
       balance: number | string;
-      pin?: string | null;
     }>;
     const profile = profileRows[0];
     if (!profile) {
       return res.status(404).json({ message: "User profile not found." });
     }
 
-    // 3. Verify transaction PIN
-    const pinCheck = await verifyUserPin(userId, pin, profile.pin);
+    // 3. Verify hashed transaction PIN with lockout enforcement
+    const pinCheck = await verifyUserTransactionPin(userId, pin);
     if (!pinCheck.ok) {
-      return res.status(422).json({ message: pinCheck.error || "Incorrect transaction PIN." });
+      return res.status(pinCheck.nowLocked ? 429 : 422).json({
+        message: pinCheck.error || "Incorrect transaction PIN.",
+      });
     }
 
     // 4. Read redeemable ("cleared") cashback rows

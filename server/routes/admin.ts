@@ -21,55 +21,108 @@ import {
   getTatumWebhookLogs,
   clearTatumWebhookLogs,
 } from "./crypto-wallet";
+import {
+  extractBearerToken,
+  isSupabaseAdminConfigured,
+  isUuid,
+  normalizeNigerianPhone,
+  supabaseRest,
+  verifySupabaseUser,
+} from "../lib/supabaseAdmin";
+import { adminAuthRateLimiter } from "../lib/rateLimit";
+import { getLiveCryptoPricesNgn } from "../lib/cryptoPrices";
 
 const router: IRouter = Router();
 
-const SUPABASE_URL = (process.env["SUPABASE_URL"] || process.env["VITE_SUPABASE_URL"] || "").replace(/\/$/, "");
-const SUPABASE_SERVICE_ROLE_KEY = process.env["SUPABASE_SERVICE_ROLE_KEY"] || process.env["SUPABASE_ANON_KEY"] || process.env["VITE_SUPABASE_ANON_KEY"] || "";
+type AdminRoleName = "super_admin" | "admin" | "finance_manager" | "support_agent" | "auditor";
 
-function generateDeterministicVaultAddress(userId: string, asset: "BTC" | "ETH" | "USDT"): string {
-  const hash = createHash("sha256").update(`${userId}:vexa_crypto_vault_${asset}:v1`).digest("hex");
-  if (asset === "BTC") {
-    return `bc1q${hash.slice(0, 38).toLowerCase()}`;
-  }
-  if (asset === "ETH") {
-    return `0x${hash.slice(0, 40)}`;
-  }
-  const base58Chars = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-  let tronAddr = "T";
-  for (let i = 0; i < 33; i++) {
-    const byte = parseInt(hash.slice((i * 2) % 62, (i * 2) % 62 + 2), 16);
-    tronAddr += base58Chars[byte % base58Chars.length];
-  }
-  return tronAddr;
+const ROLE_PERMISSIONS: Record<AdminRoleName, string[]> = {
+  super_admin: [
+    "overview.view",
+    "users.view",
+    "users.manage",
+    "users.adjust_balance",
+    "users.suspend",
+    "kyc.view",
+    "kyc.manage",
+    "transactions.view",
+    "transactions.manage",
+    "deposits.view",
+    "deposits.manage",
+    "withdrawals.view",
+    "withdrawals.manage",
+    "cards.view",
+    "cards.manage",
+    "support.view",
+    "support.manage",
+    "security.view",
+    "security.manage",
+    "admins.view",
+    "admins.manage",
+    "audit.view",
+    "settings.view",
+    "settings.manage",
+  ],
+  admin: [
+    "overview.view",
+    "users.view",
+    "users.manage",
+    "users.suspend",
+    "kyc.view",
+    "kyc.manage",
+    "transactions.view",
+    "transactions.manage",
+    "deposits.view",
+    "withdrawals.view",
+    "cards.view",
+    "cards.manage",
+    "support.view",
+    "support.manage",
+    "security.view",
+    "audit.view",
+  ],
+  finance_manager: [
+    "overview.view",
+    "transactions.view",
+    "transactions.manage",
+    "deposits.view",
+    "deposits.manage",
+    "withdrawals.view",
+    "withdrawals.manage",
+    "users.view",
+    "users.adjust_balance",
+    "audit.view",
+  ],
+  support_agent: [
+    "overview.view",
+    "users.view",
+    "support.view",
+    "support.manage",
+    "kyc.view",
+  ],
+  auditor: [
+    "overview.view",
+    "users.view",
+    "transactions.view",
+    "deposits.view",
+    "withdrawals.view",
+    "audit.view",
+    "settings.view",
+  ],
+};
+
+function maskCardPan(cardNumber: string): string {
+  const digits = String(cardNumber || "").replace(/\D/g, "");
+  const last4 = digits.slice(-4) || "0000";
+  return `•••• •••• •••• ${last4}`;
 }
 
-// Default super admin designated by user
-const PRIMARY_SUPER_ADMIN_PHONE = "09067212032";
-
-// Master administrative password (can be overridden via env)
-const ADMIN_MASTER_PASSWORD = process.env["ADMIN_MASTER_PASSWORD"] || "VexaAdmin@2026!";
-
-// Standard Base32 secret for Google Authenticator (TOTP RFC 6238)
-const ADMIN_TOTP_SECRET = process.env["ADMIN_TOTP_SECRET"] || "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
-const ADMIN_RESCUE_CODE = process.env["ADMIN_RESCUE_CODE"] || "982710";
-
-// ── Cryptographic Security Core (PBKDF2-HMAC-SHA512 & AES-256-GCM) ──
-const DEFAULT_MASTER_ENCRYPTION_SECRET = "VEXA_SECURE_ADMIN_ENCRYPTION_MASTER_KEY_2026";
-const MASTER_ENCRYPTION_SECRET =
-  process.env["ADMIN_ENCRYPTION_KEY"] ||
-  process.env["SUPABASE_SERVICE_ROLE_KEY"] ||
-  DEFAULT_MASTER_ENCRYPTION_SECRET;
-const ENCRYPTION_KEY = createHash("sha256").update(MASTER_ENCRYPTION_SECRET).digest();
-
-function getDecryptionCandidateKeys(): Buffer[] {
-  const secrets = [
-    MASTER_ENCRYPTION_SECRET,
-    process.env["SUPABASE_SERVICE_ROLE_KEY"],
-    DEFAULT_MASTER_ENCRYPTION_SECRET,
-  ].filter((s): s is string => Boolean(s && s.trim()));
-  const uniqueSecrets = Array.from(new Set(secrets));
-  return uniqueSecrets.map((secret) => createHash("sha256").update(secret).digest());
+function getRequiredEncryptionKey(): Buffer {
+  const raw = (process.env["ADMIN_ENCRYPTION_KEY"] || "").trim();
+  if (!raw || raw.length < 16) {
+    throw new Error("ADMIN_ENCRYPTION_KEY environment variable is missing or too short.");
+  }
+  return createHash("sha256").update(raw).digest();
 }
 
 export function hashCredential(value: string, salt: string): string {
@@ -79,15 +132,18 @@ export function hashCredential(value: string, salt: string): string {
 export function verifyCredentialHash(value: string, salt: string, storedHash: string): boolean {
   try {
     const computed = hashCredential(value, salt);
-    return timingSafeEqual(Buffer.from(computed, "hex"), Buffer.from(storedHash, "hex"));
+    const a = Buffer.from(computed, "hex");
+    const b = Buffer.from(storedHash, "hex");
+    return a.length === b.length && timingSafeEqual(a, b);
   } catch {
     return false;
   }
 }
 
 export function encryptTotpSecret(secret: string): { encrypted: string; iv: string; tag: string } {
+  const key = getRequiredEncryptionKey();
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", ENCRYPTION_KEY, iv);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
   let encrypted = cipher.update(secret, "utf8", "hex");
   encrypted += cipher.final("hex");
   const tag = cipher.getAuthTag().toString("hex");
@@ -95,24 +151,21 @@ export function encryptTotpSecret(secret: string): { encrypted: string; iv: stri
 }
 
 export function decryptTotpSecret(encryptedHex: string, ivHex: string, tagHex: string): string {
-  const iv = Buffer.from(ivHex, "hex");
-  const tag = Buffer.from(tagHex, "hex");
-  for (const key of getDecryptionCandidateKeys()) {
-    try {
-      const decipher = createDecipheriv("aes-256-gcm", key, iv);
-      decipher.setAuthTag(tag);
-      let decrypted = decipher.update(encryptedHex, "hex", "utf8");
-      decrypted += decipher.final("utf8");
-      if (decrypted) return decrypted;
-    } catch {
-      // Try next candidate key (e.g., schema-seeded credentials encrypted with DEFAULT_MASTER_ENCRYPTION_SECRET)
-    }
+  try {
+    const key = getRequiredEncryptionKey();
+    const iv = Buffer.from(ivHex, "hex");
+    const tag = Buffer.from(tagHex, "hex");
+    const decipher = createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAuthTag(tag);
+    let decrypted = decipher.update(encryptedHex, "hex", "utf8");
+    decrypted += decipher.final("utf8");
+    return decrypted;
+  } catch (err) {
+    console.error("[AdminCrypto] Failed to decrypt TOTP secret:", err instanceof Error ? err.message : err);
+    return "";
   }
-  console.error("[AdminCrypto] Failed to decrypt TOTP secret with all candidate keys.");
-  return "";
 }
 
-// In-Memory Secure Cryptographic Credentials Store
 interface AdminCredentialRecord {
   phone: string;
   password_hash: string;
@@ -127,86 +180,90 @@ interface AdminCredentialRecord {
   locked_until?: number;
 }
 
-const inMemoryAdminCredentials = new Map<string, AdminCredentialRecord>();
+// Memory cache only populated from DB or explicit env bootstrap (never hardcoded literals)
+const envBootstrappedCredentials = new Map<string, AdminCredentialRecord>();
 
-// Seed primary super admin with cryptographically salted PBKDF2 hash & AES-256-GCM encrypted TOTP secret
-const defaultPasswordSalt = "3a62cf98a668eeaabd7864b816d97b66107ab00c96831b81af35330d0539b389";
-const defaultPasswordHash = hashCredential(ADMIN_MASTER_PASSWORD, defaultPasswordSalt);
-const defaultRescueSalt = "de81c90f2fd8e1ab6d4c041af982bce244688f60d228984e7ccc85d23ca8049a";
-const defaultRescueHash = hashCredential(ADMIN_RESCUE_CODE, defaultRescueSalt);
-const defaultEncryptedTotp = encryptTotpSecret(ADMIN_TOTP_SECRET);
+function getEnvBootstrapCredentials(phone: string): AdminCredentialRecord | null {
+  const masterPassword = (process.env["ADMIN_MASTER_PASSWORD"] || "").trim();
+  const totpSecret = (process.env["ADMIN_TOTP_SECRET"] || "").trim();
+  const rescueCode = (process.env["ADMIN_RESCUE_CODE"] || "").trim();
+  const encKey = (process.env["ADMIN_ENCRYPTION_KEY"] || "").trim();
 
-inMemoryAdminCredentials.set(PRIMARY_SUPER_ADMIN_PHONE, {
-  phone: PRIMARY_SUPER_ADMIN_PHONE,
-  password_hash: defaultPasswordHash,
-  password_salt: defaultPasswordSalt,
-  password_algo: "pbkdf2_sha512",
-  totp_secret_encrypted: defaultEncryptedTotp.encrypted,
-  totp_secret_iv: defaultEncryptedTotp.iv,
-  totp_secret_tag: defaultEncryptedTotp.tag,
-  rescue_code_hash: defaultRescueHash,
-  rescue_code_salt: defaultRescueSalt,
-  failed_attempts: 0,
-});
-
-// Helper to query admin credentials from Supabase or fallback
-async function getAdminCredentials(phone: string): Promise<AdminCredentialRecord | null> {
-  const normalized = normalizePhone(phone);
-
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      const resp = await fetch(`${SUPABASE_URL}/rest/v1/admin_credentials?phone=eq.${encodeURIComponent(normalized)}&select=*`, {
-        headers: {
-          apikey: SUPABASE_SERVICE_ROLE_KEY,
-          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        },
-      });
-      if (resp.ok) {
-        const rows = await resp.json();
-        if (Array.isArray(rows) && rows.length > 0) {
-          const row = rows[0];
-          return {
-            phone: row.phone,
-            password_hash: row.password_hash,
-            password_salt: row.password_salt,
-            password_algo: row.password_algo || "pbkdf2_sha512",
-            totp_secret_encrypted: row.totp_secret_encrypted,
-            totp_secret_iv: row.totp_secret_iv,
-            totp_secret_tag: row.totp_secret_tag,
-            rescue_code_hash: row.rescue_code_hash,
-            rescue_code_salt: row.rescue_code_salt,
-            failed_attempts: row.failed_attempts || 0,
-            locked_until: row.locked_until ? new Date(row.locked_until).getTime() : undefined,
-          };
-        }
-      }
-    } catch (err) {
-      console.warn("[AdminCredentials] Supabase fetch failed, falling back to secure store:", err);
-    }
+  if (!masterPassword || !totpSecret || !rescueCode || encKey.length < 16) {
+    return null;
   }
 
-  return inMemoryAdminCredentials.get(normalized) || inMemoryAdminCredentials.get(PRIMARY_SUPER_ADMIN_PHONE) || null;
+  const normalized = normalizeNigerianPhone(phone);
+  const existing = envBootstrappedCredentials.get(normalized);
+  if (existing) return existing;
+
+  const passwordSalt = randomBytes(32).toString("hex");
+  const rescueSalt = randomBytes(32).toString("hex");
+  const encryptedTotp = encryptTotpSecret(totpSecret);
+  const record: AdminCredentialRecord = {
+    phone: normalized,
+    password_hash: hashCredential(masterPassword, passwordSalt),
+    password_salt: passwordSalt,
+    password_algo: "pbkdf2_sha512",
+    totp_secret_encrypted: encryptedTotp.encrypted,
+    totp_secret_iv: encryptedTotp.iv,
+    totp_secret_tag: encryptedTotp.tag,
+    rescue_code_hash: hashCredential(rescueCode, rescueSalt),
+    rescue_code_salt: rescueSalt,
+    failed_attempts: 0,
+  };
+  envBootstrappedCredentials.set(normalized, record);
+  return record;
 }
 
-// Helper to update attempt and lockout in Supabase & memory
-async function updateAdminAttempts(phone: string, attempts: number, lockoutUntil?: number) {
-  const normalized = normalizePhone(phone);
-  const mem = inMemoryAdminCredentials.get(normalized);
-  if (mem) {
-    mem.failed_attempts = attempts;
-    mem.locked_until = lockoutUntil;
+async function getAdminCredentials(phone: string): Promise<AdminCredentialRecord | null> {
+  if (!isSupabaseAdminConfigured()) return null;
+  const normalized = normalizeNigerianPhone(phone);
+  if (!normalized) return null;
+
+  try {
+    const resp = await supabaseRest(
+      `admin_credentials?phone=eq.${encodeURIComponent(normalized)}&select=*&limit=1`,
+    );
+    if (resp.ok) {
+      const rows = (await resp.json().catch(() => [])) as any[];
+      if (Array.isArray(rows) && rows.length > 0) {
+        const row = rows[0];
+        return {
+          phone: row.phone,
+          password_hash: row.password_hash,
+          password_salt: row.password_salt,
+          password_algo: row.password_algo || "pbkdf2_sha512",
+          totp_secret_encrypted: row.totp_secret_encrypted,
+          totp_secret_iv: row.totp_secret_iv,
+          totp_secret_tag: row.totp_secret_tag,
+          rescue_code_hash: row.rescue_code_hash,
+          rescue_code_salt: row.rescue_code_salt,
+          failed_attempts: row.failed_attempts || 0,
+          locked_until: row.locked_until ? new Date(row.locked_until).getTime() : undefined,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("[AdminCredentials] Supabase fetch failed:", err);
   }
 
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+  return getEnvBootstrapCredentials(normalized);
+}
+
+async function updateAdminAttempts(phone: string, attempts: number, lockoutUntil?: number) {
+  const normalized = normalizeNigerianPhone(phone);
+  const cached = envBootstrappedCredentials.get(normalized);
+  if (cached) {
+    cached.failed_attempts = attempts;
+    cached.locked_until = lockoutUntil;
+  }
+
+  if (isSupabaseAdminConfigured()) {
     try {
-      await fetch(`${SUPABASE_URL}/rest/v1/admin_credentials?phone=eq.${encodeURIComponent(normalized)}`, {
+      await supabaseRest(`admin_credentials?phone=eq.${encodeURIComponent(normalized)}`, {
         method: "PATCH",
-        headers: {
-          apikey: SUPABASE_SERVICE_ROLE_KEY,
-          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          "Content-Type": "application/json",
-          Prefer: "return=minimal",
-        },
+        headers: { Prefer: "return=minimal" },
         body: JSON.stringify({
           failed_attempts: attempts,
           locked_until: lockoutUntil ? new Date(lockoutUntil).toISOString() : null,
@@ -214,30 +271,24 @@ async function updateAdminAttempts(phone: string, attempts: number, lockoutUntil
         }),
       });
     } catch {
-      // Ignored
+      // Non-fatal
     }
   }
 }
 
-// Helper to record successful login
 async function recordAdminLogin(phone: string, ip: string) {
-  const normalized = normalizePhone(phone);
-  const mem = inMemoryAdminCredentials.get(normalized);
-  if (mem) {
-    mem.failed_attempts = 0;
-    mem.locked_until = undefined;
+  const normalized = normalizeNigerianPhone(phone);
+  const cached = envBootstrappedCredentials.get(normalized);
+  if (cached) {
+    cached.failed_attempts = 0;
+    cached.locked_until = undefined;
   }
 
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+  if (isSupabaseAdminConfigured()) {
     try {
-      await fetch(`${SUPABASE_URL}/rest/v1/admin_credentials?phone=eq.${encodeURIComponent(normalized)}`, {
+      await supabaseRest(`admin_credentials?phone=eq.${encodeURIComponent(normalized)}`, {
         method: "PATCH",
-        headers: {
-          apikey: SUPABASE_SERVICE_ROLE_KEY,
-          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          "Content-Type": "application/json",
-          Prefer: "return=minimal",
-        },
+        headers: { Prefer: "return=minimal" },
         body: JSON.stringify({
           failed_attempts: 0,
           locked_until: null,
@@ -247,12 +298,11 @@ async function recordAdminLogin(phone: string, ip: string) {
         }),
       });
     } catch {
-      // Ignored
+      // Non-fatal
     }
   }
 }
 
-// RFC 6238 Base32 decoder and TOTP calculation
 function base32Decode(str: string): Buffer {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
   let bits = 0;
@@ -290,19 +340,19 @@ function generateTOTP(secretBase32: string, timeStep = 30, windowOffset = 0): st
 
 function verifyTOTP(token: string, secretBase32: string): boolean {
   const cleanToken = token.replace(/\s+/g, "");
-  if (cleanToken === ADMIN_RESCUE_CODE) return true;
-  // Check windows -2..+2 (±60s drift allowance for device/server clock skew)
-  for (let w = -2; w <= 2; w++) {
-    if (generateTOTP(secretBase32, 30, w) === cleanToken) {
+  if (cleanToken.length !== 6) return false;
+  const tokenBuf = Buffer.from(cleanToken, "utf8");
+  for (let w = -1; w <= 1; w++) {
+    const candidateBuf = Buffer.from(generateTOTP(secretBase32, 30, w), "utf8");
+    if (candidateBuf.length === tokenBuf.length && timingSafeEqual(candidateBuf, tokenBuf)) {
       return true;
     }
   }
   return false;
 }
 
-// Security rate limiter & challenge session caches with automated expiration pruning
-const tempChallengeTokens = new Map<string, { adminPhone: string; expiresAt: number }>();
-const activeElevatedSessions = new Map<string, { adminPhone: string; expiresAt: number }>();
+const tempChallengeTokens = new Map<string, { userId: string; adminPhone: string; expiresAt: number }>();
+const activeElevatedSessions = new Map<string, { userId: string; adminPhone: string; expiresAt: number }>();
 
 function pruneAdminSecurityCaches() {
   const now = Date.now();
@@ -313,14 +363,14 @@ function pruneAdminSecurityCaches() {
     if (value.expiresAt <= now) activeElevatedSessions.delete(key);
   }
 }
-// Clean up expired tokens every 60 seconds
 setInterval(pruneAdminSecurityCaches, 60_000).unref();
 
 export interface AdminUserContext {
   id: string;
+  userId: string;
   phone: string;
   name: string;
-  role: "super_admin" | "admin" | "finance_manager" | "support_agent" | "auditor";
+  role: AdminRoleName;
   permissions: string[];
 }
 
@@ -332,168 +382,82 @@ declare global {
   }
 }
 
-// Live admin team registry (seeded only with primary authorized phone)
-let inMemoryAdmins: Array<{
+interface AdminRoleRow {
   id: string;
+  user_id?: string | null;
   phone: string;
   name: string;
-  role: "super_admin" | "admin" | "finance_manager" | "support_agent" | "auditor";
-  permissions: string[];
-  isActive: boolean;
-  createdAt: string;
-}> = [
-  {
-    id: "admin-master-001",
-    phone: PRIMARY_SUPER_ADMIN_PHONE,
-    name: "Super Administrator",
-    role: "super_admin",
-    permissions: [
-      "overview.view",
-      "users.view", "users.manage", "users.adjust_balance", "users.suspend",
-      "kyc.view", "kyc.manage",
-      "transactions.view", "transactions.manage",
-      "deposits.view", "deposits.manage",
-      "withdrawals.view", "withdrawals.manage",
-      "cards.view", "cards.manage",
-      "support.view", "support.manage",
-      "security.view", "security.manage",
-      "admins.view", "admins.manage",
-      "audit.view",
-      "settings.view", "settings.manage",
-    ],
-    isActive: true,
-    createdAt: new Date().toISOString(),
-  },
-];
+  role: AdminRoleName;
+  permissions?: string[] | null;
+  is_active: boolean;
+  created_at?: string;
+}
 
-// Live system state - zero mock items initially
-let inMemoryAuditLogs: Array<{
-  id: string;
-  adminId: string;
-  adminPhone: string;
-  adminName: string;
-  action: string;
-  targetType: string;
-  targetId: string;
-  details: Record<string, unknown>;
-  previousValue?: unknown;
-  newValue?: unknown;
-  ipAddress: string;
-  createdAt: string;
-}> = [
-  {
-    id: "audit-init-01",
-    adminId: "admin-master-001",
-    adminPhone: PRIMARY_SUPER_ADMIN_PHONE,
-    adminName: "Super Administrator",
-    action: "SYSTEM_INITIALIZED",
-    targetType: "system",
-    targetId: "global",
-    details: { message: "Vexa Administrative Terminal and Google Authenticator 2FA initialized" },
-    ipAddress: "127.0.0.1",
-    createdAt: new Date().toISOString(),
-  },
-];
+async function resolveVerifiedAdmin(req: Request): Promise<AdminUserContext | null> {
+  if (!isSupabaseAdminConfigured()) return null;
+  const token = extractBearerToken(req);
+  if (!token) return null;
 
-let inMemoryKycRequests: Array<{
-  id: string;
-  userId: string;
-  userName: string;
-  userPhone: string;
-  idType: string;
-  idNumber: string;
-  documentUrl: string;
-  selfieUrl: string;
-  status: "pending" | "approved" | "rejected";
-  rejectionReason?: string;
-  reviewedBy?: string;
-  reviewedAt?: string;
-  createdAt: string;
-}> = [];
+  const supabaseUser = await verifySupabaseUser(token);
+  if (!supabaseUser) return null;
 
-let inMemoryCards: Array<{
-  id: string;
-  userId: string;
-  userName: string;
-  userPhone: string;
-  cardNumber: string;
-  cardHolder: string;
-  expiryMonth: string;
-  expiryYear: string;
-  cvv: string;
-  cardType: "virtual" | "physical";
-  cardBrand: "mastercard" | "visa" | "verve";
-  status: "active" | "frozen" | "blocked";
-  spendingLimit: number;
-  createdAt: string;
-}> = [];
+  try {
+    // 1. Lookup by verified Supabase user_id first
+    const byIdRes = await supabaseRest(
+      `admin_roles?user_id=eq.${encodeURIComponent(supabaseUser.id)}&is_active=eq.true&select=*&limit=1`,
+    );
+    let roleRow: AdminRoleRow | null = null;
+    if (byIdRes.ok) {
+      const rows = (await byIdRes.json().catch(() => [])) as AdminRoleRow[];
+      if (rows[0]) roleRow = rows[0];
+    }
 
-let inMemorySupportTickets: Array<{
-  id: string;
-  ticketNumber: string;
-  userId: string;
-  userName: string;
-  userPhone: string;
-  subject: string;
-  category: "transfer" | "deposit" | "card" | "account" | "fraud" | "general";
-  priority: "low" | "medium" | "high" | "urgent";
-  status: "open" | "in_progress" | "resolved" | "closed";
-  messages: Array<{ sender: "user" | "admin"; name: string; text: string; timestamp: string }>;
-  assignedTo?: string;
-  createdAt: string;
-  updatedAt: string;
-}> = [];
+    // 2. Fallback: match active admin_roles row by authenticated phone and link user_id
+    if (!roleRow) {
+      const emailPhone = supabaseUser.email?.endsWith("@vexa.app") ? supabaseUser.email.split("@")[0] : "";
+      const phone = normalizeNigerianPhone(supabaseUser.phone || emailPhone);
+      if (phone) {
+        const byPhoneRes = await supabaseRest(
+          `admin_roles?phone=eq.${encodeURIComponent(phone)}&is_active=eq.true&select=*&limit=1`,
+        );
+        if (byPhoneRes.ok) {
+          const rows = (await byPhoneRes.json().catch(() => [])) as AdminRoleRow[];
+          if (rows[0] && (!rows[0].user_id || rows[0].user_id === supabaseUser.id)) {
+            roleRow = rows[0];
+            if (!rows[0].user_id) {
+              await supabaseRest(`admin_roles?id=eq.${encodeURIComponent(rows[0].id)}`, {
+                method: "PATCH",
+                headers: { Prefer: "return=minimal" },
+                body: JSON.stringify({ user_id: supabaseUser.id, updated_at: new Date().toISOString() }),
+              }).catch(() => null);
+            }
+          }
+        }
+      }
+    }
 
-let inMemoryFraudAlerts: Array<{
-  id: string;
-  userId: string;
-  userName: string;
-  userPhone: string;
-  severity: "low" | "medium" | "high" | "critical";
-  alertType: string;
-  description: string;
-  metadata: Record<string, unknown>;
-  status: "unresolved" | "investigating" | "resolved" | "dismissed";
-  resolvedBy?: string;
-  resolvedAt?: string;
-  createdAt: string;
-}> = [];
+    if (!roleRow || !roleRow.is_active) return null;
+    const role = (roleRow.role in ROLE_PERMISSIONS ? roleRow.role : "auditor") as AdminRoleName;
+    const permissions =
+      Array.isArray(roleRow.permissions) && roleRow.permissions.length > 0
+        ? roleRow.permissions
+        : ROLE_PERMISSIONS[role];
 
-let inMemoryWithdrawals: Array<{
-  id: string;
-  userId: string;
-  userName: string;
-  userPhone: string;
-  accountNumber: string;
-  bankName: string;
-  recipientAccount: string;
-  recipientName: string;
-  amount: number;
-  status: "pending" | "approved" | "rejected";
-  riskScore: "low" | "medium" | "high";
-  riskNotes: string;
-  reference: string;
-  createdAt: string;
-  reviewedBy?: string;
-  reviewedAt?: string;
-}> = [];
-
-// Normalize Nigerian phone helper
-function normalizePhone(phone: string): string {
-  const digits = (phone || "").replace(/\D/g, "");
-  if (digits.startsWith("234")) {
-    return `0${digits.slice(3).replace(/^0/, "")}`;
+    return {
+      id: roleRow.id,
+      userId: supabaseUser.id,
+      phone: normalizeNigerianPhone(roleRow.phone),
+      name: roleRow.name || "Administrator",
+      role,
+      permissions,
+    };
+  } catch (err) {
+    console.warn("[AdminAuth] Failed to resolve verified admin:", err);
+    return null;
   }
-  return digits.startsWith("0") ? digits : `0${digits}`;
 }
 
-function bearer(req: Request) {
-  const value = req.header("authorization") ?? "";
-  return value.startsWith("Bearer ") ? value.slice(7) : "";
-}
-
-// Record an audit log helper
-function logAdminAudit(
+async function logAdminAudit(
   admin: AdminUserContext,
   action: string,
   targetType: string,
@@ -503,268 +467,168 @@ function logAdminAudit(
   newValue?: unknown,
   ipAddress = "127.0.0.1",
 ) {
-  inMemoryAuditLogs.unshift({
-    id: `audit-${randomUUID().slice(0, 8)}`,
-    adminId: admin.id,
-    adminPhone: admin.phone,
-    adminName: admin.name,
-    action,
-    targetType,
-    targetId,
-    details,
-    previousValue,
-    newValue,
-    ipAddress,
-    createdAt: new Date().toISOString(),
-  });
+  if (!isSupabaseAdminConfigured()) return;
+  try {
+    await supabaseRest("admin_audit_logs", {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({
+        admin_id: isUuid(admin.userId) ? admin.userId : null,
+        admin_phone: admin.phone,
+        admin_name: admin.name,
+        action,
+        target_type: targetType,
+        target_id: targetId,
+        details,
+        previous_value: previousValue ?? null,
+        new_value: newValue ?? null,
+        ip_address: ipAddress,
+      }),
+    });
+  } catch {
+    // Non-blocking audit persistence
+  }
 }
 
-// Middleware: Authenticate & Verify Admin Role (Strict Cryptographic Verification)
+function requirePermission(permission: string) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const admin = req.admin;
+    if (!admin) {
+      return res.status(401).json({ error: "Unauthorized", message: "Administrative session required." });
+    }
+    if (admin.role === "super_admin" || admin.permissions.includes(permission)) {
+      return next();
+    }
+    return res.status(403).json({
+      error: "Forbidden",
+      message: `Missing required administrative permission: ${permission}`,
+    });
+  };
+}
+
 async function authenticateAdmin(req: Request, res: Response, next: NextFunction) {
-  const token = bearer(req);
-  const elevatedToken = req.header("x-admin-session-token") || (req.query["session_token"] as string);
-
-  // 1. Verify Active Elevated 2FA Session (Primary Administrator Access Path)
-  if (elevatedToken) {
-    let elevatedSession = activeElevatedSessions.get(elevatedToken);
-    if (!elevatedSession && elevatedToken.startsWith("admin-")) {
-      const headerPhone = req.header("x-vexa-phone") || PRIMARY_SUPER_ADMIN_PHONE;
-      activeElevatedSessions.set(elevatedToken, {
-        adminPhone: headerPhone,
-        expiresAt: Date.now() + 4 * 60 * 60 * 1000,
-      });
-      elevatedSession = activeElevatedSessions.get(elevatedToken);
-    }
-
-    if (elevatedSession && Date.now() < elevatedSession.expiresAt) {
-      const adminRecord = inMemoryAdmins.find(
-        (a) => normalizePhone(a.phone) === normalizePhone(elevatedSession!.adminPhone)
-      ) || inMemoryAdmins[0];
-
-      req.admin = {
-        id: adminRecord?.id || "admin-elevated-001",
-        phone: elevatedSession.adminPhone,
-        name: adminRecord?.name || "Super Administrator",
-        role: (adminRecord?.role || "super_admin") as AdminUserContext["role"],
-        permissions: adminRecord?.permissions || [
-          "overview.view",
-          "users.view", "users.manage", "users.adjust_balance", "users.suspend",
-          "kyc.view", "kyc.manage",
-          "transactions.view", "transactions.manage",
-          "deposits.view", "deposits.manage",
-          "withdrawals.view", "withdrawals.manage",
-          "cards.view", "cards.manage",
-          "support.view", "support.manage",
-          "security.view", "security.manage",
-          "admins.view", "admins.manage",
-          "audit.view",
-          "settings.view", "settings.manage",
-        ],
-      };
-      return next();
-    }
-  }
-
-  // 2. Verify Cryptographic Supabase JWT Bearer Token
-  let userPhone = "";
-  let userId = "";
-  let userName = "Admin";
-
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY && token) {
-    try {
-      const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-        headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
-      });
-      if (response.ok) {
-        const u = await response.json();
-        userId = u.id;
-        userPhone = u.user_metadata?.phone || (u.email?.includes("@vexa.app") ? u.email.split("@")[0] : "");
-        userName = u.user_metadata?.name || u.email || "Admin";
-      }
-    } catch {
-      // Token verification failed
-    }
-  }
-
-  // 3. Header check for verified primary super admin
-  if (!userPhone) {
-    const headerPhone = req.header("x-vexa-phone") || "";
-    if (headerPhone && (normalizePhone(headerPhone) === normalizePhone(PRIMARY_SUPER_ADMIN_PHONE) || headerPhone.endsWith("9067212032"))) {
-      userPhone = PRIMARY_SUPER_ADMIN_PHONE;
-      userName = "Super Administrator";
-    }
-  }
-
-  // If a valid Supabase token or verified identity proved admin identity
-  if (userPhone) {
-    const normalized = normalizePhone(userPhone);
-    const isPrimarySuperAdmin =
-      normalized === normalizePhone(PRIMARY_SUPER_ADMIN_PHONE) ||
-      normalized.endsWith("9067212032");
-
-    const existingAdmin = inMemoryAdmins.find(
-      (a) => normalizePhone(a.phone) === normalized || (isPrimarySuperAdmin && a.role === "super_admin"),
-    );
-
-    if (isPrimarySuperAdmin || (existingAdmin && existingAdmin.isActive)) {
-      req.admin = {
-        id: existingAdmin?.id || userId || "admin-001",
-        phone: normalized,
-        name: existingAdmin?.name || userName || "Super Administrator",
-        role: (existingAdmin?.role || "super_admin") as AdminUserContext["role"],
-        permissions: existingAdmin?.permissions || [
-          "overview.view",
-          "users.view", "users.manage", "users.adjust_balance", "users.suspend",
-          "kyc.view", "kyc.manage",
-          "transactions.view", "transactions.manage",
-          "deposits.view", "deposits.manage",
-          "withdrawals.view", "withdrawals.manage",
-          "cards.view", "cards.manage",
-          "support.view", "support.manage",
-          "security.view", "security.manage",
-          "admins.view", "admins.manage",
-          "audit.view",
-          "settings.view", "settings.manage",
-        ],
-      };
-      return next();
-    }
-  }
-
-  // Disallow any raw, unverified client headers
-  return res.status(403).json({
-    error: "Unauthorized",
-    message: "Valid administrative session or verified bearer token required to access this endpoint.",
-  });
-}
-
-// ─────────────────────────────────────────────────────────────
-// 1. Basic Admin Role & Status Check
-// ─────────────────────────────────────────────────────────────
-router.get("/admin/auth/check", async (req: Request, res: Response) => {
-  const token = bearer(req);
-  const elevatedToken = req.header("x-admin-session-token") || (req.query["token"] as string);
-
-  let userPhone = "";
-  let userName = "Admin";
-  let isElevated = false;
-
-  // 1. Check if elevated 2FA session is active
-  if (elevatedToken) {
-    const session = activeElevatedSessions.get(elevatedToken);
-    if (session && Date.now() < session.expiresAt) {
-      userPhone = session.adminPhone;
-      userName = "Super Administrator";
-      isElevated = true;
-    }
-  }
-
-  // 2. Check if Supabase JWT bearer token is valid
-  if (!userPhone && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY && token) {
-    try {
-      const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-        headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
-      });
-      if (response.ok) {
-        const u = await response.json();
-        userPhone = u.user_metadata?.phone || (u.email?.includes("@vexa.app") ? u.email.split("@")[0] : "");
-        userName = u.user_metadata?.name || u.email || "Admin";
-      }
-    } catch {
-      // Ignored
-    }
-  }
-
-  // 3. Header check for verified primary super admin
-  if (!userPhone) {
-    const headerPhone = req.header("x-vexa-phone") || "";
-    if (headerPhone && (normalizePhone(headerPhone) === normalizePhone(PRIMARY_SUPER_ADMIN_PHONE) || headerPhone.endsWith("9067212032"))) {
-      userPhone = PRIMARY_SUPER_ADMIN_PHONE;
-      userName = "Super Administrator";
-      isElevated = Boolean(elevatedToken);
-    }
-  }
-
-  // If no cryptographic token or admin header verified identity, deny admin check
-  if (!userPhone) {
-    return res.json({ isAdmin: false, isElevated: false });
-  }
-
-  const normalized = normalizePhone(userPhone);
-  const isPrimary =
-    normalized === normalizePhone(PRIMARY_SUPER_ADMIN_PHONE) ||
-    normalized.endsWith("9067212032");
-
-  const adminRecord = inMemoryAdmins.find(
-    (a) => normalizePhone(a.phone) === normalized || (isPrimary && a.role === "super_admin"),
-  );
-
-  if (isPrimary || (adminRecord && adminRecord.isActive)) {
-    return res.json({
-      isAdmin: true,
-      isElevated,
-      role: adminRecord?.role || "super_admin",
-      permissions: adminRecord?.permissions || [
-        "overview.view",
-        "users.view", "users.manage", "users.adjust_balance", "users.suspend",
-        "kyc.view", "kyc.manage",
-        "transactions.view", "transactions.manage",
-        "deposits.view", "deposits.manage",
-        "withdrawals.view", "withdrawals.manage",
-        "cards.view", "cards.manage",
-        "support.view", "support.manage",
-        "security.view", "security.manage",
-        "admins.view", "admins.manage",
-        "audit.view",
-        "settings.view", "settings.manage",
-      ],
-      phone: PRIMARY_SUPER_ADMIN_PHONE,
-      name: adminRecord?.name || userName || "Super Administrator",
+  if (!isSupabaseAdminConfigured()) {
+    return res.status(503).json({
+      error: "Service Unavailable",
+      message: "Administrative database backend is not configured.",
     });
   }
 
-  return res.json({ isAdmin: false, isElevated: false });
+  const verifiedAdmin = await resolveVerifiedAdmin(req);
+  if (!verifiedAdmin) {
+    return res.status(403).json({
+      error: "Unauthorized",
+      message: "Verified Supabase administrator session required.",
+    });
+  }
+
+  const elevatedToken = req.header("x-admin-session-token");
+  if (!elevatedToken) {
+    return res.status(403).json({
+      error: "Unauthorized",
+      message: "Elevated 2FA session token header required.",
+    });
+  }
+
+  const elevatedSession = activeElevatedSessions.get(elevatedToken);
+  if (
+    !elevatedSession ||
+    Date.now() >= elevatedSession.expiresAt ||
+    elevatedSession.userId !== verifiedAdmin.userId
+  ) {
+    if (elevatedSession && Date.now() >= elevatedSession.expiresAt) {
+      activeElevatedSessions.delete(elevatedToken);
+    }
+    return res.status(403).json({
+      error: "Unauthorized",
+      message: "Administrative 2FA session expired or invalid.",
+    });
+  }
+
+  req.admin = verifiedAdmin;
+  return next();
+}
+
+// ─────────────────────────────────────────────────────────────
+// 1. Admin Role & Elevation Verification (Strict Bearer JWT)
+// ─────────────────────────────────────────────────────────────
+router.get("/admin/auth/check", async (req: Request, res: Response) => {
+  const verifiedAdmin = await resolveVerifiedAdmin(req);
+  if (!verifiedAdmin) {
+    return res.json({ isAdmin: false, isElevated: false });
+  }
+
+  const elevatedToken = req.header("x-admin-session-token");
+  let isElevated = false;
+  if (elevatedToken) {
+    const session = activeElevatedSessions.get(elevatedToken);
+    if (session && Date.now() < session.expiresAt && session.userId === verifiedAdmin.userId) {
+      isElevated = true;
+    } else if (session && Date.now() >= session.expiresAt) {
+      activeElevatedSessions.delete(elevatedToken);
+    }
+  }
+
+  return res.json({
+    id: verifiedAdmin.id,
+    isAdmin: true,
+    isElevated,
+    role: verifiedAdmin.role,
+    permissions: verifiedAdmin.permissions,
+    phone: verifiedAdmin.phone,
+    name: verifiedAdmin.name,
+  });
 });
 
 // ─────────────────────────────────────────────────────────────
-// 2. High-Security Admin 2-Step Challenge Authentication Routes
+// 2. High-Security Admin 2-Step Challenge Routes
 // ─────────────────────────────────────────────────────────────
-
-// Step 1: Password Challenge (PBKDF2-HMAC-SHA512 Verified Against Supabase admin_credentials)
-router.post("/admin/auth/verify-password", async (req: Request, res: Response) => {
-  const { password, phone } = req.body;
-  const clientIp = req.ip || "127.0.0.1";
-  const normalizedPhone = normalizePhone(phone || PRIMARY_SUPER_ADMIN_PHONE);
-
-  const creds = await getAdminCredentials(normalizedPhone);
-  if (!creds) {
-    return res.status(403).json({ error: "Access Denied", message: "Unauthorized administrative access attempt." });
+router.post("/admin/auth/verify-password", adminAuthRateLimiter, async (req: Request, res: Response) => {
+  const verifiedAdmin = await resolveVerifiedAdmin(req);
+  if (!verifiedAdmin) {
+    return res.status(403).json({
+      error: "Access Denied",
+      message: "Verified administrator account required.",
+    });
   }
 
-  // Check lockout (from Supabase or memory cache)
+  let creds: AdminCredentialRecord | null = null;
+  try {
+    creds = await getAdminCredentials(verifiedAdmin.phone);
+  } catch (err) {
+    return res.status(503).json({
+      error: "Service Unavailable",
+      message: err instanceof Error ? err.message : "Administrative encryption service is not configured.",
+    });
+  }
+
+  if (!creds) {
+    return res.status(503).json({
+      error: "Credentials Not Configured",
+      message: "Administrator 2FA credentials have not been provisioned for this account.",
+    });
+  }
+
   if (creds.locked_until && Date.now() < creds.locked_until) {
     const remainingSeconds = Math.ceil((creds.locked_until - Date.now()) / 1000);
     return res.status(429).json({
       error: "Account Locked",
-      message: `Too many failed password attempts. Access restricted for ${remainingSeconds} seconds.`,
+      message: `Too many failed attempts. Access restricted for ${remainingSeconds} seconds.`,
       lockoutSeconds: remainingSeconds,
     });
   }
 
+  const { password } = req.body ?? {};
   if (!password || typeof password !== "string") {
     return res.status(400).json({ error: "Password is required." });
   }
 
-  // Cryptographic constant-time PBKDF2 hash verification
   const isMatch = verifyCredentialHash(password.trim(), creds.password_salt, creds.password_hash);
-
   if (!isMatch) {
     const currentAttempts = (creds.failed_attempts || 0) + 1;
-    let lockoutTime: number | undefined;
-
     if (currentAttempts >= 5) {
-      lockoutTime = Date.now() + 15 * 60 * 1000; // 15-minute security lockout
-      await updateAdminAttempts(normalizedPhone, currentAttempts, lockoutTime);
+      const lockoutTime = Date.now() + 15 * 60 * 1000;
+      await updateAdminAttempts(verifiedAdmin.phone, currentAttempts, lockoutTime);
       return res.status(429).json({
         error: "Lockout Triggered",
         message: "Maximum password attempts exceeded. Administrative access locked for 15 minutes.",
@@ -772,7 +636,7 @@ router.post("/admin/auth/verify-password", async (req: Request, res: Response) =
       });
     }
 
-    await updateAdminAttempts(normalizedPhone, currentAttempts);
+    await updateAdminAttempts(verifiedAdmin.phone, currentAttempts);
     return res.status(401).json({
       error: "Invalid Credentials",
       message: `Incorrect administrator password. ${5 - currentAttempts} attempt(s) remaining before lockout.`,
@@ -780,98 +644,128 @@ router.post("/admin/auth/verify-password", async (req: Request, res: Response) =
     });
   }
 
-  // Password valid! Clear failures and issue temporary challenge token for Step 2
-  await updateAdminAttempts(normalizedPhone, 0);
+  await updateAdminAttempts(verifiedAdmin.phone, 0);
   const tempChallengeToken = `challenge-${randomUUID()}`;
   tempChallengeTokens.set(tempChallengeToken, {
-    adminPhone: normalizedPhone,
-    expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes to complete 2FA
+    userId: verifiedAdmin.userId,
+    adminPhone: verifiedAdmin.phone,
+    expiresAt: Date.now() + 5 * 60 * 1000,
   });
 
   return res.json({
     success: true,
     step: "totp_required",
-    message: "Master password accepted. Please enter your Google Verification authentication code.",
+    message: "Master password accepted. Please enter your Google Authenticator code.",
     tempChallengeToken,
   });
 });
 
-// Step 2: Google Authenticator (TOTP) Verification (Decrypted AES-256-GCM Secret from Supabase)
-router.post("/admin/auth/verify-totp", async (req: Request, res: Response) => {
-  const { code, tempChallengeToken, rescueCode } = req.body;
+router.post("/admin/auth/verify-totp", adminAuthRateLimiter, async (req: Request, res: Response) => {
+  const verifiedAdmin = await resolveVerifiedAdmin(req);
+  if (!verifiedAdmin) {
+    return res.status(403).json({
+      error: "Access Denied",
+      message: "Verified administrator account required.",
+    });
+  }
 
-  if (!tempChallengeToken) {
+  const { code, tempChallengeToken, rescueCode } = req.body ?? {};
+  if (!tempChallengeToken || typeof tempChallengeToken !== "string") {
     return res.status(400).json({ error: "Challenge token missing or session expired. Please re-enter password." });
   }
 
   const challenge = tempChallengeTokens.get(tempChallengeToken);
-  if (!challenge || Date.now() > challenge.expiresAt) {
-    tempChallengeTokens.delete(tempChallengeToken);
-    return res.status(401).json({ error: "Security challenge expired. Please restart the admin login." });
+  if (!challenge || Date.now() > challenge.expiresAt || challenge.userId !== verifiedAdmin.userId) {
+    if (challenge && Date.now() > challenge.expiresAt) {
+      tempChallengeTokens.delete(tempChallengeToken);
+    }
+    return res.status(401).json({ error: "Security challenge expired or invalid. Please restart the admin login." });
   }
 
-  const creds = await getAdminCredentials(challenge.adminPhone);
+  let creds: AdminCredentialRecord | null = null;
+  try {
+    creds = await getAdminCredentials(challenge.adminPhone);
+  } catch (err) {
+    return res.status(503).json({
+      error: "Service Unavailable",
+      message: err instanceof Error ? err.message : "Administrative encryption key is not configured.",
+    });
+  }
+
   if (!creds) {
     return res.status(403).json({ error: "Administrative profile missing." });
   }
 
-  // Decrypt the TOTP secret using AES-256-GCM
-  const decryptedSecret = decryptTotpSecret(
-    creds.totp_secret_encrypted,
-    creds.totp_secret_iv,
-    creds.totp_secret_tag,
-  );
-
-  const inputCode = String(code || "").replace(/\D/g, "").trim();
-  const rescueInput = String(rescueCode || inputCode).trim();
-  const isRescue =
-    Boolean(rescueInput) &&
-    (rescueInput === ADMIN_RESCUE_CODE ||
-      verifyCredentialHash(rescueInput, creds.rescue_code_salt, creds.rescue_code_hash));
-
-  const candidateSecrets = [
-    decryptedSecret,
-    process.env["ADMIN_TOTP_SECRET"],
-    !decryptedSecret ? ADMIN_TOTP_SECRET : "",
-  ].filter((s): s is string => Boolean(s && s.trim()));
-
-  const isTotpValid =
-    inputCode.length === 6 &&
-    Array.from(new Set(candidateSecrets)).some((secret) => verifyTOTP(inputCode, secret));
-
-  if (!isTotpValid && !isRescue) {
-    return res.status(401).json({
-      error: "Verification Failed",
-      message: "The Google Authenticator 6-digit code entered is invalid or has expired. Please try the next code.",
+  if (creds.locked_until && Date.now() < creds.locked_until) {
+    const remainingSeconds = Math.ceil((creds.locked_until - Date.now()) / 1000);
+    return res.status(429).json({
+      error: "Account Locked",
+      message: `Too many failed verification attempts. Try again in ${remainingSeconds} seconds.`,
+      lockoutSeconds: remainingSeconds,
     });
   }
 
-  // Both steps verified! Generate elevated session token valid for 2 hours
+  let decryptedSecret = "";
+  try {
+    decryptedSecret = decryptTotpSecret(
+      creds.totp_secret_encrypted,
+      creds.totp_secret_iv,
+      creds.totp_secret_tag,
+    );
+  } catch (err) {
+    return res.status(503).json({
+      error: "Service Unavailable",
+      message: err instanceof Error ? err.message : "Unable to decrypt TOTP configuration.",
+    });
+  }
+
+  const inputCode = String(code || "").replace(/\D/g, "").trim();
+  const rescueInput = String(rescueCode || "").trim();
+  const isRescue =
+    Boolean(rescueInput) &&
+    verifyCredentialHash(rescueInput, creds.rescue_code_salt, creds.rescue_code_hash);
+
+  const isTotpValid = Boolean(decryptedSecret) && inputCode.length === 6 && verifyTOTP(inputCode, decryptedSecret);
+
+  if (!isTotpValid && !isRescue) {
+    const currentAttempts = (creds.failed_attempts || 0) + 1;
+    if (currentAttempts >= 5) {
+      const lockoutTime = Date.now() + 15 * 60 * 1000;
+      await updateAdminAttempts(challenge.adminPhone, currentAttempts, lockoutTime);
+      tempChallengeTokens.delete(tempChallengeToken);
+      return res.status(429).json({
+        error: "Lockout Triggered",
+        message: "Too many invalid 2FA attempts. Administrative access locked for 15 minutes.",
+        lockoutSeconds: 900,
+      });
+    }
+    await updateAdminAttempts(challenge.adminPhone, currentAttempts);
+    return res.status(401).json({
+      error: "Verification Failed",
+      message: "The 6-digit authenticator or rescue code entered is invalid or has expired.",
+    });
+  }
+
   tempChallengeTokens.delete(tempChallengeToken);
   const elevatedToken = `elevated-${randomUUID()}`;
-  const expiresAt = Date.now() + 2 * 60 * 60 * 1000; // 2 hours
+  const expiresAt = Date.now() + 2 * 60 * 60 * 1000;
   activeElevatedSessions.set(elevatedToken, {
+    userId: verifiedAdmin.userId,
     adminPhone: challenge.adminPhone,
     expiresAt,
   });
 
   await recordAdminLogin(challenge.adminPhone, req.ip || "127.0.0.1");
 
-  logAdminAudit(
-    {
-      id: "admin-master-001",
-      phone: challenge.adminPhone,
-      name: "Super Administrator",
-      role: "super_admin",
-      permissions: ["overview.view"],
-    },
+  void logAdminAudit(
+    verifiedAdmin,
     "ADMIN_ELEVATION_GRANTED",
     "security",
-    challenge.adminPhone,
+    verifiedAdmin.userId,
     { method: isRescue ? "emergency_rescue" : "google_authenticator_totp", ip: req.ip },
     undefined,
     undefined,
-    req.ip,
+    req.ip || "127.0.0.1",
   );
 
   return res.json({
@@ -883,17 +777,16 @@ router.post("/admin/auth/verify-totp", async (req: Request, res: Response) => {
   });
 });
 
-// Check Session Elevation Status
-router.get("/admin/auth/elevation-status", (req: Request, res: Response) => {
-  const elevatedToken = req.header("x-admin-session-token") || (req.query.token as string);
-
-  if (!elevatedToken) {
+router.get("/admin/auth/elevation-status", async (req: Request, res: Response) => {
+  const verifiedAdmin = await resolveVerifiedAdmin(req);
+  const elevatedToken = req.header("x-admin-session-token");
+  if (!verifiedAdmin || !elevatedToken) {
     return res.json({ elevated: false });
   }
 
   const session = activeElevatedSessions.get(elevatedToken);
-  if (!session || Date.now() > session.expiresAt) {
-    if (session) activeElevatedSessions.delete(elevatedToken);
+  if (!session || Date.now() > session.expiresAt || session.userId !== verifiedAdmin.userId) {
+    if (session && Date.now() > session.expiresAt) activeElevatedSessions.delete(elevatedToken);
     return res.json({ elevated: false });
   }
 
@@ -905,102 +798,117 @@ router.get("/admin/auth/elevation-status", (req: Request, res: Response) => {
   });
 });
 
-// Lock Admin Console Immediately
-router.post("/admin/auth/lock", (req: Request, res: Response) => {
-  const elevatedToken = req.header("x-admin-session-token") || (req.body?.token as string);
-  if (elevatedToken) {
-    activeElevatedSessions.delete(elevatedToken);
+router.post("/admin/auth/lock", async (req: Request, res: Response) => {
+  const verifiedAdmin = await resolveVerifiedAdmin(req);
+  const elevatedToken = req.header("x-admin-session-token");
+  if (verifiedAdmin && elevatedToken) {
+    const session = activeElevatedSessions.get(elevatedToken);
+    if (session && session.userId === verifiedAdmin.userId) {
+      activeElevatedSessions.delete(elevatedToken);
+    }
   }
   return res.json({ success: true, locked: true, message: "Administrative console locked." });
 });
 
-// Save / Update Admin Credentials to Supabase (Secured)
-router.post("/admin/auth/save-credentials", async (req: Request, res: Response) => {
-  const elevatedToken = req.header("x-admin-session-token");
-  if (!elevatedToken || !activeElevatedSessions.has(elevatedToken)) {
-    return res.status(403).json({ error: "Forbidden", message: "Elevated administrator session required." });
+router.post("/admin/auth/save-credentials", authenticateAdmin, requirePermission("settings.manage"), async (req: Request, res: Response) => {
+  const admin = req.admin!;
+  const { newPassword, newTotpSecret, newRescueCode } = req.body ?? {};
+
+  let creds: AdminCredentialRecord | null = null;
+  try {
+    creds = await getAdminCredentials(admin.phone);
+  } catch (err) {
+    return res.status(503).json({
+      error: "Service Unavailable",
+      message: err instanceof Error ? err.message : "Administrative encryption key is not configured.",
+    });
   }
 
-  const { newPassword, newTotpSecret, newRescueCode } = req.body;
-  const phone = PRIMARY_SUPER_ADMIN_PHONE;
-
-  const creds = await getAdminCredentials(phone);
   if (!creds) {
-    return res.status(404).json({ error: "Record not found." });
+    return res.status(404).json({ error: "Admin credential record not found." });
   }
 
   let passwordHash = creds.password_hash;
   let passwordSalt = creds.password_salt;
-  if (newPassword && typeof newPassword === "string" && newPassword.trim().length >= 8) {
+  if (newPassword !== undefined) {
+    if (typeof newPassword !== "string" || newPassword.trim().length < 12) {
+      return res.status(400).json({ error: "New master password must be at least 12 characters." });
+    }
     passwordSalt = randomBytes(32).toString("hex");
     passwordHash = hashCredential(newPassword.trim(), passwordSalt);
   }
 
   let encTotp = { encrypted: creds.totp_secret_encrypted, iv: creds.totp_secret_iv, tag: creds.totp_secret_tag };
-  if (newTotpSecret && typeof newTotpSecret === "string" && newTotpSecret.trim().length >= 16) {
-    encTotp = encryptTotpSecret(newTotpSecret.trim().toUpperCase());
+  if (newTotpSecret !== undefined) {
+    if (typeof newTotpSecret !== "string" || newTotpSecret.trim().length < 16) {
+      return res.status(400).json({ error: "New TOTP secret must be at least 16 Base32 characters." });
+    }
+    try {
+      encTotp = encryptTotpSecret(newTotpSecret.trim().toUpperCase());
+    } catch (err) {
+      return res.status(503).json({
+        error: "Service Unavailable",
+        message: err instanceof Error ? err.message : "Encryption configuration unavailable.",
+      });
+    }
   }
 
   let rescueHash = creds.rescue_code_hash;
   let rescueSalt = creds.rescue_code_salt;
-  if (newRescueCode && typeof newRescueCode === "string" && newRescueCode.trim().length >= 6) {
+  if (newRescueCode !== undefined) {
+    if (typeof newRescueCode !== "string" || !/^\d{6,12}$/.test(newRescueCode.trim())) {
+      return res.status(400).json({ error: "Rescue code must be 6 to 12 digits." });
+    }
     rescueSalt = randomBytes(32).toString("hex");
     rescueHash = hashCredential(newRescueCode.trim(), rescueSalt);
   }
 
-  // Update in memory
-  inMemoryAdminCredentials.set(phone, {
-    phone,
-    password_hash: passwordHash,
-    password_salt: passwordSalt,
-    password_algo: "pbkdf2_sha512",
-    totp_secret_encrypted: encTotp.encrypted,
-    totp_secret_iv: encTotp.iv,
-    totp_secret_tag: encTotp.tag,
-    rescue_code_hash: rescueHash,
-    rescue_code_salt: rescueSalt,
-    failed_attempts: 0,
+  const saveRes = await supabaseRest("admin_credentials?on_conflict=phone", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify({
+      phone: admin.phone,
+      password_hash: passwordHash,
+      password_salt: passwordSalt,
+      password_algo: "pbkdf2_sha512",
+      totp_secret_encrypted: encTotp.encrypted,
+      totp_secret_iv: encTotp.iv,
+      totp_secret_tag: encTotp.tag,
+      rescue_code_hash: rescueHash,
+      rescue_code_salt: rescueSalt,
+      updated_at: new Date().toISOString(),
+    }),
   });
 
-  // Save to Supabase
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      await fetch(`${SUPABASE_URL}/rest/v1/admin_credentials`, {
-        method: "POST",
-        headers: {
-          apikey: SUPABASE_SERVICE_ROLE_KEY,
-          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          "Content-Type": "application/json",
-          Prefer: "resolution=merge-duplicates",
-        },
-        body: JSON.stringify({
-          phone,
-          password_hash: passwordHash,
-          password_salt: passwordSalt,
-          password_algo: "pbkdf2_sha512",
-          totp_secret_encrypted: encTotp.encrypted,
-          totp_secret_iv: encTotp.iv,
-          totp_secret_tag: encTotp.tag,
-          rescue_code_hash: rescueHash,
-          rescue_code_salt: rescueSalt,
-          updated_at: new Date().toISOString(),
-        }),
-      });
-    } catch (err) {
-      console.warn("[AdminCredentials] Supabase save error:", err);
-    }
+  if (!saveRes.ok) {
+    return res.status(502).json({ error: "Failed to persist updated administrator credentials." });
   }
+
+  void logAdminAudit(
+    admin,
+    "ADMIN_CREDENTIALS_ROTATED",
+    "security",
+    admin.userId,
+    {
+      rotatedPassword: Boolean(newPassword),
+      rotatedTotp: Boolean(newTotpSecret),
+      rotatedRescueCode: Boolean(newRescueCode),
+    },
+    undefined,
+    undefined,
+    req.ip || "127.0.0.1",
+  );
 
   return res.json({ success: true, message: "Admin credentials successfully encrypted and saved." });
 });
 
-// All endpoints below require active admin authentication
+// Protect all administrative endpoints below
 router.use("/admin", authenticateAdmin);
 
 // ─────────────────────────────────────────────────────────────
-// 3. Overview & System Analytics (Pure Live DB - Zero Mock Data)
+// 3. Overview & System Analytics
 // ─────────────────────────────────────────────────────────────
-router.get("/admin/overview", async (_req: Request, res: Response) => {
+router.get("/admin/overview", requirePermission("overview.view"), async (_req: Request, res: Response) => {
   let dbUsersCount = 0;
   let dbActiveCount = 0;
   let dbSuspendedCount = 0;
@@ -1008,21 +916,22 @@ router.get("/admin/overview", async (_req: Request, res: Response) => {
   let totalDepositsVolume = 0;
   let totalWithdrawalsVolume = 0;
   let totalTxCount = 0;
-  let pendingKyc = inMemoryKycRequests.filter((k) => k.status === "pending").length;
-  let openTickets = inMemorySupportTickets.filter((t) => t.status === "open" || t.status === "in_progress").length;
-  let unresolvedAlerts = inMemoryFraudAlerts.filter((a) => a.status === "unresolved").length;
+  let pendingKyc = 0;
+  let openTickets = 0;
+  let unresolvedAlerts = 0;
   const recentTransactions: any[] = [];
 
-  // Initialize dynamic 7-day chart buckets
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const last7DaysMap = new Map<string, { name: string; dateStr: string; deposits: number; withdrawals: number; volume: number; count: number }>();
+  const last7DaysMap = new Map<
+    string,
+    { name: string; dateStr: string; deposits: number; withdrawals: number; volume: number; count: number }
+  >();
   const now = new Date();
   for (let i = 6; i >= 0; i--) {
     const d = new Date(now.getTime() - i * 86400000);
     const dateKey = d.toISOString().split("T")[0];
-    const dayName = days[d.getDay()];
     last7DaysMap.set(dateKey, {
-      name: dayName,
+      name: days[d.getDay()],
       dateStr: dateKey,
       deposits: 0,
       withdrawals: 0,
@@ -1031,92 +940,78 @@ router.get("/admin/overview", async (_req: Request, res: Response) => {
     });
   }
 
-  // Query live Supabase profiles & transactions & alerts
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      const headers = { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` };
+  try {
+    const [profilesRes, txResp, kycRes, ticketRes, alertRes] = await Promise.all([
+      supabaseRest("profiles?select=balance,is_suspended"),
+      supabaseRest("transactions?select=id,user_id,type,name,amount,note,recipient_bank,recipient_account,sender_name,created_at&order=created_at.desc&limit=500"),
+      supabaseRest("kyc_requests?status=eq.pending&select=id"),
+      supabaseRest("support_tickets?status=in.(open,in_progress)&select=id"),
+      supabaseRest("fraud_alerts?status=eq.unresolved&select=id"),
+    ]);
 
-      // 1. Profiles & balances
-      const resp = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=balance,is_suspended`, { headers });
-      if (resp.ok) {
-        const rows = (await resp.json()) as Array<{ balance: number; is_suspended?: boolean }>;
-        if (Array.isArray(rows)) {
-          dbUsersCount = rows.length;
-          dbSuspendedCount = rows.filter((r) => r.is_suspended).length;
-          dbActiveCount = dbUsersCount - dbSuspendedCount;
-          totalBalances = rows.reduce((acc, r) => acc + (Number(r.balance) || 0), 0);
-        }
+    if (profilesRes.ok) {
+      const rows = (await profilesRes.json().catch(() => [])) as Array<{ balance: number; is_suspended?: boolean }>;
+      if (Array.isArray(rows)) {
+        dbUsersCount = rows.length;
+        dbSuspendedCount = rows.filter((r) => r.is_suspended).length;
+        dbActiveCount = dbUsersCount - dbSuspendedCount;
+        totalBalances = rows.reduce((acc, r) => acc + (Number(r.balance) || 0), 0);
       }
+    }
 
-      // 2. Transactions & chart aggregation
-      const txResp = await fetch(
-        `${SUPABASE_URL}/rest/v1/transactions?select=*&order=created_at.desc&limit=500`,
-        { headers }
-      );
-      if (txResp.ok) {
-        const txRows = await txResp.json();
-        if (Array.isArray(txRows)) {
-          totalTxCount = txRows.length;
-          for (const tx of txRows) {
-            const amt = Number(tx.amount) || 0;
-            const isDeposit = tx.type === "deposit" || tx.title?.toLowerCase().includes("deposit");
-            const isWithdrawal = tx.type === "withdrawal" || tx.title?.toLowerCase().includes("withdrawal") || tx.title?.toLowerCase().includes("transfer");
+    if (txResp.ok) {
+      const txRows = (await txResp.json().catch(() => [])) as any[];
+      if (Array.isArray(txRows)) {
+        totalTxCount = txRows.length;
+        for (const tx of txRows) {
+          const amt = Number(tx.amount) || 0;
+          const label = `${tx.type || ""} ${tx.name || ""} ${tx.note || ""}`.toLowerCase();
+          const isDeposit = tx.type === "in" || label.includes("deposit");
+          const isWithdrawal = tx.type === "out" || label.includes("withdrawal") || label.includes("transfer");
 
-            if (isDeposit) totalDepositsVolume += amt;
-            if (isWithdrawal) totalWithdrawalsVolume += amt;
+          if (isDeposit) totalDepositsVolume += amt;
+          if (isWithdrawal) totalWithdrawalsVolume += amt;
 
-            // Chart bucket
-            const dateStr = (tx.created_at || "").split("T")[0];
-            const bucket = last7DaysMap.get(dateStr);
-            if (bucket) {
-              bucket.count += 1;
-              bucket.volume += amt;
-              if (isDeposit) bucket.deposits += amt;
-              if (isWithdrawal) bucket.withdrawals += amt;
-            }
+          const dateStr = (tx.created_at || "").split("T")[0];
+          const bucket = last7DaysMap.get(dateStr);
+          if (bucket) {
+            bucket.count += 1;
+            bucket.volume += amt;
+            if (isDeposit) bucket.deposits += amt;
+            if (isWithdrawal) bucket.withdrawals += amt;
+          }
 
-            if (recentTransactions.length < 25) {
-              recentTransactions.push({
-                id: tx.id,
-                user: tx.user_name || "Customer",
-                phone: tx.user_phone || "—",
-                type: tx.title || tx.type || "Transaction",
-                amount: amt,
-                status: tx.status || "successful",
-                reference: tx.reference || `VX-${String(tx.id).slice(0, 8)}`,
-                timestamp: tx.created_at || new Date().toISOString(),
-              });
-            }
+          if (recentTransactions.length < 25) {
+            recentTransactions.push({
+              id: tx.id,
+              user: tx.sender_name || tx.name || "Customer",
+              phone: "—",
+              type: tx.name || tx.type || "Transaction",
+              amount: amt,
+              status: "successful",
+              reference: `VX-${String(tx.id).slice(0, 8).toUpperCase()}`,
+              timestamp: tx.created_at || new Date().toISOString(),
+            });
           }
         }
       }
-
-      // 3. Live Pending KYC count
-      const kycRes = await fetch(`${SUPABASE_URL}/rest/v1/kyc_documents?status=eq.pending&select=id`, { headers });
-      if (kycRes.ok) {
-        const kycRows = await kycRes.json();
-        if (Array.isArray(kycRows)) pendingKyc = kycRows.length;
-      }
-
-      // 4. Live Open Support Tickets count
-      const ticketRes = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets?status=in.(open,in_progress)&select=id`, { headers });
-      if (ticketRes.ok) {
-        const ticketRows = await ticketRes.json();
-        if (Array.isArray(ticketRows)) openTickets = ticketRows.length;
-      }
-
-      // 5. Live Unresolved Fraud Alerts count
-      const alertRes = await fetch(`${SUPABASE_URL}/rest/v1/security_alerts?status=eq.unresolved&select=id`, { headers });
-      if (alertRes.ok) {
-        const alertRows = await alertRes.json();
-        if (Array.isArray(alertRows)) unresolvedAlerts = alertRows.length;
-      }
-    } catch (err) {
-      console.error("[Admin Overview] DB fetch error:", err);
     }
-  }
 
-  const chartData = Array.from(last7DaysMap.values());
+    if (kycRes.ok) {
+      const rows = await kycRes.json().catch(() => []);
+      if (Array.isArray(rows)) pendingKyc = rows.length;
+    }
+    if (ticketRes.ok) {
+      const rows = await ticketRes.json().catch(() => []);
+      if (Array.isArray(rows)) openTickets = rows.length;
+    }
+    if (alertRes.ok) {
+      const rows = await alertRes.json().catch(() => []);
+      if (Array.isArray(rows)) unresolvedAlerts = rows.length;
+    }
+  } catch (err) {
+    console.error("[Admin Overview] DB fetch error:", err);
+  }
 
   return res.json({
     metrics: {
@@ -1131,21 +1026,20 @@ router.get("/admin/overview", async (_req: Request, res: Response) => {
       openTickets,
       unresolvedAlerts,
     },
-    chartData,
+    chartData: Array.from(last7DaysMap.values()),
     recentTransactions,
   });
 });
 
 // ─────────────────────────────────────────────────────────────
-// Real-Time Admin Badge Counts & Actionable Notifications
+// Badge Counts & Actionable Notifications
 // ─────────────────────────────────────────────────────────────
-router.get("/admin/notifications/badge-counts", async (_req: Request, res: Response) => {
-  let pendingKycCount = inMemoryKycRequests.filter((k) => k.status === "pending").length;
-  let pendingWithdrawalsCount = inMemoryWithdrawals.filter((w) => w.status === "pending").length;
+router.get("/admin/notifications/badge-counts", requirePermission("overview.view"), async (_req: Request, res: Response) => {
+  let pendingKycCount = 0;
+  let pendingWithdrawalsCount = 0;
   let failedDepositsCount = 0;
-  let openTicketsCount = inMemorySupportTickets.filter((t) => t.status === "open" || t.status === "in_progress").length;
-  let unresolvedAlertsCount = inMemoryFraudAlerts.filter((a) => a.status === "unresolved").length;
-
+  let openTicketsCount = 0;
+  let unresolvedAlertsCount = 0;
   const notifications: Array<{
     id: string;
     type: "kyc" | "withdrawal" | "deposit" | "support" | "security";
@@ -1156,144 +1050,71 @@ router.get("/admin/notifications/badge-counts", async (_req: Request, res: Respo
     severity: "info" | "warning" | "critical";
   }> = [];
 
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      // 1. Live KYC submissions
-      const kycRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/kyc_documents?status=eq.pending&select=id,user_name,user_phone,id_type,created_at&order=created_at.desc&limit=25`,
-        { headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` } }
-      );
-      if (kycRes.ok) {
-        const rows = await kycRes.json();
-        if (Array.isArray(rows)) {
-          pendingKycCount = rows.length;
-          rows.forEach((r: any) => {
-            notifications.push({
-              id: `kyc-${r.id}`,
-              type: "kyc",
-              title: "Pending KYC Document",
-              description: `${r.user_name || "Applicant"} (${r.id_type || "Government ID"}) awaiting verification`,
-              timestamp: r.created_at || new Date().toISOString(),
-              targetTab: "kyc",
-              severity: "warning",
-            });
-          });
-        }
-      }
+  try {
+    const [kycRes, ticketsRes, alertsRes] = await Promise.all([
+      supabaseRest("kyc_requests?status=eq.pending&select=id,user_name,user_phone,id_type,created_at&order=created_at.desc&limit=25"),
+      supabaseRest("support_tickets?status=in.(open,in_progress)&select=id,subject,user_name,priority,created_at,updated_at&order=updated_at.desc&limit=25"),
+      supabaseRest("fraud_alerts?status=eq.unresolved&select=id,alert_type,description,severity,created_at&order=created_at.desc&limit=25"),
+    ]);
 
-      // 2. Live Outbound Withdrawals
-      const wthRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/transactions?type=eq.withdrawal&status=eq.pending&select=id,amount,user_name,recipient_name,bank_name,created_at&order=created_at.desc&limit=25`,
-        { headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` } }
-      );
-      if (wthRes.ok) {
-        const rows = await wthRes.json();
-        if (Array.isArray(rows)) {
-          pendingWithdrawalsCount = rows.length;
-          rows.forEach((r: any) => {
-            notifications.push({
-              id: `wth-${r.id}`,
-              type: "withdrawal",
-              title: "Pending Outbound Withdrawal",
-              description: `₦${Number(r.amount).toLocaleString()} to ${r.recipient_name || "Beneficiary"} (${r.bank_name || "Bank"})`,
-              timestamp: r.created_at || new Date().toISOString(),
-              targetTab: "withdrawals",
-              severity: "warning",
-            });
+    if (kycRes.ok) {
+      const rows = (await kycRes.json().catch(() => [])) as any[];
+      if (Array.isArray(rows)) {
+        pendingKycCount = rows.length;
+        for (const r of rows) {
+          notifications.push({
+            id: `kyc-${r.id}`,
+            type: "kyc",
+            title: "Pending KYC Document",
+            description: `${r.user_name || "Applicant"} (${r.id_type || "ID"}) awaiting verification`,
+            timestamp: r.created_at || new Date().toISOString(),
+            targetTab: "kyc",
+            severity: "warning",
           });
         }
       }
-
-      // 3. Live Failed Deposits needing investigation
-      const depRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/transactions?type=eq.deposit&status=eq.failed&select=id,amount,user_name,reference,created_at&order=created_at.desc&limit=25`,
-        { headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` } }
-      );
-      if (depRes.ok) {
-        const rows = await depRes.json();
-        if (Array.isArray(rows)) {
-          failedDepositsCount = rows.length;
-          rows.forEach((r: any) => {
-            notifications.push({
-              id: `dep-${r.id}`,
-              type: "deposit",
-              title: "Failed Deposit Flagged",
-              description: `₦${Number(r.amount).toLocaleString()} by ${r.user_name || "Customer"} (Ref: ${r.reference || r.id.slice(0, 8)})`,
-              timestamp: r.created_at || new Date().toISOString(),
-              targetTab: "deposits",
-              severity: "critical",
-            });
-          });
-        }
-      }
-    } catch (err) {
-      console.warn("[Admin Badge Counts] Supabase lookup error:", err);
     }
+
+    if (ticketsRes.ok) {
+      const rows = (await ticketsRes.json().catch(() => [])) as any[];
+      if (Array.isArray(rows)) {
+        openTicketsCount = rows.length;
+        for (const t of rows) {
+          notifications.push({
+            id: `ticket-${t.id}`,
+            type: "support",
+            title: `Support Ticket: ${t.subject}`,
+            description: `${t.user_name || "Customer"} · Priority: ${String(t.priority || "medium").toUpperCase()}`,
+            timestamp: t.updated_at || t.created_at || new Date().toISOString(),
+            targetTab: "support",
+            severity: t.priority === "urgent" || t.priority === "high" ? "critical" : "info",
+          });
+        }
+      }
+    }
+
+    if (alertsRes.ok) {
+      const rows = (await alertsRes.json().catch(() => [])) as any[];
+      if (Array.isArray(rows)) {
+        unresolvedAlertsCount = rows.length;
+        for (const a of rows) {
+          notifications.push({
+            id: `alert-${a.id}`,
+            type: "security",
+            title: `Security Anomaly: ${a.alert_type}`,
+            description: `${a.description || "Flagged activity"} (${String(a.severity || "medium").toUpperCase()})`,
+            timestamp: a.created_at || new Date().toISOString(),
+            targetTab: "security",
+            severity: a.severity === "critical" || a.severity === "high" ? "critical" : "warning",
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[Admin Badge Counts] Supabase lookup error:", err);
   }
 
-  // Include in-memory items
-  inMemoryKycRequests
-    .filter((k) => k.status === "pending")
-    .forEach((k) => {
-      if (!notifications.some((n) => n.id === `kyc-${k.id}`)) {
-        notifications.push({
-          id: `kyc-${k.id}`,
-          type: "kyc",
-          title: "Pending KYC Document",
-          description: `${k.userName} (${k.idType}) submitted for review`,
-          timestamp: k.createdAt,
-          targetTab: "kyc",
-          severity: "warning",
-        });
-      }
-    });
-
-  inMemoryWithdrawals
-    .filter((w) => w.status === "pending")
-    .forEach((w) => {
-      if (!notifications.some((n) => n.id === `wth-${w.id}`)) {
-        notifications.push({
-          id: `wth-${w.id}`,
-          type: "withdrawal",
-          title: "Pending Outbound Withdrawal",
-          description: `₦${Number(w.amount).toLocaleString()} to ${w.recipientName} (${w.bankName})`,
-          timestamp: w.createdAt,
-          targetTab: "withdrawals",
-          severity: "warning",
-        });
-      }
-    });
-
-  inMemorySupportTickets
-    .filter((t) => t.status === "open" || t.status === "in_progress")
-    .forEach((t) => {
-      notifications.push({
-        id: `ticket-${t.id}`,
-        type: "support",
-        title: `Support Ticket: ${t.subject}`,
-        description: `${t.userName} · Priority: ${t.priority.toUpperCase()}`,
-        timestamp: t.updatedAt || t.createdAt,
-        targetTab: "support",
-        severity: t.priority === "urgent" || t.priority === "high" ? "critical" : "info",
-      });
-    });
-
-  inMemoryFraudAlerts
-    .filter((a) => a.status === "unresolved")
-    .forEach((a) => {
-      notifications.push({
-        id: `alert-${a.id}`,
-        type: "security",
-        title: `Security Anomaly: ${a.alertType}`,
-        description: `${a.description} (${a.severity.toUpperCase()})`,
-        timestamp: a.createdAt,
-        targetTab: "security",
-        severity: a.severity === "critical" || a.severity === "high" ? "critical" : "warning",
-      });
-    });
-
   notifications.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
   const total = pendingKycCount + pendingWithdrawalsCount + failedDepositsCount + openTicketsCount + unresolvedAlertsCount;
 
   return res.json({
@@ -1310,114 +1131,39 @@ router.get("/admin/notifications/badge-counts", async (_req: Request, res: Respo
 });
 
 // ─────────────────────────────────────────────────────────────
-// 4. User Management (Pure Live DB - Zero Mock Data)
+// 4. User Management (Safe Columns Only, Zero Mock Users)
 // ─────────────────────────────────────────────────────────────
-router.get("/admin/users", async (req: Request, res: Response) => {
+router.get("/admin/users", requirePermission("users.view"), async (req: Request, res: Response) => {
   const query = ((req.query.query || req.query.q || "") as string).toLowerCase().trim();
   const statusFilter = ((req.query.status || "all") as string).toLowerCase().trim();
 
-  let users: any[] = [];
-
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      const resp = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=*&order=created_at.desc&limit=150`, {
-        headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-      });
-      if (resp.ok) {
-        const live = await resp.json();
-        if (Array.isArray(live)) {
-          users = live.map((u: any) => ({
-            id: u.id,
-            name: u.name || "Vexa User",
-            phone: u.phone || "—",
-            email: u.email || `${u.phone || u.id}@vexa.app`,
-            accountNumber: u.account_number || "—",
-            balance: Number(u.balance) || 0,
-            level: u.level || 1,
-            verified: Boolean(u.verified),
-            profilePhoto: u.profile_photo || u.avatar_url || "",
-            isSuspended: Boolean(u.is_suspended),
-            suspensionReason: u.suspension_reason,
-            createdAt: u.created_at || new Date().toISOString(),
-          }));
-        }
-      }
-    } catch {
-      users = [];
-    }
+  const resp = await supabaseRest(
+    "profiles?select=id,name,phone,email,account_number,balance,level,verified,profile_photo,is_suspended,suspension_reason,kyc_tier,kyc_status,created_at&order=created_at.desc&limit=200",
+  );
+  if (!resp.ok) {
+    return res.status(502).json({ error: "Failed to load user records from database." });
   }
 
-  if (users.length === 0) {
-    users = [
-      {
-        id: "user-superadmin-01",
-        name: "Super Admin (Primary)",
-        phone: PRIMARY_SUPER_ADMIN_PHONE,
-        email: "superadmin@vexa.finance",
-        accountNumber: "2094817290",
-        balance: 1450000.0,
-        level: 3,
-        verified: true,
-        profilePhoto: "",
-        isSuspended: false,
-        createdAt: new Date(Date.now() - 30 * 86400000).toISOString(),
-      },
-      {
-        id: "user-chibuzo-02",
-        name: "Chibuzor Emmanuel",
-        phone: "08012345678",
-        email: "dikechibuzoremmanuel@gmail.com",
-        accountNumber: "2094817291",
-        balance: 32687.61,
-        level: 2,
-        verified: true,
-        profilePhoto: "",
-        isSuspended: false,
-        createdAt: new Date(Date.now() - 15 * 86400000).toISOString(),
-      },
-      {
-        id: "user-amina-03",
-        name: "Amina Bello",
-        phone: "08198765432",
-        email: "amina.b@vexa.app",
-        accountNumber: "2094817292",
-        balance: 750000.0,
-        level: 2,
-        verified: true,
-        profilePhoto: "",
-        isSuspended: false,
-        createdAt: new Date(Date.now() - 20 * 86400000).toISOString(),
-      },
-      {
-        id: "user-tunde-04",
-        name: "Babatunde Adeleke",
-        phone: "09055443322",
-        email: "babatunde@vexa.app",
-        accountNumber: "2094817293",
-        balance: 180000.0,
-        level: 1,
-        verified: true,
-        profilePhoto: "",
-        isSuspended: false,
-        createdAt: new Date(Date.now() - 10 * 86400000).toISOString(),
-      },
-      {
-        id: "user-tariq-05",
-        name: "Tariq Al-Hassan",
-        phone: "08033221100",
-        email: "tariq@vexa.app",
-        accountNumber: "2094817294",
-        balance: 1250000.0,
-        level: 3,
-        verified: true,
-        profilePhoto: "",
-        isSuspended: false,
-        createdAt: new Date(Date.now() - 25 * 86400000).toISOString(),
-      },
-    ];
-  }
+  const live = (await resp.json().catch(() => [])) as any[];
+  const users = Array.isArray(live)
+    ? live.map((u) => ({
+        id: u.id,
+        name: u.name || "Vexa User",
+        phone: u.phone || "—",
+        email: u.email || "—",
+        accountNumber: u.account_number || "—",
+        balance: Number(u.balance) || 0,
+        level: u.level || 1,
+        verified: Boolean(u.verified),
+        profilePhoto: u.profile_photo || "",
+        isSuspended: Boolean(u.is_suspended),
+        suspensionReason: u.suspension_reason,
+        kycTier: u.kyc_tier || 1,
+        kycStatus: u.kyc_status || "unverified",
+        createdAt: u.created_at || new Date().toISOString(),
+      }))
+    : [];
 
-  // Filter
   const filtered = users.filter((u) => {
     const matchesQuery =
       !query ||
@@ -1438,130 +1184,135 @@ router.get("/admin/users", async (req: Request, res: Response) => {
   return res.json({ users: filtered });
 });
 
-router.post("/admin/users/:id/status", async (req: Request, res: Response) => {
+router.post("/admin/users/:id/status", requirePermission("users.suspend"), async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { suspend, reason } = req.body;
+  const { suspend, reason } = req.body ?? {};
 
-  if (suspend && !reason) {
+  if (!isUuid(id)) {
+    return res.status(400).json({ error: "Invalid user identifier." });
+  }
+  if (id === req.admin!.userId) {
+    return res.status(400).json({ error: "Administrators cannot suspend or modify their own operational status." });
+  }
+  if (suspend && (!reason || typeof reason !== "string" || !reason.trim())) {
     return res.status(400).json({ error: "Suspension reason is mandatory for audit records." });
   }
 
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        headers: {
-          apikey: SUPABASE_SERVICE_ROLE_KEY,
-          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          is_suspended: Boolean(suspend),
-          suspension_reason: suspend ? reason : null,
-        }),
-      });
-    } catch {
-      // Ignored
-    }
+  const updateRes = await supabaseRest(`profiles?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      is_suspended: Boolean(suspend),
+      suspension_reason: suspend ? String(reason).trim().slice(0, 250) : null,
+    }),
+  });
+
+  if (!updateRes.ok) {
+    return res.status(502).json({ error: "Failed to update user account status." });
+  }
+  const updated = (await updateRes.json().catch(() => [])) as any[];
+  if (!updated[0]) {
+    return res.status(404).json({ error: "User profile not found." });
   }
 
-  logAdminAudit(
+  void logAdminAudit(
     req.admin!,
     suspend ? "USER_SUSPENDED" : "USER_REACTIVATED",
     "user",
     id,
-    { reason },
+    { reason: suspend ? reason : null },
     { isSuspended: !suspend },
-    { isSuspended: Boolean(suspend), reason },
-    req.ip,
+    { isSuspended: Boolean(suspend), reason: suspend ? reason : null },
+    req.ip || "127.0.0.1",
   );
 
   return res.json({ success: true, message: `User account ${suspend ? "suspended" : "reactivated"} successfully.` });
 });
 
-router.post("/admin/users/:id/adjust-balance", async (req: Request, res: Response) => {
+router.post("/admin/users/:id/adjust-balance", requirePermission("users.adjust_balance"), async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { type, amount, reason } = req.body;
+  const { type, amount, reason } = req.body ?? {};
 
+  if (!isUuid(id)) {
+    return res.status(400).json({ error: "Invalid user identifier." });
+  }
+  if (type !== "credit" && type !== "debit") {
+    return res.status(400).json({ error: "Adjustment type must be 'credit' or 'debit'." });
+  }
   const numAmount = Number(amount);
-  if (!numAmount || numAmount <= 0) {
+  if (!Number.isFinite(numAmount) || numAmount <= 0 || numAmount > 100_000_000) {
     return res.status(400).json({ error: "Invalid adjustment amount." });
   }
   if (!reason || typeof reason !== "string" || reason.trim().length < 5) {
     return res.status(400).json({ error: "A detailed justification is required for balance adjustments." });
   }
 
-  const adjustmentRef = `VX-ADJ-${randomUUID().slice(0, 8).toUpperCase()}`;
-
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      const getResp = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(id)}&select=balance`, {
-        headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-      });
-      if (getResp.ok) {
-        const rows = await getResp.json();
-        const currentBal = Number(rows[0]?.balance) || 0;
-        const newBal = type === "credit" ? currentBal + numAmount : Math.max(0, currentBal - numAmount);
-
-        const patchResp = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(id)}`, {
-          method: "PATCH",
-          headers: {
-            apikey: SUPABASE_SERVICE_ROLE_KEY,
-            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ balance: newBal }),
-        });
-        if (!patchResp.ok) {
-          return res.status(502).json({ error: "Failed to update user balance in database." });
-        }
-
-        await fetch(`${SUPABASE_URL}/rest/v1/transactions`, {
-          method: "POST",
-          headers: {
-            apikey: SUPABASE_SERVICE_ROLE_KEY,
-            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            user_id: id,
-            type: type === "credit" ? "in" : "out",
-            name: `Vexa Admin Adjustment (${type === "credit" ? "Credit" : "Debit"})`,
-            amount: numAmount,
-            note: `${reason.trim()} · Ref ${adjustmentRef}`,
-          }),
-        });
-
-        await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
-          method: "POST",
-          headers: {
-            apikey: SUPABASE_SERVICE_ROLE_KEY,
-            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            user_id: id,
-            type: type === "credit" ? "credit" : "debit",
-            title: type === "credit" ? "Account credited" : "Account debited",
-            body: `₦${numAmount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${type === "credit" ? "credited to" : "debited from"} your account (${reason.trim()}).`,
-            read: false,
-          }),
-        });
-      }
-    } catch {
-      // Ignored
-    }
+  const getResp = await supabaseRest(`profiles?id=eq.${encodeURIComponent(id)}&select=id,balance,name`);
+  if (!getResp.ok) {
+    return res.status(502).json({ error: "Could not read target account balance." });
+  }
+  const rows = (await getResp.json().catch(() => [])) as Array<{ id: string; balance: number; name?: string }>;
+  if (!rows[0]) {
+    return res.status(404).json({ error: "User profile not found." });
   }
 
-  logAdminAudit(
+  const currentBal = Number(rows[0].balance) || 0;
+  if (type === "debit" && currentBal < numAmount) {
+    return res.status(400).json({ error: "Insufficient customer balance for debit adjustment." });
+  }
+  const nextBal = Number((type === "credit" ? currentBal + numAmount : currentBal - numAmount).toFixed(2));
+  const adjustmentRef = `VX-ADJ-${randomUUID().slice(0, 8).toUpperCase()}`;
+
+  const patchResp = await supabaseRest(
+    `profiles?id=eq.${encodeURIComponent(id)}&balance=eq.${encodeURIComponent(String(rows[0].balance))}`,
+    {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({ balance: nextBal }),
+    },
+  );
+  if (!patchResp.ok) {
+    return res.status(502).json({ error: "Failed to update user balance in database." });
+  }
+  const patchedRows = (await patchResp.json().catch(() => [])) as any[];
+  if (!patchedRows[0]) {
+    return res.status(409).json({ error: "Balance changed concurrently; please retry." });
+  }
+
+  await Promise.all([
+    supabaseRest("transactions", {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({
+        user_id: id,
+        type: type === "credit" ? "in" : "out",
+        name: `Vexa Admin Adjustment (${type === "credit" ? "Credit" : "Debit"})`,
+        amount: numAmount,
+        note: `${reason.trim()} · Ref ${adjustmentRef}`,
+      }),
+    }),
+    supabaseRest("notifications", {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({
+        user_id: id,
+        type: type === "credit" ? "credit" : "debit",
+        title: type === "credit" ? "Account credited" : "Account debited",
+        body: `₦${numAmount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${type === "credit" ? "credited to" : "debited from"} your account (${reason.trim()}).`,
+        read: false,
+      }),
+    }),
+  ]);
+
+  void logAdminAudit(
     req.admin!,
     `BALANCE_ADJUSTMENT_${type.toUpperCase()}`,
     "user",
     id,
-    { amount: numAmount, reason, reference: adjustmentRef },
-    undefined,
-    { adjustment: type, amount: numAmount },
-    req.ip,
+    { amount: numAmount, reason: reason.trim(), reference: adjustmentRef },
+    { balance: currentBal },
+    { balance: nextBal, adjustment: type, amount: numAmount },
+    req.ip || "127.0.0.1",
   );
 
   return res.json({
@@ -1572,153 +1323,202 @@ router.post("/admin/users/:id/adjust-balance", async (req: Request, res: Respons
 });
 
 // ─────────────────────────────────────────────────────────────
-// 5. KYC Management (Live DB - Zero Mock Data)
+// 5. KYC Management
 // ─────────────────────────────────────────────────────────────
-router.get("/admin/kyc", async (_req: Request, res: Response) => {
-  let liveKyc: any[] = [...inMemoryKycRequests];
-
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      const resp = await fetch(`${SUPABASE_URL}/rest/v1/kyc_documents?select=*&order=created_at.desc`, {
-        headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-      });
-      if (resp.ok) {
-        const rows = await resp.json();
-        if (Array.isArray(rows) && rows.length > 0) {
-          liveKyc = rows;
-        }
-      }
-    } catch {
-      // Keep in-memory
-    }
+router.get("/admin/kyc", requirePermission("kyc.view"), async (_req: Request, res: Response) => {
+  const resp = await supabaseRest("kyc_requests?select=*&order=created_at.desc&limit=100");
+  if (!resp.ok) {
+    return res.json({ requests: [] });
   }
+  const rows = (await resp.json().catch(() => [])) as any[];
+  const requests = Array.isArray(rows)
+    ? rows.map((r) => ({
+        id: r.id,
+        userId: r.user_id,
+        userName: r.user_name,
+        userPhone: r.user_phone,
+        idType: r.id_type,
+        idNumber: r.id_number,
+        documentUrl: r.document_url,
+        selfieUrl: r.selfie_url,
+        status: r.status,
+        rejectionReason: r.rejection_reason,
+        reviewedBy: r.reviewed_by,
+        reviewedAt: r.reviewed_at,
+        createdAt: r.created_at,
+      }))
+    : [];
 
-  return res.json({ requests: liveKyc });
+  return res.json({ requests });
 });
 
-router.post("/admin/kyc/:id/review", async (req: Request, res: Response) => {
+router.post("/admin/kyc/:id/review", requirePermission("kyc.manage"), async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { action, reason } = req.body;
-
-  const target = inMemoryKycRequests.find((k) => k.id === id);
-  if (target) {
-    target.status = action === "approve" ? "approved" : "rejected";
-    target.rejectionReason = action === "reject" ? reason : undefined;
-    target.reviewedBy = req.admin?.name || "Administrator";
-    target.reviewedAt = new Date().toISOString();
+  const { action, reason } = req.body ?? {};
+  if (!isUuid(id)) {
+    return res.status(400).json({ error: "Invalid KYC request ID." });
+  }
+  if (action !== "approve" && action !== "reject") {
+    return res.status(400).json({ error: "Action must be 'approve' or 'reject'." });
   }
 
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      await fetch(`${SUPABASE_URL}/rest/v1/kyc_documents?id=eq.${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        headers: {
-          apikey: SUPABASE_SERVICE_ROLE_KEY,
-          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          status: action === "approve" ? "approved" : "rejected",
-          rejection_reason: reason,
-        }),
-      });
-    } catch {
-      // Ignored
-    }
+  const nextStatus = action === "approve" ? "approved" : "rejected";
+  const updateRes = await supabaseRest(`kyc_requests?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      status: nextStatus,
+      rejection_reason: action === "reject" ? String(reason || "Verification declined").trim() : null,
+      reviewed_by: req.admin!.name,
+      reviewed_at: new Date().toISOString(),
+    }),
+  });
+  if (!updateRes.ok) {
+    return res.status(502).json({ error: "Failed to update KYC request." });
+  }
+  const updatedRows = (await updateRes.json().catch(() => [])) as Array<{ user_id?: string }>;
+  if (!updatedRows[0]) {
+    return res.status(404).json({ error: "KYC request not found." });
   }
 
-  logAdminAudit(
+  if (updatedRows[0].user_id && isUuid(updatedRows[0].user_id)) {
+    await supabaseRest(`profiles?id=eq.${encodeURIComponent(updatedRows[0].user_id)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({
+        verified: action === "approve",
+        kyc_status: action === "approve" ? "verified" : "rejected",
+        kyc_tier: action === "approve" ? 2 : 1,
+        level: action === "approve" ? 2 : 1,
+      }),
+    });
+  }
+
+  void logAdminAudit(
     req.admin!,
     action === "approve" ? "KYC_APPROVED" : "KYC_REJECTED",
     "kyc",
     id,
     { reason },
     undefined,
-    { status: action === "approve" ? "approved" : "rejected" },
-    req.ip,
+    { status: nextStatus },
+    req.ip || "127.0.0.1",
   );
 
-  return res.json({ success: true, message: `KYC request was ${action === "approve" ? "approved" : "rejected"}.` });
+  return res.json({ success: true, message: `KYC request was ${nextStatus}.` });
 });
 
 // ─────────────────────────────────────────────────────────────
-// 6. Transactions (Live DB - Zero Mock Data)
+// 6. Transactions
 // ─────────────────────────────────────────────────────────────
-router.get("/admin/transactions", async (_req: Request, res: Response) => {
-  let transactions: any[] = [];
+router.get("/admin/transactions", requirePermission("transactions.view"), async (_req: Request, res: Response) => {
+  const [txResp, profResp] = await Promise.all([
+    supabaseRest("transactions?select=id,user_id,type,name,amount,note,recipient_bank,recipient_account,sender_name,sender_account,created_at&order=created_at.desc&limit=150"),
+    supabaseRest("profiles?select=id,name,phone&limit=500"),
+  ]);
 
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      const resp = await fetch(`${SUPABASE_URL}/rest/v1/transactions?select=*&order=created_at.desc&limit=100`, {
-        headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-      });
-      if (resp.ok) {
-        const rows = await resp.json();
-        if (Array.isArray(rows)) {
-          transactions = rows.map((tx: any) => ({
-            id: tx.id,
-            reference: tx.reference || `VX-${tx.id.slice(0, 8)}`,
-            user: tx.user_name || "Customer",
-            phone: tx.user_phone || "—",
-            type: tx.title || tx.type || "Transfer",
-            amount: Number(tx.amount) || 0,
-            fee: Number(tx.fee) || 0,
-            status: tx.status || "successful",
-            recipient: tx.recipient || tx.description || "—",
-            timestamp: tx.created_at || new Date().toISOString(),
-          }));
-        }
-      }
-    } catch {
-      transactions = [];
+  if (!txResp.ok) {
+    return res.status(502).json({ error: "Failed to load transactions." });
+  }
+
+  const profMap = new Map<string, { name: string; phone: string }>();
+  if (profResp.ok) {
+    const profRows = (await profResp.json().catch(() => [])) as Array<{ id: string; name?: string; phone?: string }>;
+    for (const p of profRows) {
+      profMap.set(p.id, { name: p.name || "Customer", phone: p.phone || "—" });
     }
   }
+
+  const rows = (await txResp.json().catch(() => [])) as any[];
+  const transactions = Array.isArray(rows)
+    ? rows.map((tx) => {
+        const owner = profMap.get(tx.user_id);
+        return {
+          id: tx.id,
+          reference: `VX-${String(tx.id).slice(0, 8).toUpperCase()}`,
+          user: owner?.name || tx.sender_name || "Customer",
+          phone: owner?.phone || "—",
+          type: tx.name || tx.type || "Transfer",
+          amount: Number(tx.amount) || 0,
+          fee: 0,
+          status: "successful",
+          recipient: tx.recipient_account ? `${tx.recipient_bank || "Vexa"} (${tx.recipient_account})` : tx.note || "—",
+          timestamp: tx.created_at || new Date().toISOString(),
+        };
+      })
+    : [];
 
   return res.json({ transactions });
 });
 
 // ─────────────────────────────────────────────────────────────
-// 7. Deposits (Live DB - Zero Mock Data)
+// 7. Deposits
 // ─────────────────────────────────────────────────────────────
-router.get("/admin/deposits", async (_req: Request, res: Response) => {
-  let deposits: any[] = [];
+router.get("/admin/deposits", requirePermission("deposits.view"), async (_req: Request, res: Response) => {
+  const [txResp, paystackRes, profResp] = await Promise.all([
+    supabaseRest("transactions?type=eq.in&order=created_at.desc&limit=100"),
+    supabaseRest("paystack_deposit_events?order=created_at.desc&limit=100"),
+    supabaseRest("profiles?select=id,name,phone&limit=500"),
+  ]);
 
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      const resp = await fetch(
-        `${SUPABASE_URL}/rest/v1/transactions?type=eq.deposit&order=created_at.desc&limit=100`,
-        {
-          headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-        },
-      );
-      if (resp.ok) {
-        const rows = await resp.json();
-        if (Array.isArray(rows)) {
-          deposits = rows.map((d: any) => ({
-            id: d.id,
-            reference: d.reference || `DEP-${d.id.slice(0, 8)}`,
-            user: d.user_name || "Customer",
-            phone: d.user_phone || "—",
-            channel: d.category || "Paystack Card Gateway",
-            amount: Number(d.amount) || 0,
-            status: d.status || "successful",
-            createdAt: d.created_at || new Date().toISOString(),
-          }));
-        }
-      }
-    } catch {
-      deposits = [];
+  const profMap = new Map<string, { name: string; phone: string }>();
+  if (profResp.ok) {
+    const profRows = (await profResp.json().catch(() => [])) as Array<{ id: string; name?: string; phone?: string }>;
+    for (const p of profRows) {
+      profMap.set(p.id, { name: p.name || "Customer", phone: p.phone || "—" });
+    }
+  }
+
+  let deposits: any[] = [];
+  if (paystackRes.ok) {
+    const pRows = (await paystackRes.json().catch(() => [])) as any[];
+    if (Array.isArray(pRows) && pRows.length > 0) {
+      deposits = pRows.map((d) => {
+        const owner = profMap.get(d.user_id);
+        return {
+          id: d.id,
+          reference: d.reference,
+          user: owner?.name || "Customer",
+          phone: owner?.phone || "—",
+          channel: d.channel || "Paystack Gateway",
+          amount: Number(d.amount) || 0,
+          status: d.status || "credited",
+          createdAt: d.created_at || new Date().toISOString(),
+        };
+      });
+    }
+  }
+
+  if (deposits.length === 0 && txResp.ok) {
+    const rows = (await txResp.json().catch(() => [])) as any[];
+    if (Array.isArray(rows)) {
+      deposits = rows.map((d) => {
+        const owner = profMap.get(d.user_id);
+        return {
+          id: d.id,
+          reference: `DEP-${String(d.id).slice(0, 8).toUpperCase()}`,
+          user: owner?.name || "Customer",
+          phone: owner?.phone || "—",
+          channel: d.recipient_bank || "Vexa Ledger",
+          amount: Number(d.amount) || 0,
+          status: "successful",
+          createdAt: d.created_at || new Date().toISOString(),
+        };
+      });
     }
   }
 
   return res.json({ deposits });
 });
 
-router.post("/admin/deposits/:id/resolve", (req: Request, res: Response) => {
+router.post("/admin/deposits/:id/resolve", requirePermission("deposits.manage"), (req: Request, res: Response) => {
   const { id } = req.params;
-  const { action, notes } = req.body;
+  if (!isUuid(id)) {
+    return res.status(400).json({ error: "Invalid deposit ID." });
+  }
+  const { action, notes } = req.body ?? {};
 
-  logAdminAudit(
+  void logAdminAudit(
     req.admin!,
     "DEPOSIT_MANUAL_RESOLVE",
     "deposit",
@@ -1726,85 +1526,69 @@ router.post("/admin/deposits/:id/resolve", (req: Request, res: Response) => {
     { action, notes },
     undefined,
     { status: "resolved", action },
-    req.ip,
+    req.ip || "127.0.0.1",
   );
 
   return res.json({ success: true, message: `Deposit ${id} marked as resolved.` });
 });
 
 // ─────────────────────────────────────────────────────────────
-// 8. Withdrawals (Live DB - Zero Mock Data)
+// 8. Withdrawals
 // ─────────────────────────────────────────────────────────────
-router.get("/admin/withdrawals", async (_req: Request, res: Response) => {
-  let withdrawals: any[] = [...inMemoryWithdrawals];
+router.get("/admin/withdrawals", requirePermission("withdrawals.view"), async (_req: Request, res: Response) => {
+  const [txResp, profResp] = await Promise.all([
+    supabaseRest("transactions?type=eq.out&order=created_at.desc&limit=100"),
+    supabaseRest("profiles?select=id,name,phone,account_number&limit=500"),
+  ]);
 
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      const resp = await fetch(
-        `${SUPABASE_URL}/rest/v1/transactions?type=eq.withdrawal&order=created_at.desc&limit=100`,
-        {
-          headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-        },
-      );
-      if (resp.ok) {
-        const rows = await resp.json();
-        if (Array.isArray(rows) && rows.length > 0) {
-          withdrawals = rows.map((w: any) => ({
-            id: w.id,
-            userId: w.user_id,
-            userName: w.user_name || "Customer",
-            userPhone: w.user_phone || "—",
-            accountNumber: w.account_number || "—",
-            bankName: w.bank_name || "Commercial Bank",
-            recipientAccount: w.recipient_account || "—",
-            recipientName: w.recipient_name || "—",
-            amount: Number(w.amount) || 0,
-            status: w.status || "pending",
-            riskScore: "low",
-            riskNotes: "Settlement verified via NIP rail",
-            reference: w.reference || `VX-WTH-${w.id.slice(0, 8)}`,
-            createdAt: w.created_at || new Date().toISOString(),
-          }));
-        }
-      }
-    } catch {
-      // Keep in-memory
+  const profMap = new Map<string, { name: string; phone: string; accountNumber: string }>();
+  if (profResp.ok) {
+    const profRows = (await profResp.json().catch(() => [])) as Array<{ id: string; name?: string; phone?: string; account_number?: string }>;
+    for (const p of profRows) {
+      profMap.set(p.id, { name: p.name || "Customer", phone: p.phone || "—", accountNumber: p.account_number || "—" });
+    }
+  }
+
+  let withdrawals: any[] = [];
+  if (txResp.ok) {
+    const rows = (await txResp.json().catch(() => [])) as any[];
+    if (Array.isArray(rows)) {
+      withdrawals = rows.map((w) => {
+        const owner = profMap.get(w.user_id);
+        return {
+          id: w.id,
+          userId: w.user_id,
+          userName: owner?.name || w.sender_name || "Customer",
+          userPhone: owner?.phone || "—",
+          accountNumber: owner?.accountNumber || w.sender_account || "—",
+          bankName: w.recipient_bank || "Commercial Bank",
+          recipientAccount: w.recipient_account || "—",
+          recipientName: w.name || "Beneficiary",
+          amount: Number(w.amount) || 0,
+          status: "approved",
+          riskScore: Number(w.amount) >= 1_000_000 ? "medium" : "low",
+          riskNotes: "Ledger debit recorded",
+          reference: `VX-WTH-${String(w.id).slice(0, 8).toUpperCase()}`,
+          createdAt: w.created_at || new Date().toISOString(),
+        };
+      });
     }
   }
 
   return res.json({ withdrawals });
 });
 
-router.post("/admin/withdrawals/:id/review", async (req: Request, res: Response) => {
+router.post("/admin/withdrawals/:id/review", requirePermission("withdrawals.manage"), (req: Request, res: Response) => {
   const { id } = req.params;
-  const { action, reason } = req.body;
-
-  const item = inMemoryWithdrawals.find((w) => w.id === id);
-  if (item) {
-    item.status = action === "approve" ? "approved" : "rejected";
-    item.reviewedBy = req.admin?.name || "Administrator";
-    item.reviewedAt = new Date().toISOString();
+  if (!isUuid(id)) {
+    return res.status(400).json({ error: "Invalid withdrawal ID." });
+  }
+  const { action, reason } = req.body ?? {};
+  if (action !== "approve" && action !== "reject") {
+    return res.status(400).json({ error: "Action must be 'approve' or 'reject'." });
   }
 
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      await fetch(`${SUPABASE_URL}/rest/v1/transactions?id=eq.${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        headers: {
-          apikey: SUPABASE_SERVICE_ROLE_KEY,
-          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          status: action === "approve" ? "successful" : "failed",
-        }),
-      });
-    } catch {
-      // Ignored
-    }
-  }
-
-  logAdminAudit(
+  void logAdminAudit(
     req.admin!,
     action === "approve" ? "WITHDRAWAL_APPROVED" : "WITHDRAWAL_REJECTED",
     "withdrawal",
@@ -1812,314 +1596,428 @@ router.post("/admin/withdrawals/:id/review", async (req: Request, res: Response)
     { reason },
     undefined,
     { status: action },
-    req.ip,
+    req.ip || "127.0.0.1",
   );
 
   return res.json({ success: true, message: `Withdrawal request ${id} ${action === "approve" ? "approved" : "rejected"}.` });
 });
 
 // ─────────────────────────────────────────────────────────────
-// 9. Card Management (Live DB - Zero Mock Data)
+// 9. Card Management (Masked PAN/CVV, Live DB Persistence)
 // ─────────────────────────────────────────────────────────────
-router.get("/admin/cards", async (_req: Request, res: Response) => {
-  let cards: any[] = [...inMemoryCards];
+router.get("/admin/cards", requirePermission("cards.view"), async (_req: Request, res: Response) => {
+  const [cardsRes, profRes] = await Promise.all([
+    supabaseRest("cards?select=*&order=created_at.desc&limit=150"),
+    supabaseRest("profiles?select=id,name,phone&limit=500"),
+  ]);
 
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      const resp = await fetch(`${SUPABASE_URL}/rest/v1/cards?select=*&order=created_at.desc`, {
-        headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-      });
-      if (resp.ok) {
-        const rows = await resp.json();
-        if (Array.isArray(rows) && rows.length > 0) {
-          cards = rows;
-        }
-      }
-    } catch {
-      // Keep in-memory
+  if (!cardsRes.ok) {
+    return res.json({ cards: [] });
+  }
+
+  const profMap = new Map<string, { name: string; phone: string }>();
+  if (profRes.ok) {
+    const profRows = (await profRes.json().catch(() => [])) as Array<{ id: string; name?: string; phone?: string }>;
+    for (const p of profRows) {
+      profMap.set(p.id, { name: p.name || "Customer", phone: p.phone || "—" });
     }
   }
+
+  const rows = (await cardsRes.json().catch(() => [])) as any[];
+  const cards = Array.isArray(rows)
+    ? rows.map((c) => {
+        const owner = profMap.get(c.user_id);
+        return {
+          id: c.id,
+          userId: c.user_id,
+          userName: owner?.name || c.card_holder || "Vexa Customer",
+          userPhone: owner?.phone || "—",
+          cardNumber: maskCardPan(c.card_number),
+          cardHolder: c.card_holder,
+          expiryMonth: c.expiry_month,
+          expiryYear: c.expiry_year,
+          cvv: "•••",
+          cardType: c.card_type,
+          cardBrand: c.card_brand,
+          status: c.status,
+          spendingLimit: Number(c.spending_limit) || 0,
+          createdAt: c.created_at,
+        };
+      })
+    : [];
 
   return res.json({ cards });
 });
 
-router.post("/admin/cards/:id/toggle-freeze", (req: Request, res: Response) => {
+router.post("/admin/cards/:id/toggle-freeze", requirePermission("cards.manage"), async (req: Request, res: Response) => {
   const { id } = req.params;
-  const card = inMemoryCards.find((c) => c.id === id);
-  if (!card) {
+  if (!isUuid(id)) {
+    return res.status(400).json({ error: "Invalid card ID." });
+  }
+
+  const getRes = await supabaseRest(`cards?id=eq.${encodeURIComponent(id)}&select=id,status,card_number,card_holder&limit=1`);
+  if (!getRes.ok) {
+    return res.status(502).json({ error: "Failed to read card status." });
+  }
+  const rows = (await getRes.json().catch(() => [])) as any[];
+  if (!rows[0]) {
     return res.status(404).json({ error: "Card not found in registry." });
   }
 
-  card.status = card.status === "frozen" ? "active" : "frozen";
+  const nextStatus = rows[0].status === "frozen" ? "active" : "frozen";
+  const patchRes = await supabaseRest(`cards?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({ status: nextStatus }),
+  });
+  if (!patchRes.ok) {
+    return res.status(502).json({ error: "Failed to update card status." });
+  }
 
-  logAdminAudit(
+  const masked = maskCardPan(rows[0].card_number);
+  void logAdminAudit(
     req.admin!,
-    card.status === "frozen" ? "CARD_FROZEN" : "CARD_UNFROZEN",
+    nextStatus === "frozen" ? "CARD_FROZEN" : "CARD_UNFROZEN",
     "card",
     id,
-    { cardNumber: card.cardNumber, user: card.userName },
-    undefined,
-    { status: card.status },
-    req.ip,
+    { cardNumber: masked, user: rows[0].card_holder },
+    { status: rows[0].status },
+    { status: nextStatus },
+    req.ip || "127.0.0.1",
   );
 
-  return res.json({ success: true, message: `Card ${card.cardNumber} is now ${card.status}.` });
+  return res.json({ success: true, message: `Card ${masked} is now ${nextStatus}.` });
 });
 
-router.post("/admin/cards/issue", (req: Request, res: Response) => {
-  const { userId, userName, userPhone, cardType, brand, limit } = req.body;
+router.post("/admin/cards/issue", requirePermission("cards.manage"), async (req: Request, res: Response) => {
+  const { userId, userName, cardType, brand, limit } = req.body ?? {};
+  if (!isUuid(String(userId || ""))) {
+    return res.status(400).json({ error: "Valid userId UUID is required to issue a card." });
+  }
+  const cleanType = cardType === "physical" ? "physical" : "virtual";
+  const cleanBrand = brand === "visa" || brand === "verve" ? brand : "mastercard";
+  const cleanLimit = Math.max(10_000, Math.min(50_000_000, Number(limit) || 500_000));
+  const last4 = String(Math.floor(1000 + Math.random() * 9000));
+  const maskedPan = `5399 •••• •••• ${last4}`;
+  const cardHolder = String(userName || "VEXA CUSTOMER").trim().toUpperCase().slice(0, 60);
 
-  const newCard = {
-    id: `crd-${randomUUID().slice(0, 6)}`,
-    userId: userId || "usr-01",
-    userName: userName || "Vexa Customer",
-    userPhone: userPhone || "09067212032",
-    cardNumber: `5399 •••• •••• ${Math.floor(1000 + Math.random() * 9000)}`,
-    cardHolder: (userName || "VEXA CUSTOMER").toUpperCase(),
-    expiryMonth: "12",
-    expiryYear: "29",
+  const insertRes = await supabaseRest("cards", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      user_id: userId,
+      card_number: maskedPan,
+      card_holder: cardHolder,
+      expiry_month: "12",
+      expiry_year: "29",
+      cvv: "•••",
+      card_type: cleanType,
+      card_brand: cleanBrand,
+      status: "active",
+      spending_limit: cleanLimit,
+    }),
+  });
+
+  if (!insertRes.ok) {
+    return res.status(502).json({ error: "Failed to issue card in database." });
+  }
+  const created = (await insertRes.json().catch(() => [])) as any[];
+  const cardRow = created[0];
+  const card = {
+    id: cardRow.id,
+    userId: cardRow.user_id,
+    userName: cardHolder,
+    userPhone: "—",
+    cardNumber: maskedPan,
+    cardHolder,
+    expiryMonth: cardRow.expiry_month,
+    expiryYear: cardRow.expiry_year,
     cvv: "•••",
-    cardType: cardType || "virtual",
-    cardBrand: brand || "mastercard",
-    status: "active" as const,
-    spendingLimit: Number(limit) || 500000,
-    createdAt: new Date().toISOString(),
+    cardType: cardRow.card_type,
+    cardBrand: cardRow.card_brand,
+    status: cardRow.status,
+    spendingLimit: Number(cardRow.spending_limit),
+    createdAt: cardRow.created_at,
   };
 
-  inMemoryCards.unshift(newCard);
-
-  logAdminAudit(
+  void logAdminAudit(
     req.admin!,
     "CARD_ISSUED",
     "card",
-    newCard.id,
-    { cardType: newCard.cardType, user: newCard.userName, limit: newCard.spendingLimit },
+    card.id,
+    { cardType: cleanType, userId, limit: cleanLimit },
     undefined,
-    newCard,
-    req.ip,
+    { cardNumber: maskedPan, cardBrand: cleanBrand },
+    req.ip || "127.0.0.1",
   );
 
-  return res.json({ success: true, card: newCard });
+  return res.json({ success: true, card });
 });
 
 // ─────────────────────────────────────────────────────────────
-// 10. Customer Support (Live DB - Zero Mock Data)
+// 10. Customer Support
 // ─────────────────────────────────────────────────────────────
-router.get("/admin/support", async (_req: Request, res: Response) => {
-  let tickets: any[] = [...inMemorySupportTickets];
-
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      const resp = await fetch(`${SUPABASE_URL}/rest/v1/support_tickets?select=*&order=created_at.desc`, {
-        headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-      });
-      if (resp.ok) {
-        const rows = await resp.json();
-        if (Array.isArray(rows) && rows.length > 0) {
-          tickets = rows;
-        }
-      }
-    } catch {
-      // Keep in-memory
-    }
+router.get("/admin/support", requirePermission("support.view"), async (_req: Request, res: Response) => {
+  const resp = await supabaseRest("support_tickets?select=*&order=updated_at.desc&limit=100");
+  if (!resp.ok) {
+    return res.json({ tickets: [] });
   }
+  const rows = (await resp.json().catch(() => [])) as any[];
+  const tickets = Array.isArray(rows)
+    ? rows.map((t) => ({
+        id: t.id,
+        ticketNumber: t.ticket_number,
+        userId: t.user_id,
+        userName: t.user_name,
+        userPhone: t.user_phone,
+        subject: t.subject,
+        category: t.category,
+        priority: t.priority,
+        status: t.status,
+        messages: Array.isArray(t.messages) ? t.messages : [],
+        assignedTo: t.assigned_to,
+        createdAt: t.created_at,
+        updatedAt: t.updated_at,
+      }))
+    : [];
 
   return res.json({ tickets });
 });
 
-router.post("/admin/support/:id/reply", (req: Request, res: Response) => {
+router.post("/admin/support/:id/reply", requirePermission("support.manage"), async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { text, status } = req.body;
+  const { text, status } = req.body ?? {};
+  if (!isUuid(id)) {
+    return res.status(400).json({ error: "Invalid ticket ID." });
+  }
+  if (!text || typeof text !== "string" || !text.trim()) {
+    return res.status(400).json({ error: "Reply message cannot be empty." });
+  }
 
-  const ticket = inMemorySupportTickets.find((t) => t.id === id);
-  if (!ticket) {
+  const getRes = await supabaseRest(`support_tickets?id=eq.${encodeURIComponent(id)}&select=*&limit=1`);
+  const rows = getRes.ok ? ((await getRes.json().catch(() => [])) as any[]) : [];
+  if (!rows[0]) {
     return res.status(404).json({ error: "Ticket not found." });
   }
 
-  ticket.messages.push({
+  const messages = Array.isArray(rows[0].messages) ? [...rows[0].messages] : [];
+  messages.push({
     sender: "admin",
-    name: req.admin?.name || "Support Officer",
-    text,
+    name: req.admin!.name,
+    text: text.trim().slice(0, 2000),
     timestamp: new Date().toISOString(),
   });
+  const nextStatus =
+    status === "open" || status === "in_progress" || status === "resolved" || status === "closed"
+      ? status
+      : rows[0].status;
 
-  if (status) {
-    ticket.status = status;
+  const patchRes = await supabaseRest(`support_tickets?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      messages,
+      status: nextStatus,
+      updated_at: new Date().toISOString(),
+    }),
+  });
+  if (!patchRes.ok) {
+    return res.status(502).json({ error: "Failed to save support reply." });
   }
-  ticket.updatedAt = new Date().toISOString();
+  const updated = ((await patchRes.json().catch(() => [])) as any[])[0];
 
-  logAdminAudit(
+  void logAdminAudit(
     req.admin!,
     "SUPPORT_REPLY_SENT",
     "support",
     id,
-    { ticketNumber: ticket.ticketNumber, status: ticket.status },
+    { ticketNumber: rows[0].ticket_number, status: nextStatus },
     undefined,
     undefined,
-    req.ip,
+    req.ip || "127.0.0.1",
   );
 
-  return res.json({ success: true, ticket });
+  return res.json({ success: true, ticket: updated });
 });
 
-router.post("/admin/support/:id/status", (req: Request, res: Response) => {
+router.post("/admin/support/:id/status", requirePermission("support.manage"), async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { status } = req.body;
+  const { status } = req.body ?? {};
+  if (!isUuid(id)) {
+    return res.status(400).json({ error: "Invalid ticket ID." });
+  }
+  if (!["open", "in_progress", "resolved", "closed"].includes(String(status))) {
+    return res.status(400).json({ error: "Invalid ticket status." });
+  }
 
-  const ticket = inMemorySupportTickets.find((t) => t.id === id);
-  if (!ticket) {
+  const patchRes = await supabaseRest(`support_tickets?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ status, updated_at: new Date().toISOString() }),
+  });
+  if (!patchRes.ok) {
+    return res.status(502).json({ error: "Failed to update ticket status." });
+  }
+  const updated = ((await patchRes.json().catch(() => [])) as any[])[0];
+  if (!updated) {
     return res.status(404).json({ error: "Ticket not found." });
   }
 
-  ticket.status = status;
-  ticket.updatedAt = new Date().toISOString();
-
-  logAdminAudit(
+  void logAdminAudit(
     req.admin!,
     "SUPPORT_STATUS_CHANGED",
     "support",
     id,
-    { ticketNumber: ticket.ticketNumber, status },
+    { ticketNumber: updated.ticket_number, status },
     undefined,
     { status },
-    req.ip,
+    req.ip || "127.0.0.1",
   );
 
-  return res.json({ success: true, ticket });
+  return res.json({ success: true, ticket: updated });
 });
 
 // ─────────────────────────────────────────────────────────────
-// 11. Security & Fraud Monitoring (Live DB - Zero Mock Data)
+// 11. Security & Fraud Monitoring
 // ─────────────────────────────────────────────────────────────
-router.get("/admin/security/alerts", async (_req: Request, res: Response) => {
-  let alerts: any[] = [...inMemoryFraudAlerts];
-
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      const resp = await fetch(`${SUPABASE_URL}/rest/v1/security_alerts?select=*&order=created_at.desc`, {
-        headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-      });
-      if (resp.ok) {
-        const rows = await resp.json();
-        if (Array.isArray(rows) && rows.length > 0) {
-          alerts = rows;
-        }
-      }
-    } catch {
-      // Keep in-memory
-    }
+router.get("/admin/security/alerts", requirePermission("security.view"), async (_req: Request, res: Response) => {
+  const resp = await supabaseRest("fraud_alerts?select=*&order=created_at.desc&limit=100");
+  if (!resp.ok) {
+    return res.json({ alerts: [] });
   }
+  const rows = (await resp.json().catch(() => [])) as any[];
+  const alerts = Array.isArray(rows)
+    ? rows.map((a) => ({
+        id: a.id,
+        userId: a.user_id,
+        userName: a.user_name,
+        userPhone: a.user_phone,
+        severity: a.severity,
+        alertType: a.alert_type,
+        description: a.description,
+        metadata: a.metadata || {},
+        status: a.status,
+        resolvedBy: a.resolved_by,
+        resolvedAt: a.resolved_at,
+        createdAt: a.created_at,
+      }))
+    : [];
 
   return res.json({ alerts });
 });
 
-router.post("/admin/security/resolve", (req: Request, res: Response) => {
-  const { alertId, action, notes } = req.body;
-  const alert = inMemoryFraudAlerts.find((a) => a.id === alertId);
-  if (alert) {
-    alert.status = action === "dismiss" ? "dismissed" : "resolved";
-    alert.resolvedBy = req.admin?.name || "Security Officer";
-    alert.resolvedAt = new Date().toISOString();
+router.post("/admin/security/resolve", requirePermission("security.manage"), async (req: Request, res: Response) => {
+  const { alertId, action, notes } = req.body ?? {};
+  if (!isUuid(String(alertId || ""))) {
+    return res.status(400).json({ error: "Invalid alert ID." });
+  }
+  const nextStatus = action === "dismiss" ? "dismissed" : "resolved";
+
+  const patchRes = await supabaseRest(`fraud_alerts?id=eq.${encodeURIComponent(alertId)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      status: nextStatus,
+      resolved_by: req.admin!.name,
+      resolved_at: new Date().toISOString(),
+    }),
+  });
+  if (!patchRes.ok) {
+    return res.status(502).json({ error: "Failed to update security alert." });
+  }
+  const updated = ((await patchRes.json().catch(() => [])) as any[])[0];
+  if (!updated) {
+    return res.status(404).json({ error: "Security alert not found." });
   }
 
-  logAdminAudit(
+  void logAdminAudit(
     req.admin!,
     action === "dismiss" ? "FRAUD_ALERT_DISMISSED" : "FRAUD_ALERT_RESOLVED",
     "security",
     alertId,
     { action, notes },
     undefined,
-    undefined,
-    req.ip,
+    { status: nextStatus },
+    req.ip || "127.0.0.1",
   );
 
-  return res.json({ success: true, message: `Alert marked as ${action === "dismiss" ? "dismissed" : "resolved"}.` });
+  return res.json({ success: true, message: `Alert marked as ${nextStatus}.` });
 });
 
 // ─────────────────────────────────────────────────────────────
-// 12. Admin Team Management
+// 12. Admin Team Management (Persisted in public.admin_roles)
 // ─────────────────────────────────────────────────────────────
-router.get("/admin/admins", (_req: Request, res: Response) => {
-  return res.json({ admins: inMemoryAdmins });
+router.get("/admin/admins", requirePermission("admins.view"), async (_req: Request, res: Response) => {
+  const resp = await supabaseRest("admin_roles?select=id,user_id,phone,name,role,permissions,is_active,created_at&order=created_at.asc");
+  if (!resp.ok) {
+    return res.status(502).json({ error: "Failed to load administrator roster." });
+  }
+  const rows = (await resp.json().catch(() => [])) as AdminRoleRow[];
+  const admins = Array.isArray(rows)
+    ? rows.map((r) => ({
+        id: r.id,
+        userId: r.user_id,
+        phone: r.phone,
+        name: r.name,
+        role: r.role,
+        permissions: Array.isArray(r.permissions) ? r.permissions : [],
+        isActive: r.is_active,
+        createdAt: r.created_at,
+      }))
+    : [];
+
+  return res.json({ admins });
 });
 
-router.post("/admin/admins/add", (req: Request, res: Response) => {
-  const { phone, name, role } = req.body;
-
+router.post("/admin/admins/add", requirePermission("admins.manage"), async (req: Request, res: Response) => {
+  const { phone, name, role } = req.body ?? {};
   if (!phone || !role) {
     return res.status(400).json({ error: "Phone number and role are required." });
   }
+  if (!(role in ROLE_PERMISSIONS)) {
+    return res.status(400).json({ error: "Unsupported administrator role." });
+  }
 
-  const normalized = normalizePhone(phone);
-  if (inMemoryAdmins.some((a) => normalizePhone(a.phone) === normalized)) {
+  const normalized = normalizeNigerianPhone(String(phone));
+  if (normalized.length < 10) {
+    return res.status(400).json({ error: "Enter a valid Nigerian phone number." });
+  }
+
+  const dupRes = await supabaseRest(`admin_roles?phone=eq.${encodeURIComponent(normalized)}&select=id&limit=1`);
+  const dupRows = dupRes.ok ? ((await dupRes.json().catch(() => [])) as any[]) : [];
+  if (dupRows[0]) {
     return res.status(400).json({ error: "An administrator with this phone number already exists." });
   }
 
-  const rolePermissions: Record<string, string[]> = {
-    super_admin: [
-      "overview.view",
-      "users.view", "users.manage", "users.adjust_balance", "users.suspend",
-      "kyc.view", "kyc.manage",
-      "transactions.view", "transactions.manage",
-      "deposits.view", "deposits.manage",
-      "withdrawals.view", "withdrawals.manage",
-      "cards.view", "cards.manage",
-      "support.view", "support.manage",
-      "security.view", "security.manage",
-      "admins.view", "admins.manage",
-      "audit.view",
-      "settings.view", "settings.manage",
-    ],
-    admin: [
-      "overview.view",
-      "users.view", "users.manage", "users.suspend",
-      "kyc.view", "kyc.manage",
-      "transactions.view", "transactions.manage",
-      "deposits.view",
-      "withdrawals.view",
-      "cards.view", "cards.manage",
-      "support.view", "support.manage",
-      "security.view",
-      "audit.view",
-    ],
-    finance_manager: [
-      "overview.view",
-      "transactions.view", "transactions.manage",
-      "deposits.view", "deposits.manage",
-      "withdrawals.view", "withdrawals.manage",
-      "users.view", "users.adjust_balance",
-      "audit.view",
-    ],
-    support_agent: [
-      "overview.view",
-      "users.view",
-      "support.view", "support.manage",
-      "kyc.view",
-    ],
-    auditor: [
-      "overview.view",
-      "users.view",
-      "transactions.view",
-      "deposits.view",
-      "withdrawals.view",
-      "audit.view",
-      "settings.view",
-    ],
-  };
+  const validRole = role as AdminRoleName;
+  const permissions = ROLE_PERMISSIONS[validRole];
+  const insertRes = await supabaseRest("admin_roles", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      phone: normalized,
+      name: String(name || "Staff Admin").trim().slice(0, 80),
+      role: validRole,
+      permissions,
+      is_active: true,
+    }),
+  });
 
+  if (!insertRes.ok) {
+    return res.status(502).json({ error: "Failed to add administrator role." });
+  }
+  const inserted = ((await insertRes.json().catch(() => [])) as AdminRoleRow[])[0];
   const newAdmin = {
-    id: `adm-${randomUUID().slice(0, 6)}`,
-    phone: normalized,
-    name: name || "Staff Admin",
-    role,
-    permissions: rolePermissions[role] || ["overview.view"],
-    isActive: true,
-    createdAt: new Date().toISOString(),
+    id: inserted.id,
+    phone: inserted.phone,
+    name: inserted.name,
+    role: inserted.role,
+    permissions: inserted.permissions,
+    isActive: inserted.is_active,
+    createdAt: inserted.created_at,
   };
 
-  inMemoryAdmins.push(newAdmin);
-
-  logAdminAudit(
+  void logAdminAudit(
     req.admin!,
     "ADMIN_INVITED",
     "admin",
@@ -2127,50 +2025,93 @@ router.post("/admin/admins/add", (req: Request, res: Response) => {
     { phone: newAdmin.phone, name: newAdmin.name, role: newAdmin.role },
     undefined,
     newAdmin,
-    req.ip,
+    req.ip || "127.0.0.1",
   );
 
   return res.json({ success: true, admin: newAdmin });
 });
 
-router.post("/admin/admins/:id/status", (req: Request, res: Response) => {
+router.post("/admin/admins/:id/status", requirePermission("admins.manage"), async (req: Request, res: Response) => {
   const { id } = req.params;
-  const adminItem = inMemoryAdmins.find((a) => a.id === id);
+  if (!isUuid(id)) {
+    return res.status(400).json({ error: "Invalid administrator ID." });
+  }
+  if (id === req.admin!.id) {
+    return res.status(400).json({ error: "You cannot suspend or deactivate your own administrator record." });
+  }
+
+  const getRes = await supabaseRest(`admin_roles?id=eq.${encodeURIComponent(id)}&select=*&limit=1`);
+  const rows = getRes.ok ? ((await getRes.json().catch(() => [])) as AdminRoleRow[]) : [];
+  const adminItem = rows[0];
   if (!adminItem) {
     return res.status(404).json({ error: "Administrator not found." });
   }
 
-  if (adminItem.phone === PRIMARY_SUPER_ADMIN_PHONE) {
-    return res.status(400).json({ error: "Cannot suspend the primary Super Administrator account." });
+  if (adminItem.role === "super_admin" && adminItem.is_active) {
+    const activeSupersRes = await supabaseRest("admin_roles?role=eq.super_admin&is_active=eq.true&select=id");
+    const activeSupers = activeSupersRes.ok ? ((await activeSupersRes.json().catch(() => [])) as any[]) : [];
+    if (activeSupers.length <= 1) {
+      return res.status(400).json({ error: "Cannot suspend the last active Super Administrator account." });
+    }
   }
 
-  adminItem.isActive = !adminItem.isActive;
+  const nextActive = !adminItem.is_active;
+  const patchRes = await supabaseRest(`admin_roles?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({ is_active: nextActive, updated_at: new Date().toISOString() }),
+  });
+  if (!patchRes.ok) {
+    return res.status(502).json({ error: "Failed to update administrator status." });
+  }
 
-  logAdminAudit(
+  void logAdminAudit(
     req.admin!,
-    adminItem.isActive ? "ADMIN_REACTIVATED" : "ADMIN_SUSPENDED",
+    nextActive ? "ADMIN_REACTIVATED" : "ADMIN_SUSPENDED",
     "admin",
     id,
     { phone: adminItem.phone, name: adminItem.name },
-    undefined,
-    { isActive: adminItem.isActive },
-    req.ip,
+    { isActive: adminItem.is_active },
+    { isActive: nextActive },
+    req.ip || "127.0.0.1",
   );
 
-  return res.json({ success: true, message: `Admin account is now ${adminItem.isActive ? "active" : "suspended"}.` });
+  return res.json({ success: true, message: `Admin account is now ${nextActive ? "active" : "suspended"}.` });
 });
 
 // ─────────────────────────────────────────────────────────────
 // 13. Audit Logs
 // ─────────────────────────────────────────────────────────────
-router.get("/admin/audit-logs", (_req: Request, res: Response) => {
-  return res.json({ logs: inMemoryAuditLogs });
+router.get("/admin/audit-logs", requirePermission("audit.view"), async (_req: Request, res: Response) => {
+  const resp = await supabaseRest("admin_audit_logs?select=*&order=created_at.desc&limit=200");
+  if (!resp.ok) {
+    return res.json({ logs: [] });
+  }
+  const rows = (await resp.json().catch(() => [])) as any[];
+  const logs = Array.isArray(rows)
+    ? rows.map((l) => ({
+        id: l.id,
+        adminId: l.admin_id,
+        adminPhone: l.admin_phone,
+        adminName: l.admin_name,
+        action: l.action,
+        targetType: l.target_type,
+        targetId: l.target_id,
+        details: l.details || {},
+        previousValue: l.previous_value,
+        newValue: l.new_value,
+        ipAddress: l.ip_address || "—",
+        createdAt: l.created_at,
+      }))
+    : [];
+
+  return res.json({ logs });
 });
 
 // ─────────────────────────────────────────────────────────────
-// 14. System Settings (Persisted in Supabase public.system_settings)
+// 14. System Settings & Webhook Resync
 // ─────────────────────────────────────────────────────────────
-router.get("/admin/settings", async (req: Request, res: Response) => {
+router.get("/admin/settings", requirePermission("settings.view"), async (req: Request, res: Response) => {
   const { settings, persistedInDb } = await getSystemSettings(true);
   const webhookInfo = await resolveEffectiveTatumWebhook(req);
   return res.json({
@@ -2182,7 +2123,7 @@ router.get("/admin/settings", async (req: Request, res: Response) => {
   });
 });
 
-router.post("/admin/settings/update", async (req: Request, res: Response) => {
+router.post("/admin/settings/update", requirePermission("settings.manage"), async (req: Request, res: Response) => {
   const incoming = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
 
   if (incoming.tatum_webhook_url !== undefined) {
@@ -2203,10 +2144,10 @@ router.post("/admin/settings/update", async (req: Request, res: Response) => {
   }
 
   const { settings: prev } = await getSystemSettings();
-  const result = await updateSystemSettings(incoming, req.admin?.phone || "super_admin");
+  const result = await updateSystemSettings(incoming, req.admin!.phone);
   const webhookInfo = await resolveEffectiveTatumWebhook(req);
 
-  logAdminAudit(
+  void logAdminAudit(
     req.admin!,
     "SYSTEM_SETTINGS_UPDATED",
     "system",
@@ -2218,7 +2159,7 @@ router.post("/admin/settings/update", async (req: Request, res: Response) => {
     },
     prev,
     result.settings,
-    req.ip,
+    req.ip || "127.0.0.1",
   );
 
   return res.json({
@@ -2232,7 +2173,7 @@ router.post("/admin/settings/update", async (req: Request, res: Response) => {
   });
 });
 
-router.post("/admin/crypto/resync-webhooks", async (req: Request, res: Response) => {
+router.post("/admin/crypto/resync-webhooks", requirePermission("settings.manage"), async (req: Request, res: Response) => {
   const webhookInfo = await resolveEffectiveTatumWebhook(req);
   if (!webhookInfo.url) {
     return res.status(400).json({
@@ -2246,22 +2187,10 @@ router.post("/admin/crypto/resync-webhooks", async (req: Request, res: Response)
       message: "TATUM_API_KEY is missing in server environment.",
     });
   }
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    return res.status(503).json({
-      success: false,
-      message: "Supabase storage is not configured.",
-    });
-  }
 
   try {
-    const resp = await fetch(
-      `${SUPABASE_URL}/rest/v1/crypto_deposit_addresses?select=id,user_id,asset,address,network,created_at,tatum_subscription_id,tatum_subscription_status&order=created_at.desc`,
-      {
-        headers: {
-          apikey: SUPABASE_SERVICE_ROLE_KEY,
-          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        },
-      },
+    const resp = await supabaseRest(
+      "crypto_deposit_addresses?select=id,user_id,asset,address,network,created_at,tatum_subscription_id,tatum_subscription_status&order=created_at.desc",
     );
     if (!resp.ok) {
       throw new Error(`Could not query crypto deposit addresses (${resp.status})`);
@@ -2304,7 +2233,7 @@ router.post("/admin/crypto/resync-webhooks", async (req: Request, res: Response)
       }
     }
 
-    logAdminAudit(
+    void logAdminAudit(
       req.admin!,
       "TATUM_WEBHOOKS_RESYNCED",
       "system",
@@ -2318,7 +2247,7 @@ router.post("/admin/crypto/resync-webhooks", async (req: Request, res: Response)
       },
       undefined,
       { webhookUrl: webhookInfo.url },
-      req.ip,
+      req.ip || "127.0.0.1",
     );
 
     return res.json({
@@ -2343,60 +2272,65 @@ router.post("/admin/crypto/resync-webhooks", async (req: Request, res: Response)
 });
 
 // ─────────────────────────────────────────────────────────────
-// 15. Business Banking Data (Live DB - Zero Mock Data)
+// 15. Business Banking Data
 // ─────────────────────────────────────────────────────────────
-router.get("/admin/business", async (_req: Request, res: Response) => {
-  let businesses: any[] = [];
-  const corporateTransactions: any[] = [];
+router.get("/admin/business", requirePermission("users.view"), async (_req: Request, res: Response) => {
+  const [bizResp, empResp, txResp] = await Promise.all([
+    supabaseRest("business_accounts?select=*&order=created_at.desc"),
+    supabaseRest("employees?select=business_id,salary,active"),
+    supabaseRest("business_transactions?select=*&order=created_at.desc&limit=100"),
+  ]);
 
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      const resp = await fetch(`${SUPABASE_URL}/rest/v1/business_accounts?select=*&order=created_at.desc`, {
-        headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-      });
-      if (resp.ok) {
-        const live = await resp.json();
-        if (Array.isArray(live)) {
-          businesses = live.map((b: any) => ({
-            id: b.id,
-            businessName: b.business_name || "Enterprise Account",
-            businessType: b.business_type || "Corporate Entity",
-            industry: b.industry || "Commerce",
-            accountNumber: b.account_number || "—",
-            balance: Number(b.balance) || 0,
-            ownerName: b.owner_name || "—",
-            ownerPhone: b.owner_phone || "—",
-            email: b.email || "—",
-            transactionLimit: Number(b.transaction_limit) || 10000000,
-            status: b.status || "active",
-            employeeCount: Number(b.employee_count) || 0,
-            monthlyPayroll: Number(b.monthly_payroll) || 0,
-            createdAt: b.created_at || new Date().toISOString(),
-          }));
-        }
-      }
-    } catch {
-      businesses = [];
-    }
-  }
+  const empRows = empResp.ok ? ((await empResp.json().catch(() => [])) as any[]) : [];
+  const live = bizResp.ok ? ((await bizResp.json().catch(() => [])) as any[]) : [];
+  const corporateTransactions = txResp.ok ? ((await txResp.json().catch(() => [])) as any[]) : [];
+
+  const businesses = Array.isArray(live)
+    ? live.map((b) => {
+        const staff = empRows.filter((e) => e.business_id === b.id && e.active !== false);
+        const monthlyPayroll = staff.reduce((sum, e) => sum + (Number(e.salary) || 0), 0);
+        return {
+          id: b.id,
+          businessName: b.business_name || "Enterprise Account",
+          businessType: b.business_type || "Corporate Entity",
+          industry: b.industry || "Commerce",
+          accountNumber: b.account_number || "—",
+          balance: Number(b.balance) || 0,
+          ownerName: b.owner_name || "—",
+          ownerPhone: b.owner_phone || "—",
+          email: b.email || "—",
+          transactionLimit: Number(b.transaction_limit) || 5_000_000,
+          status: b.status || "active",
+          employeeCount: staff.length,
+          monthlyPayroll,
+          createdAt: b.created_at || new Date().toISOString(),
+        };
+      })
+    : [];
 
   return res.json({
     metrics: {
       totalBusinesses: businesses.length,
-      totalCorporateBalance: businesses.reduce((sum, b) => sum + (Number(b.balance) || 0), 0),
-      totalEmployeesManaged: businesses.reduce((sum, b) => sum + (b.employeeCount || 0), 0),
-      monthlyPayrollVolume: businesses.reduce((sum, b) => sum + (b.monthlyPayroll || 0), 0),
+      totalCorporateBalance: businesses.reduce((sum, b) => sum + b.balance, 0),
+      totalEmployeesManaged: businesses.reduce((sum, b) => sum + b.employeeCount, 0),
+      monthlyPayrollVolume: businesses.reduce((sum, b) => sum + b.monthlyPayroll, 0),
     },
     businesses,
     corporateTransactions,
   });
 });
 
-router.post("/admin/business/:id/status", (req: Request, res: Response) => {
+router.post("/admin/business/:id/status", requirePermission("users.manage"), (req: Request, res: Response) => {
   const { id } = req.params;
-  const { status, reason } = req.body;
+  if (!isUuid(id)) {
+    return res.status(400).json({ error: "Invalid business ID." });
+  }
+  const { status, reason } = req.body ?? {};
+  if (!["active", "suspended"].includes(String(status))) {
+    return res.status(400).json({ error: "Status must be 'active' or 'suspended'." });
+  }
 
-  logAdminAudit(
+  void logAdminAudit(
     req.admin!,
     status === "suspended" ? "BUSINESS_ACCOUNT_FROZEN" : "BUSINESS_ACCOUNT_ACTIVATED",
     "business",
@@ -2404,359 +2338,147 @@ router.post("/admin/business/:id/status", (req: Request, res: Response) => {
     { status, reason },
     undefined,
     { status },
-    req.ip,
+    req.ip || "127.0.0.1",
   );
 
-  return res.json({ success: true, message: `Business account status updated to ${status}.` });
+  return res.json({ success: true, message: `Business account status update logged (${status}).` });
 });
 
 // ─────────────────────────────────────────────────────────────
-// 16. Crypto Exchange Data (Live DB - Zero Mock Data)
+// 16. Crypto Exchange Data (Live DB - Zero Mock Customers)
 // ─────────────────────────────────────────────────────────────
-router.get("/admin/crypto", async (_req: Request, res: Response) => {
+router.get("/admin/crypto", requirePermission("overview.view"), async (_req: Request, res: Response) => {
   let exchangeOrders: any[] = [];
   let userWallets: any[] = [];
   let deposits: any[] = [];
   let buys: any[] = [];
   let sells: any[] = [];
 
+  const livePrices = await getLiveCryptoPricesNgn().catch(() => null);
+  const usdtBuyRate = livePrices?.prices.USDT.ngn || 1655.0;
+  const btcNgnRate = livePrices?.prices.BTC.ngn || 96000 * usdtBuyRate;
+  const ethNgnRate = livePrices?.prices.ETH.ngn || 3400 * usdtBuyRate;
+
   const exchangeRates = {
-    usdtBuyRate: 1655.0,
-    usdtSellRate: 1645.0,
-    btcUsdRate: 96000.0,
-    ethUsdRate: 3400.0,
+    usdtBuyRate,
+    usdtSellRate: Number((usdtBuyRate * 0.994).toFixed(2)),
+    btcUsdRate: Number((btcNgnRate / usdtBuyRate).toFixed(2)),
+    ethUsdRate: Number((ethNgnRate / usdtBuyRate).toFixed(2)),
     solUsdRate: 190.0,
-    spreadPercentage: 0.85,
+    spreadPercentage: 0.6,
   };
 
-  let totalCustodyNaira = 0;
   let totalBtcHeld = 0;
   let totalEthHeld = 0;
   let totalUsdtHeld = 0;
 
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      const headers = { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` };
+  try {
+    const [profilesRes, addressesRes, balancesRes, txResp] = await Promise.all([
+      supabaseRest("profiles?select=id,name,phone,email,account_number,balance,profile_photo,created_at&order=created_at.desc&limit=200"),
+      supabaseRest("crypto_deposit_addresses?select=*&order=created_at.desc"),
+      supabaseRest("crypto_balances?select=*"),
+      supabaseRest("crypto_transactions?select=*&order=created_at.desc&limit=250"),
+    ]);
 
-      // 1. Fetch live profiles
-      const profilesRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,name,phone,email,account_number,balance,profile_photo,created_at&order=created_at.desc&limit=200`, { headers });
-      const profiles = profilesRes.ok ? await profilesRes.json() : [];
+    const profiles = profilesRes.ok ? ((await profilesRes.json().catch(() => [])) as any[]) : [];
+    const depositAddresses = addressesRes.ok ? ((await addressesRes.json().catch(() => [])) as any[]) : [];
+    const liveBalances = balancesRes.ok ? ((await balancesRes.json().catch(() => [])) as any[]) : [];
+    const profileMap = new Map<string, { name: string; phone: string }>();
+    for (const p of profiles) {
+      profileMap.set(p.id, { name: p.name || "Customer", phone: p.phone || "—" });
+    }
 
-      // 2. Fetch live crypto deposit addresses
-      const addressesRes = await fetch(`${SUPABASE_URL}/rest/v1/crypto_deposit_addresses?select=*&order=created_at.desc`, { headers });
-      const depositAddresses = addressesRes.ok ? await addressesRes.json() : [];
-
-      // 3. Fetch live crypto balances
-      const balancesRes = await fetch(`${SUPABASE_URL}/rest/v1/crypto_balances?select=*`, { headers });
-      const liveBalances = balancesRes.ok ? await balancesRes.json() : [];
-
-      // 4. Fetch live crypto transactions
-      const txResp = await fetch(`${SUPABASE_URL}/rest/v1/crypto_transactions?select=*&order=created_at.desc&limit=250`, { headers });
-      if (txResp.ok) {
-        const liveTx = await txResp.json();
-        if (Array.isArray(liveTx)) {
-          exchangeOrders = liveTx.map((tx: any) => ({
+    if (txResp.ok) {
+      const liveTx = (await txResp.json().catch(() => [])) as any[];
+      if (Array.isArray(liveTx)) {
+        exchangeOrders = liveTx.map((tx) => {
+          const owner = profileMap.get(tx.user_id);
+          return {
             id: tx.id,
             userId: tx.user_id,
-            userName: tx.user_name || "Crypto Trader",
-            userPhone: tx.user_phone || "—",
-            kind: (tx.kind || tx.type || "exchange").toLowerCase(),
-            asset: (tx.asset || "USDT").toUpperCase(),
+            userName: owner?.name || "Crypto Trader",
+            userPhone: owner?.phone || "—",
+            kind: String(tx.kind || "exchange").toLowerCase(),
+            asset: String(tx.asset || "USDT").toUpperCase(),
             amount: Number(tx.amount) || 0,
             nairaAmount: Number(tx.naira_amount) || 0,
             rate: Number(tx.rate) || 0,
-            status: tx.status || "completed",
-            txHash: tx.tx_hash || tx.reference || "Internal Ledger",
-            address: tx.address || tx.deposit_address || "—",
-            confirmations: Number(tx.confirmations) || 12,
+            status: "completed",
+            txHash: tx.note || tx.counterparty_account || "Internal Ledger",
+            address: "—",
+            confirmations: 12,
             createdAt: tx.created_at || new Date().toISOString(),
-          }));
-        }
-      }
-
-      // Separate into Buy, Sell, Deposit
-      buys = exchangeOrders.filter((o) => o.kind === "buy");
-      sells = exchangeOrders.filter((o) => o.kind === "sell");
-      deposits = exchangeOrders.filter((o) => o.kind === "deposit" || o.kind === "inflow" || o.txHash?.startsWith("0x") || o.txHash?.startsWith("tb") || o.txHash?.length > 20);
-
-      // Map user wallets with addresses and balances
-      if (Array.isArray(profiles)) {
-        userWallets = profiles.map((p: any) => {
-          const userAddrs = Array.isArray(depositAddresses)
-            ? depositAddresses.filter((a: any) => a.user_id === p.id)
-            : [];
-          const userBals = Array.isArray(liveBalances)
-            ? liveBalances.filter((b: any) => b.user_id === p.id)
-            : [];
-
-          const btcAddrRow = userAddrs.find((a: any) => a.asset === "BTC");
-          const ethAddrRow = userAddrs.find((a: any) => a.asset === "ETH");
-          const usdtAddrRow = userAddrs.find((a: any) => a.asset === "USDT");
-
-          const btcAddr = btcAddrRow?.address || generateDeterministicVaultAddress(p.id, "BTC");
-          const ethAddr = ethAddrRow?.address || generateDeterministicVaultAddress(p.id, "ETH");
-          const usdtAddr = usdtAddrRow?.address || generateDeterministicVaultAddress(p.id, "USDT");
-
-          const btcBal = Number(userBals.find((b: any) => b.asset === "BTC")?.amount) || 0;
-          const ethBal = Number(userBals.find((b: any) => b.asset === "ETH")?.amount) || 0;
-          const usdtBal = Number(userBals.find((b: any) => b.asset === "USDT")?.amount) || 0;
-
-          totalBtcHeld += btcBal;
-          totalEthHeld += ethBal;
-          totalUsdtHeld += usdtBal;
-
-          const usdtNaira = usdtBal * exchangeRates.usdtBuyRate;
-          const btcNaira = btcBal * (exchangeRates.btcUsdRate * exchangeRates.usdtBuyRate);
-          const ethNaira = ethBal * (exchangeRates.ethUsdRate * exchangeRates.usdtBuyRate);
-          const cryptoEstimatedNaira = usdtNaira + btcNaira + ethNaira;
-          const fiatBalance = Number(p.balance) || 0;
-
-          return {
-            userId: p.id,
-            name: p.name || "Customer",
-            phone: p.phone || "—",
-            email: p.email || "—",
-            accountNumber: p.account_number || "—",
-            nairaBalance: fiatBalance,
-            profilePhoto: p.profile_photo || "",
-            hasDepositAddress: true,
-            addresses: {
-              btc: btcAddr,
-              eth: ethAddr,
-              usdt: usdtAddr,
-            },
-            balances: {
-              btc: btcBal,
-              eth: ethBal,
-              usdt: usdtBal,
-            },
-            cryptoEstimatedNaira,
-            totalNetWorthNaira: fiatBalance + cryptoEstimatedNaira,
-            createdAt: p.created_at || new Date().toISOString(),
           };
         });
       }
-    } catch (err) {
-      console.error("[Admin Crypto] DB fetch error:", err);
     }
+
+    buys = exchangeOrders.filter((o) => o.kind === "buy");
+    sells = exchangeOrders.filter((o) => o.kind === "sell");
+    deposits = exchangeOrders.filter((o) => o.kind === "deposit" || o.kind === "transfer_in");
+
+    if (Array.isArray(profiles)) {
+      userWallets = profiles.map((p) => {
+        const userAddrs = depositAddresses.filter((a) => a.user_id === p.id);
+        const userBals = liveBalances.filter((b) => b.user_id === p.id);
+
+        const btcAddr = userAddrs.find((a) => a.asset === "BTC")?.address || "Not provisioned";
+        const ethAddr = userAddrs.find((a) => a.asset === "ETH")?.address || "Not provisioned";
+        const usdtAddr = userAddrs.find((a) => a.asset === "USDT")?.address || "Not provisioned";
+
+        const btcBal = Number(userBals.find((b) => b.asset === "BTC")?.amount) || 0;
+        const ethBal = Number(userBals.find((b) => b.asset === "ETH")?.amount) || 0;
+        const usdtBal = Number(userBals.find((b) => b.asset === "USDT")?.amount) || 0;
+
+        totalBtcHeld += btcBal;
+        totalEthHeld += ethBal;
+        totalUsdtHeld += usdtBal;
+
+        const cryptoEstimatedNaira = usdtBal * usdtBuyRate + btcBal * btcNgnRate + ethBal * ethNgnRate;
+        const fiatBalance = Number(p.balance) || 0;
+
+        return {
+          userId: p.id,
+          name: p.name || "Customer",
+          phone: p.phone || "—",
+          email: p.email || "—",
+          accountNumber: p.account_number || "—",
+          nairaBalance: fiatBalance,
+          profilePhoto: p.profile_photo || "",
+          hasDepositAddress: userAddrs.length > 0,
+          addresses: { btc: btcAddr, eth: ethAddr, usdt: usdtAddr },
+          balances: { btc: btcBal, eth: ethBal, usdt: usdtBal },
+          cryptoEstimatedNaira,
+          totalNetWorthNaira: fiatBalance + cryptoEstimatedNaira,
+          createdAt: p.created_at || new Date().toISOString(),
+        };
+      });
+    }
+  } catch (err) {
+    console.error("[Admin Crypto] DB fetch error:", err);
   }
 
-  // Fallback seed customer wallets if database is empty or offline
-  if (userWallets.length === 0) {
-    const seedCustomers = [
-      {
-        id: "user-superadmin-01",
-        name: "Super Admin (Primary)",
-        phone: PRIMARY_SUPER_ADMIN_PHONE,
-        email: "superadmin@vexa.finance",
-        account_number: "2094817290",
-        balance: 1450000.0,
-        profile_photo: "",
-        created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
-        btcBal: 0.045,
-        ethBal: 1.25,
-        usdtBal: 3450.0,
-      },
-      {
-        id: "user-chibuzo-02",
-        name: "Chibuzor Emmanuel",
-        phone: "08012345678",
-        email: "dikechibuzoremmanuel@gmail.com",
-        account_number: "2094817291",
-        balance: 32687.61,
-        profile_photo: "",
-        created_at: new Date(Date.now() - 15 * 86400000).toISOString(),
-        btcBal: 0.00573914,
-        ethBal: 0.12,
-        usdtBal: 485.5,
-      },
-      {
-        id: "user-amina-03",
-        name: "Amina Bello",
-        phone: "08198765432",
-        email: "amina.b@vexa.app",
-        account_number: "2094817292",
-        balance: 750000.0,
-        profile_photo: "",
-        created_at: new Date(Date.now() - 20 * 86400000).toISOString(),
-        btcBal: 0.0125,
-        ethBal: 0.45,
-        usdtBal: 1200.0,
-      },
-      {
-        id: "user-tunde-04",
-        name: "Babatunde Adeleke",
-        phone: "09055443322",
-        email: "babatunde@vexa.app",
-        account_number: "2094817293",
-        balance: 180000.0,
-        profile_photo: "",
-        created_at: new Date(Date.now() - 10 * 86400000).toISOString(),
-        btcBal: 0.0,
-        ethBal: 0.08,
-        usdtBal: 850.0,
-      },
-      {
-        id: "user-tariq-05",
-        name: "Tariq Al-Hassan",
-        phone: "08033221100",
-        email: "tariq@vexa.app",
-        account_number: "2094817294",
-        balance: 1250000.0,
-        profile_photo: "",
-        created_at: new Date(Date.now() - 25 * 86400000).toISOString(),
-        btcBal: 0.025,
-        ethBal: 0.65,
-        usdtBal: 2100.0,
-      },
-    ];
-
-    userWallets = seedCustomers.map((c) => {
-      const btcAddr = generateDeterministicVaultAddress(c.id, "BTC");
-      const ethAddr = generateDeterministicVaultAddress(c.id, "ETH");
-      const usdtAddr = generateDeterministicVaultAddress(c.id, "USDT");
-      const usdtNaira = c.usdtBal * exchangeRates.usdtBuyRate;
-      const btcNaira = c.btcBal * (exchangeRates.btcUsdRate * exchangeRates.usdtBuyRate);
-      const ethNaira = c.ethBal * (exchangeRates.ethUsdRate * exchangeRates.usdtBuyRate);
-      const cryptoEstimatedNaira = usdtNaira + btcNaira + ethNaira;
-
-      totalBtcHeld += c.btcBal;
-      totalEthHeld += c.ethBal;
-      totalUsdtHeld += c.usdtBal;
-
-      return {
-        userId: c.id,
-        name: c.name,
-        phone: c.phone,
-        email: c.email,
-        accountNumber: c.account_number,
-        nairaBalance: c.balance,
-        profilePhoto: c.profile_photo,
-        hasDepositAddress: true,
-        addresses: {
-          btc: btcAddr,
-          eth: ethAddr,
-          usdt: usdtAddr,
-        },
-        balances: {
-          btc: c.btcBal,
-          eth: c.ethBal,
-          usdt: c.usdtBal,
-        },
-        cryptoEstimatedNaira,
-        totalNetWorthNaira: c.balance + cryptoEstimatedNaira,
-        createdAt: c.created_at,
-      };
-    });
-  }
-
-  if (deposits.length === 0) {
-    deposits = [
-      {
-        id: "dep-01",
-        userName: "Chibuzor Emmanuel",
-        userPhone: "08012345678",
-        kind: "deposit",
-        asset: "BTC",
-        amount: 0.00573914,
-        nairaAmount: 0.00573914 * exchangeRates.btcUsdRate * exchangeRates.usdtBuyRate,
-        rate: exchangeRates.btcUsdRate * exchangeRates.usdtBuyRate,
-        status: "completed",
-        txHash: "0x89f2a41d09e51b228942a781ceef30948e71b2ac40",
-        address: userWallets[1]?.addresses?.btc || "bc1q92c50b4evexa7x9m2p4k8v6w0y3z1a5cvault",
-        createdAt: new Date(Date.now() - 3600000 * 4).toISOString(),
-      },
-      {
-        id: "dep-02",
-        userName: "Amina Bello",
-        userPhone: "08198765432",
-        kind: "deposit",
-        asset: "USDT",
-        amount: 500.0,
-        nairaAmount: 500.0 * exchangeRates.usdtBuyRate,
-        rate: exchangeRates.usdtBuyRate,
-        status: "completed",
-        txHash: "TRX88921049582104aef78103984e71b2ac001",
-        address: userWallets[2]?.addresses?.usdt || "T92c50b4eVexaVaultTRC20CustomerDep",
-        createdAt: new Date(Date.now() - 3600000 * 12).toISOString(),
-      },
-    ];
-  }
-
-  if (buys.length === 0) {
-    buys = [
-      {
-        id: "buy-01",
-        userName: "Babatunde Adeleke",
-        userPhone: "09055443322",
-        kind: "buy",
-        asset: "USDT",
-        amount: 250.0,
-        nairaAmount: 250.0 * exchangeRates.usdtBuyRate,
-        rate: exchangeRates.usdtBuyRate,
-        status: "completed",
-        txHash: "ORD-BUY-981240",
-        createdAt: new Date(Date.now() - 3600000 * 6).toISOString(),
-      },
-      {
-        id: "buy-02",
-        userName: "Tariq Al-Hassan",
-        userPhone: "08033221100",
-        kind: "buy",
-        asset: "BTC",
-        amount: 0.015,
-        nairaAmount: 0.015 * exchangeRates.btcUsdRate * exchangeRates.usdtBuyRate,
-        rate: exchangeRates.btcUsdRate * exchangeRates.usdtBuyRate,
-        status: "completed",
-        txHash: "ORD-BUY-981241",
-        createdAt: new Date(Date.now() - 3600000 * 18).toISOString(),
-      },
-    ];
-  }
-
-  if (sells.length === 0) {
-    sells = [
-      {
-        id: "sell-01",
-        userName: "Amina Bello",
-        userPhone: "08198765432",
-        kind: "sell",
-        asset: "USDT",
-        amount: 300.0,
-        nairaAmount: 300.0 * exchangeRates.usdtSellRate,
-        rate: exchangeRates.usdtSellRate,
-        status: "completed",
-        txHash: "ORD-SELL-771201",
-        createdAt: new Date(Date.now() - 3600000 * 8).toISOString(),
-      },
-    ];
-  }
-
-  totalCustodyNaira =
-    totalUsdtHeld * exchangeRates.usdtBuyRate +
-    totalBtcHeld * (exchangeRates.btcUsdRate * exchangeRates.usdtBuyRate) +
-    totalEthHeld * (exchangeRates.ethUsdRate * exchangeRates.usdtBuyRate);
-
+  const totalCustodyNaira = totalUsdtHeld * usdtBuyRate + totalBtcHeld * btcNgnRate + totalEthHeld * ethNgnRate;
   const custodyHoldings = [
     {
       asset: "USDT",
       network: "Tron (TRC-20)",
       balance: totalUsdtHeld,
-      nairaValue: totalUsdtHeld * exchangeRates.usdtBuyRate,
+      nairaValue: totalUsdtHeld * usdtBuyRate,
       status: "Active",
     },
     {
       asset: "BTC",
       network: "Bitcoin Native",
       balance: totalBtcHeld,
-      nairaValue: totalBtcHeld * (exchangeRates.btcUsdRate * exchangeRates.usdtBuyRate),
+      nairaValue: totalBtcHeld * btcNgnRate,
       status: "Active",
     },
     {
       asset: "ETH",
       network: "ERC-20",
       balance: totalEthHeld,
-      nairaValue: totalEthHeld * (exchangeRates.ethUsdRate * exchangeRates.usdtBuyRate),
+      nairaValue: totalEthHeld * ethNgnRate,
       status: "Active",
     },
   ];
@@ -2774,7 +2496,7 @@ router.get("/admin/crypto", async (_req: Request, res: Response) => {
       totalSellVolumeNaira: sells.reduce((sum, o) => sum + (o.nairaAmount || 0), 0),
       totalDepositsCount: deposits.length,
       totalDepositsVolumeNaira: deposits.reduce((sum, o) => sum + (o.nairaAmount || 0), 0),
-      activeTradersCount: new Set(exchangeOrders.map((o) => o.userPhone)).size,
+      activeTradersCount: new Set(exchangeOrders.map((o) => o.userId)).size,
     },
     custodyHoldings,
     userWallets,
@@ -2787,28 +2509,23 @@ router.get("/admin/crypto", async (_req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// 16b. Crypto Logs (Raw Incoming Tatum Webhook Payloads)
+// 16b. Crypto Logs (Redacting sensitive proxy headers)
 // ─────────────────────────────────────────────────────────────
-router.get("/admin/crypto/logs", async (req: Request, res: Response) => {
+router.get("/admin/crypto/logs", requirePermission("audit.view"), async (req: Request, res: Response) => {
   const [logs, webhookInfo] = await Promise.all([
     getTatumWebhookLogs(),
     resolveEffectiveTatumWebhook(req),
   ]);
 
   let depositEvents: any[] = [];
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      const evRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/crypto_deposit_events?select=*&order=created_at.desc&limit=50`,
-        { headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` } },
-      );
-      if (evRes.ok) {
-        const rows = await evRes.json().catch(() => []);
-        if (Array.isArray(rows)) depositEvents = rows;
-      }
-    } catch {
-      depositEvents = [];
+  try {
+    const evRes = await supabaseRest("crypto_deposit_events?select=*&order=created_at.desc&limit=50");
+    if (evRes.ok) {
+      const rows = await evRes.json().catch(() => []);
+      if (Array.isArray(rows)) depositEvents = rows;
     }
+  } catch {
+    depositEvents = [];
   }
 
   const tatumApiKey = process.env["TATUM_API_KEY"] || "";
@@ -2828,9 +2545,9 @@ router.get("/admin/crypto/logs", async (req: Request, res: Response) => {
   });
 });
 
-router.delete("/admin/crypto/logs", async (req: Request, res: Response) => {
+router.delete("/admin/crypto/logs", requirePermission("settings.manage"), async (req: Request, res: Response) => {
   await clearTatumWebhookLogs();
-  logAdminAudit(
+  void logAdminAudit(
     req.admin!,
     "CRYPTO_WEBHOOK_LOGS_CLEARED",
     "system",
@@ -2838,68 +2555,68 @@ router.delete("/admin/crypto/logs", async (req: Request, res: Response) => {
     {},
     undefined,
     undefined,
-    req.ip,
+    req.ip || "127.0.0.1",
   );
   return res.json({ success: true, message: "Crypto webhook logs cleared." });
 });
 
 // ─────────────────────────────────────────────────────────────
-// 17. Referrals & Cashback Rewards Data (Live DB - Zero Mock Data)
+// 17. Referrals & Cashback Rewards
 // ─────────────────────────────────────────────────────────────
-router.get("/admin/rewards", async (_req: Request, res: Response) => {
-  let cashbackHistory: any[] = [];
-  let referrals: any[] = [];
+router.get("/admin/rewards", requirePermission("overview.view"), async (_req: Request, res: Response) => {
+  const [cbResp, refResp, profResp] = await Promise.all([
+    supabaseRest("cashback_history?select=*&order=created_at.desc&limit=50"),
+    supabaseRest("referrals?select=*&order=created_at.desc&limit=50"),
+    supabaseRest("profiles?select=id,name,phone&limit=500"),
+  ]);
 
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      const cbResp = await fetch(`${SUPABASE_URL}/rest/v1/cashback_history?select=*&order=created_at.desc&limit=50`, {
-        headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-      });
-      if (cbResp.ok) {
-        const liveCb = await cbResp.json();
-        if (Array.isArray(liveCb)) {
-          cashbackHistory = liveCb.map((c: any) => ({
-            id: c.id,
-            userName: c.user_name || "Customer",
-            userPhone: c.user_phone || "—",
-            description: c.description || "Cashback Reward",
-            date: c.date || new Date().toISOString().split("T")[0],
-            rate: c.rate || "1.0%",
-            earned: Number(c.earned) || 0,
-            status: c.status || "cleared",
-          }));
-        }
-      }
-
-      const refResp = await fetch(`${SUPABASE_URL}/rest/v1/referrals?select=*&order=created_at.desc&limit=50`, {
-        headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-      });
-      if (refResp.ok) {
-        const liveRef = await refResp.json();
-        if (Array.isArray(liveRef)) {
-          referrals = liveRef.map((r: any) => ({
-            id: r.id,
-            referrerName: r.referrer_name || "Referrer",
-            referrerPhone: r.referrer_phone || "—",
-            refereeName: r.referee_name || "New Customer",
-            refereePhone: r.referee_phone || "—",
-            referralCode: r.referral_code || "—",
-            bonusAmount: Number(r.bonus_amount) || 0,
-            status: r.status || "paid",
-            createdAt: r.created_at || new Date().toISOString(),
-          }));
-        }
-      }
-    } catch {
-      cashbackHistory = [];
-      referrals = [];
+  const profMap = new Map<string, { name: string; phone: string }>();
+  if (profResp.ok) {
+    const profRows = (await profResp.json().catch(() => [])) as Array<{ id: string; name?: string; phone?: string }>;
+    for (const p of profRows) {
+      profMap.set(p.id, { name: p.name || "Customer", phone: p.phone || "—" });
     }
   }
 
+  const liveCb = cbResp.ok ? ((await cbResp.json().catch(() => [])) as any[]) : [];
+  const cashbackHistory = Array.isArray(liveCb)
+    ? liveCb.map((c) => {
+        const owner = profMap.get(c.user_id);
+        return {
+          id: c.id,
+          userName: owner?.name || "Customer",
+          userPhone: owner?.phone || "—",
+          description: c.description || "Cashback Reward",
+          date: c.date || new Date().toISOString().split("T")[0],
+          rate: c.rate || "1.0%",
+          earned: Number(c.earned) || 0,
+          status: c.status || "cleared",
+        };
+      })
+    : [];
+
+  const liveRef = refResp.ok ? ((await refResp.json().catch(() => [])) as any[]) : [];
+  const referrals = Array.isArray(liveRef)
+    ? liveRef.map((r) => {
+        const owner = profMap.get(r.referrer_id);
+        return {
+          id: r.id,
+          referrerName: owner?.name || "Referrer",
+          referrerPhone: owner?.phone || "—",
+          refereeName: r.referred_name || "New Customer",
+          refereePhone: r.referred_phone || "—",
+          referralCode: "—",
+          bonusAmount: Number(r.earned) || 0,
+          status: r.status || "paid",
+          createdAt: r.created_at || new Date().toISOString(),
+        };
+      })
+    : [];
+
   return res.json({
     metrics: {
-      totalCashbackDisbursed: cashbackHistory.reduce((sum, c) => sum + (c.earned || 0), 0),
-      totalReferralBonusesPaid: referrals.filter((r) => r.status === "paid").reduce((sum, r) => sum + (r.bonusAmount || 0), 0),
+      totalCashbackDisbursed: cashbackHistory.reduce((sum, c) => sum + c.earned, 0),
+      totalReferralBonusesPaid: referrals.filter((r) => r.status === "paid").reduce((sum, r) => sum + r.bonusAmount, 0),
       totalReferralsCount: referrals.length,
       pendingReferralsCount: referrals.filter((r) => r.status !== "paid").length,
     },
@@ -2908,21 +2625,110 @@ router.get("/admin/rewards", async (_req: Request, res: Response) => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────
-// 18. Connected Services & API Gateways Hub
-// ─────────────────────────────────────────────────────────────
-router.get("/admin/integrations", async (_req: Request, res: Response) => {
-  const paystackKey = process.env["PAYSTACK_SECRET_KEY"] || "";
-  const supabaseUrl = process.env["SUPABASE_URL"] || "";
-  const supabaseKey = process.env["SUPABASE_SERVICE_ROLE_KEY"] || "";
-  const termiiKey = process.env["TERMII_API_KEY"] || "";
-  const tatumKey = process.env["TATUM_API_KEY"] || "";
-  const geminiKey = process.env["GEMINI_API_KEY"] || "";
+router.get("/admin/referrals", requirePermission("overview.view"), async (_req: Request, res: Response) => {
+  const [refResp, profResp] = await Promise.all([
+    supabaseRest("referrals?select=*&order=created_at.desc&limit=100"),
+    supabaseRest("profiles?select=id,name,phone&limit=500"),
+  ]);
+  const profMap = new Map<string, { name: string; phone: string }>();
+  if (profResp.ok) {
+    const profRows = (await profResp.json().catch(() => [])) as Array<{ id: string; name?: string; phone?: string }>;
+    for (const p of profRows) {
+      profMap.set(p.id, { name: p.name || "Customer", phone: p.phone || "—" });
+    }
+  }
 
-  const maskSecret = (key: string, prefix = 6, suffix = 4) => {
+  const liveRef = refResp.ok ? ((await refResp.json().catch(() => [])) as any[]) : [];
+  const referrals = Array.isArray(liveRef)
+    ? liveRef.map((r) => {
+        const owner = profMap.get(r.referrer_id);
+        return {
+          id: r.id,
+          referrerName: owner?.name || "Referrer",
+          referrerPhone: owner?.phone || "—",
+          refereeName: r.referred_name || "New Customer",
+          refereePhone: r.referred_phone || "—",
+          referralCode: "—",
+          bonusAmount: Number(r.earned) || 0,
+          status: r.status || "paid",
+          createdAt: r.created_at || new Date().toISOString(),
+        };
+      })
+    : [];
+
+  return res.json({
+    metrics: {
+      totalReferralBonusesPaid: referrals.filter((r) => r.status === "paid").reduce((sum, r) => sum + r.bonusAmount, 0),
+      totalReferralsCount: referrals.length,
+      pendingReferralsCount: referrals.filter((r) => r.status !== "paid").length,
+    },
+    referrals,
+  });
+});
+
+router.get("/admin/cashback", requirePermission("overview.view"), async (_req: Request, res: Response) => {
+  const [cbResp, profResp] = await Promise.all([
+    supabaseRest("cashback_history?select=*&order=created_at.desc&limit=100"),
+    supabaseRest("profiles?select=id,name,phone&limit=500"),
+  ]);
+  const profMap = new Map<string, { name: string; phone: string }>();
+  if (profResp.ok) {
+    const profRows = (await profResp.json().catch(() => [])) as Array<{ id: string; name?: string; phone?: string }>;
+    for (const p of profRows) {
+      profMap.set(p.id, { name: p.name || "Customer", phone: p.phone || "—" });
+    }
+  }
+
+  const liveCb = cbResp.ok ? ((await cbResp.json().catch(() => [])) as any[]) : [];
+  const cashbackHistory = Array.isArray(liveCb)
+    ? liveCb.map((c) => {
+        const owner = profMap.get(c.user_id);
+        return {
+          id: c.id,
+          userName: owner?.name || "Customer",
+          userPhone: owner?.phone || "—",
+          description: c.description || "Cashback Reward",
+          date: c.date || new Date().toISOString().split("T")[0],
+          rate: c.rate || "1.0%",
+          earned: Number(c.earned) || 0,
+          status: c.status || "cleared",
+        };
+      })
+    : [];
+
+  return res.json({
+    metrics: {
+      totalCashbackDisbursed: cashbackHistory.reduce((sum, c) => sum + c.earned, 0),
+      totalCount: cashbackHistory.length,
+    },
+    cashbackHistory,
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// 18. Connected Services & API Gateways Hub (Strict Suffix Masking)
+// ─────────────────────────────────────────────────────────────
+router.get("/admin/integrations", requirePermission("settings.view"), async (_req: Request, res: Response) => {
+  const paystackKey = (process.env["PAYSTACK_SECRET_KEY"] || "").trim();
+  const supabaseUrl = (process.env["SUPABASE_URL"] || "").trim();
+  const supabaseKey = (process.env["SUPABASE_SERVICE_ROLE_KEY"] || "").trim();
+  const termiiKey = (process.env["TERMII_API_KEY"] || "").trim();
+  const tatumKey = (process.env["TATUM_API_KEY"] || "").trim();
+  const geminiKey = (process.env["GEMINI_API_KEY"] || "").trim();
+
+  const maskSecret = (key: string) => {
     if (!key || key.length < 8) return "Not Configured";
-    return `${key.slice(0, prefix)}••••••••${key.slice(-suffix)}`;
+    return `Configured (••••${key.slice(-4)})`;
   };
+
+  let safeSupabaseOrigin = "https://supabase.co";
+  if (supabaseUrl) {
+    try {
+      safeSupabaseOrigin = new URL(supabaseUrl).origin;
+    } catch {
+      safeSupabaseOrigin = "https://supabase.co";
+    }
+  }
 
   const integrations = [
     {
@@ -2934,7 +2740,7 @@ router.get("/admin/integrations", async (_req: Request, res: Response) => {
       statusLabel: paystackKey ? "Connected & Live" : "Disconnected · Key Missing",
       description: "Direct Nigerian banking integration for real-time account name verification, interbank NIP transfers, and virtual funding accounts.",
       endpoint: "https://api.paystack.co",
-      credentialStatus: maskSecret(paystackKey, 7, 4),
+      credentialStatus: maskSecret(paystackKey),
       envVar: "PAYSTACK_SECRET_KEY",
       latencyMs: paystackKey ? 84 : 0,
       lastChecked: new Date().toISOString(),
@@ -2947,13 +2753,13 @@ router.get("/admin/integrations", async (_req: Request, res: Response) => {
       name: "Supabase PostgreSQL Database & Auth",
       provider: "Supabase Inc.",
       category: "Database & Identity",
-      status: (supabaseUrl && supabaseKey) ? "connected" : "disconnected",
-      statusLabel: (supabaseUrl && supabaseKey) ? "Connected & Healthy" : "Disconnected",
+      status: supabaseUrl && supabaseKey ? "connected" : "disconnected",
+      statusLabel: supabaseUrl && supabaseKey ? "Connected & Healthy" : "Disconnected",
       description: "Cloud-hosted relational ledger, real-time transaction streaming, user authentication, security rules, and audit logs.",
-      endpoint: supabaseUrl || "https://supabase.co/rest/v1",
-      credentialStatus: maskSecret(supabaseKey, 8, 4),
+      endpoint: safeSupabaseOrigin,
+      credentialStatus: maskSecret(supabaseKey),
       envVar: "SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY",
-      latencyMs: 38,
+      latencyMs: supabaseUrl && supabaseKey ? 38 : 0,
       lastChecked: new Date().toISOString(),
       docsUrl: "https://supabase.com/docs",
       version: "PostgreSQL 15 (Supabase SDK)",
@@ -2964,17 +2770,17 @@ router.get("/admin/integrations", async (_req: Request, res: Response) => {
       name: "Termii Telecommunications Gateway",
       provider: "Termii Networks",
       category: "Telecom & 2FA SMS",
-      status: termiiKey ? "connected" : "degraded",
-      statusLabel: termiiKey ? "Connected & Live" : "Degraded · Dev Fallback Active",
-      description: "Enterprise SMS delivery rail for sending 2FA passcodes, login OTPs, transaction alerts, and sleep/freeze security unlock verification codes.",
-      endpoint: "https://api.ng.termii.com/api/sms/send",
-      credentialStatus: maskSecret(termiiKey, 5, 4),
+      status: termiiKey ? "connected" : "disconnected",
+      statusLabel: termiiKey ? "Connected & Live" : "Disconnected · Key Missing",
+      description: "Enterprise SMS delivery rail for sending 2FA passcodes, OTPs, and security alerts.",
+      endpoint: "https://api.ng.termii.com",
+      credentialStatus: maskSecret(termiiKey),
       envVar: "TERMII_API_KEY",
-      latencyMs: termiiKey ? 112 : 14,
+      latencyMs: termiiKey ? 112 : 0,
       lastChecked: new Date().toISOString(),
       docsUrl: "https://developer.termii.com",
       version: "v2.0",
-      features: ["Transactional SMS", "Voice OTP", "DND Bypassing", "Sender ID 'Vexa'"],
+      features: ["Transactional SMS", "Voice OTP", "DND Bypassing", "Sender ID"],
     },
     {
       id: "tatum",
@@ -2983,15 +2789,15 @@ router.get("/admin/integrations", async (_req: Request, res: Response) => {
       category: "Crypto & Blockchain",
       status: tatumKey ? "connected" : "disconnected",
       statusLabel: tatumKey ? "Connected · Nodes Synced" : "Disconnected · API Key Missing",
-      description: "Institutional blockchain gateway monitoring TRON (TRC-20 USDT), Bitcoin (BTC), Ethereum (ERC-20), and Solana wallet addresses with dynamic webhook routing.",
-      endpoint: (await resolveEffectiveTatumWebhook(_req)).url || "https://api.tatum.io/v3",
-      credentialStatus: maskSecret(tatumKey, 6, 4),
+      description: "Institutional blockchain gateway monitoring TRON (TRC-20 USDT), Bitcoin (BTC), and Ethereum (ERC-20) deposit addresses.",
+      endpoint: "https://api.tatum.io/v3",
+      credentialStatus: maskSecret(tatumKey),
       envVar: "TATUM_API_KEY",
       latencyMs: tatumKey ? 96 : 0,
       lastChecked: new Date().toISOString(),
       docsUrl: "https://docs.tatum.io",
       version: "v4 Subscriptions + v3 RPC",
-      features: ["TRON TRC-20 USDT", "BTC UTXO Custody", "ERC-20 Tokens", "Dynamic DB Webhooks"],
+      features: ["TRON TRC-20 USDT", "BTC UTXO Custody", "ERC-20 Tokens", "HMAC Webhooks"],
     },
     {
       id: "coingecko",
@@ -2999,10 +2805,10 @@ router.get("/admin/integrations", async (_req: Request, res: Response) => {
       provider: "CoinGecko Data",
       category: "Market Data Oracle",
       status: "connected",
-      statusLabel: "Connected · Free Feed Online",
-      description: "Real-time exchange rates oracle calculating live USD/NGN fiat conversion spreads for Bitcoin, Ethereum, Solana, and Tether USDT.",
+      statusLabel: "Connected · Feed Online",
+      description: "Real-time exchange rates oracle calculating live USD/NGN fiat conversion spreads.",
       endpoint: "https://api.coingecko.com/api/v3/simple/price",
-      credentialStatus: "Public Endpoint / Free Tier",
+      credentialStatus: process.env["COINGECKO_API_KEY"] ? maskSecret(process.env["COINGECKO_API_KEY"]!) : "Public Endpoint / Free Tier",
       envVar: "COINGECKO_API_KEY (Optional)",
       latencyMs: 62,
       lastChecked: new Date().toISOString(),
@@ -3017,15 +2823,15 @@ router.get("/admin/integrations", async (_req: Request, res: Response) => {
       category: "AI & Smart Automation",
       status: geminiKey ? "connected" : "disconnected",
       statusLabel: geminiKey ? "Connected & Active" : "Disconnected · Key Required",
-      description: "Generative AI engine driving smart customer support live chat, conversational FAQ resolution, and automated KYC document anomaly validation.",
+      description: "Generative AI engine for smart support and anomaly validation.",
       endpoint: "https://generativelanguage.googleapis.com",
-      credentialStatus: maskSecret(geminiKey, 6, 4),
+      credentialStatus: maskSecret(geminiKey),
       envVar: "GEMINI_API_KEY",
       latencyMs: geminiKey ? 134 : 0,
       lastChecked: new Date().toISOString(),
       docsUrl: "https://ai.google.dev",
       version: "Gemini 2.5 SDK",
-      features: ["Support Assistant", "Automated FAQ Bot", "KYC Document OCR", "Sentiment Triage"],
+      features: ["Support Assistant", "FAQ Triage", "Document Verification"],
     },
     {
       id: "nibss",
@@ -3034,15 +2840,15 @@ router.get("/admin/integrations", async (_req: Request, res: Response) => {
       category: "Payments & Banking",
       status: "connected",
       statusLabel: "Connected via Gateway Rail",
-      description: "Central Bank of Nigeria regulated instant payment switch connecting all 20+ licensed commercial and microfinance banks for instant 24/7 transfers.",
+      description: "Nigerian inter-bank settlement switch for instant transfers.",
       endpoint: "https://nip.nibss-plc.com.ng",
-      credentialStatus: "Connected via Bank Gateway",
+      credentialStatus: "Configured via Bank Rail",
       envVar: "NIBSS_INSTITUTION_CODE",
       latencyMs: 78,
       lastChecked: new Date().toISOString(),
       docsUrl: "https://nibss-plc.com.ng",
       version: "ISO 8583 / NIP Web API",
-      features: ["Real-time Clearing", "Account Inquiries", "Mandate Verification", "Direct Debits"],
+      features: ["Real-time Clearing", "Account Inquiries", "Direct Settlement"],
     },
     {
       id: "card_issuer",
@@ -3051,9 +2857,9 @@ router.get("/admin/integrations", async (_req: Request, res: Response) => {
       category: "Card Issuance & Payments",
       status: "disconnected",
       statusLabel: "Disconnected · Awaiting Card Issuer",
-      description: "Dedicated BIN sponsorship and PAN tokenization switch for printing physical debit cards and creating instant virtual payment cards.",
+      description: "BIN sponsorship and PAN tokenization switch for virtual and physical debit cards.",
       endpoint: "https://api.issuer-network.internal",
-      credentialStatus: "Not Connected Yet",
+      credentialStatus: "Not Configured",
       envVar: "CARD_ISSUER_SECRET",
       latencyMs: 0,
       lastChecked: new Date().toISOString(),
@@ -3068,15 +2874,15 @@ router.get("/admin/integrations", async (_req: Request, res: Response) => {
       category: "Regulatory & Compliance",
       status: "connected",
       statusLabel: "Compliant & Connected",
-      description: "Statutory deposit protection reporting rail ensuring customer deposits up to statutory maximums are insured under national banking insurance guidelines.",
+      description: "Statutory deposit protection reporting compliance rail.",
       endpoint: "https://compliance.ndic.gov.ng",
-      credentialStatus: "Insured Institution ID: NDIC-VX-2025",
+      credentialStatus: "Configured",
       envVar: "NDIC_LICENSE_ID",
       latencyMs: 45,
       lastChecked: new Date().toISOString(),
       docsUrl: "https://ndic.gov.ng",
       version: "Statutory Compliance v1",
-      features: ["Customer Deposit Guarantee", "Audit Verification", "Insolvency Protection"],
+      features: ["Customer Deposit Guarantee", "Audit Verification"],
     },
   ];
 
@@ -3084,7 +2890,9 @@ router.get("/admin/integrations", async (_req: Request, res: Response) => {
   const disconnectedCount = integrations.filter((i) => i.status === "disconnected").length;
   const degradedCount = integrations.filter((i) => i.status === "degraded").length;
   const activeLatencies = integrations.filter((i) => i.latencyMs > 0).map((i) => i.latencyMs);
-  const avgLatency = activeLatencies.length ? Math.round(activeLatencies.reduce((a, b) => a + b, 0) / activeLatencies.length) : 0;
+  const avgLatency = activeLatencies.length
+    ? Math.round(activeLatencies.reduce((a, b) => a + b, 0) / activeLatencies.length)
+    : 0;
 
   return res.json({
     metrics: {
@@ -3099,7 +2907,7 @@ router.get("/admin/integrations", async (_req: Request, res: Response) => {
   });
 });
 
-router.post("/admin/integrations/:id/test", async (req: Request, res: Response) => {
+router.post("/admin/integrations/:id/test", requirePermission("settings.manage"), async (req: Request, res: Response) => {
   const { id } = req.params;
   const startTime = Date.now();
 
@@ -3113,14 +2921,14 @@ router.post("/admin/integrations/:id/test", async (req: Request, res: Response) 
           success: false,
           status: "disconnected",
           latencyMs: 0,
-          message: "Paystack secret key is missing in environment (PAYSTACK_SECRET_KEY).",
+          message: "PAYSTACK_SECRET_KEY is not configured.",
         });
       }
       const testRes = await fetch("https://api.paystack.co/bank", {
         headers: { Authorization: `Bearer ${key}` },
         signal: AbortSignal.timeout(5000),
       }).catch(() => null);
-      pingSuccess = Boolean(testRes && (testRes.ok || testRes.status === 401));
+      pingSuccess = Boolean(testRes && testRes.ok);
     } else if (id === "coingecko") {
       const cgRes = await fetch("https://api.coingecko.com/api/v3/ping", {
         signal: AbortSignal.timeout(5000),
@@ -3128,18 +2936,20 @@ router.post("/admin/integrations/:id/test", async (req: Request, res: Response) 
       pingSuccess = Boolean(cgRes && cgRes.ok);
     } else if (id === "supabase") {
       const url = process.env["SUPABASE_URL"];
-      if (!url) {
+      const key = process.env["SUPABASE_SERVICE_ROLE_KEY"];
+      if (!url || !key) {
         return res.json({
           success: false,
           status: "disconnected",
           latencyMs: 0,
-          message: "SUPABASE_URL is not configured in environment.",
+          message: "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is missing.",
         });
       }
-      const sbRes = await fetch(`${url}/rest/v1/`, {
+      const sbRes = await fetch(`${url.replace(/\/$/, "")}/rest/v1/`, {
+        headers: { apikey: key },
         signal: AbortSignal.timeout(5000),
       }).catch(() => null);
-      pingSuccess = Boolean(sbRes);
+      pingSuccess = Boolean(sbRes && sbRes.ok);
     } else if (id === "card_issuer") {
       return res.json({
         success: false,
@@ -3150,12 +2960,11 @@ router.post("/admin/integrations/:id/test", async (req: Request, res: Response) 
     }
 
     const latencyMs = Math.max(12, Date.now() - startTime);
-
     return res.json({
       success: pingSuccess,
       status: pingSuccess ? "connected" : "degraded",
       latencyMs,
-      message: pingSuccess ? `Gateway responded in ${latencyMs}ms.` : "Endpoint did not return standard OK.",
+      message: pingSuccess ? `Gateway responded in ${latencyMs}ms.` : "Endpoint did not return HTTP 200.",
       testedAt: new Date().toISOString(),
     });
   } catch (err: any) {
@@ -3163,7 +2972,7 @@ router.post("/admin/integrations/:id/test", async (req: Request, res: Response) 
       success: false,
       status: "disconnected",
       latencyMs: Date.now() - startTime,
-      message: err.message || "Connection timeout or unreachable host",
+      message: err?.message || "Connection timeout or unreachable host",
     });
   }
 });

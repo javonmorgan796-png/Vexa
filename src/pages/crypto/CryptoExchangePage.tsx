@@ -15,6 +15,7 @@ import {
   formatCryptoFiat as formatFiat,
   type CryptoFiatCurrency as FiatCurrency,
 } from '@/components/crypto/CryptoActivityDetailsModal';
+import { emitCryptoDepositToast } from '@/components/crypto/CryptoDepositToast';
 
 
 
@@ -133,49 +134,6 @@ type DepositAddress = {
 };
 type CryptoPageView = 'overview' | 'exchange' | 'transfer' | 'receive' | 'fund';
 
-export function generateDeterministicDepositAddress(userIdOrAccount: string, asset: CryptoAsset): DepositAddress {
-  const seed = `${userIdOrAccount || 'vexa_customer'}:${asset}:vexa_custody_v1`;
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = ((hash << 5) - hash) + seed.charCodeAt(i);
-    hash |= 0;
-  }
-  const hexPart1 = Math.abs(hash).toString(16).padStart(8, '0');
-  const hexPart2 = Math.abs(hash * 37 + 0x1234567).toString(16).padStart(8, '0');
-  const hexPart3 = Math.abs(hash * 73 + 0x7654321).toString(16).padStart(8, '0');
-  const fullHex = (hexPart1 + hexPart2 + hexPart3 + '92c50b4ecustodyvault').toLowerCase();
-
-  if (asset === 'BTC') {
-    return {
-      asset: 'BTC',
-      address: `bc1q${fullHex.slice(0, 38)}`,
-      network: 'Bitcoin',
-      createdAt: new Date().toISOString(),
-    };
-  }
-  if (asset === 'ETH') {
-    return {
-      asset: 'ETH',
-      address: `0x${fullHex.slice(0, 40)}`,
-      network: 'Ethereum',
-      createdAt: new Date().toISOString(),
-    };
-  }
-  // USDT TRC-20
-  const base58Chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-  let tronAddr = 'T';
-  for (let i = 0; i < 33; i++) {
-    const val = Math.abs((hash * (i + 13)) ^ (i * 31));
-    tronAddr += base58Chars[val % base58Chars.length];
-  }
-  return {
-    asset: 'USDT',
-    address: tronAddr,
-    network: 'Tron (TRC-20)',
-    createdAt: new Date().toISOString(),
-  };
-}
-
 
 
 function PageHeader({ title, onBack }: { title: string; onBack: () => void }) {
@@ -212,10 +170,7 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [formError, setFormError] = useState('');
-  const userIdentifier = user?.id || user?.accountNumber || 'vexa_customer';
-  const [depositAddress, setDepositAddress] = useState<DepositAddress>(() =>
-    generateDeterministicDepositAddress(userIdentifier, 'BTC')
-  );
+  const [depositAddress, setDepositAddress] = useState<DepositAddress | null>(null);
   const [addressLoading, setAddressLoading] = useState(false);
   const [syncingDeposits, setSyncingDeposits] = useState(false);
   const [syncNotice, setSyncNotice] = useState('');
@@ -306,41 +261,44 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
     setAddressLoading(true);
     setFormError('');
 
-    const fallbackAddr = generateDeterministicDepositAddress(userIdentifier, targetAsset);
-    setDepositAddress(prev => (prev?.asset === targetAsset ? prev : fallbackAddr));
-
     if (moneyMovementLocked) {
       setFormError(securityState.freezeActive
         ? 'Freeze Account is active. Crypto deposits are blocked until the freeze is removed.'
         : 'Sleep Mode is active. Crypto deposits are blocked until Sleep Mode is deactivated.');
+      setDepositAddress(null);
       setAddressLoading(false);
       return;
     }
 
     try {
-      // 1. Always query backend API first so Tatum wallet & webhook subscription are synced
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const headers: Record<string, string> = { accept: 'application/json' };
-        if (session?.access_token) {
-          headers.Authorization = `Bearer ${session.access_token}`;
-        }
-
-        const response = await fetch(`/api/crypto/deposit-address?asset=${targetAsset}&userId=${encodeURIComponent(user?.id || '')}`, { headers });
-        const contentType = response.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
-          const body = await response.json();
-          if (body?.address) {
-            setDepositAddress(body);
-            setAddressLoading(false);
-            return;
-          }
-        }
-      } catch (apiErr) {
-        console.warn('[Crypto] API address fetch note:', apiErr);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setDepositAddress(null);
+        setFormError('Sign in to view your verified crypto deposit address.');
+        setAddressLoading(false);
+        return;
       }
 
-      // 2. Fallback: read existing verified address from Supabase if API is temporarily unreachable
+      const headers: Record<string, string> = {
+        accept: 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      };
+
+      const response = await fetch(`/api/crypto/deposit-address?asset=${encodeURIComponent(targetAsset)}`, { headers });
+      const contentType = response.headers.get('content-type') || '';
+      const body = contentType.includes('application/json') ? await response.json().catch(() => null) : null;
+
+      if (response.ok && body?.address) {
+        setDepositAddress(body);
+        setAddressLoading(false);
+        return;
+      }
+
+      if (!response.ok && body?.message) {
+        setFormError(body.message);
+      }
+
+      // Fallback: read existing verified address from authenticated user's Supabase row if API is unreachable
       if (user?.id) {
         try {
           const { data: directAddr } = await supabase
@@ -368,15 +326,18 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
         }
       }
 
-      // 3. Preview fallback when offline / unconfigured (do not write synthetic address to DB)
-      setDepositAddress({ ...fallbackAddr, provider: 'unconfigured', liveDepositEnabled: false });
+      setDepositAddress(null);
+      if (!body?.message) {
+        setFormError(`Unable to load verified ${targetAsset} deposit address right now.`);
+      }
     } catch (addressError) {
       console.error('[Crypto] Deposit address error:', addressError);
-      setDepositAddress({ ...fallbackAddr, provider: 'unconfigured', liveDepositEnabled: false });
+      setDepositAddress(null);
+      setFormError(`Unable to load verified ${targetAsset} deposit address right now.`);
     } finally {
       setAddressLoading(false);
     }
-  }, [asset, moneyMovementLocked, securityState.freezeActive, user?.id, userIdentifier]);
+  }, [asset, moneyMovementLocked, securityState.freezeActive, user?.id]);
 
   const syncDeposits = useCallback(async (targetAsset?: CryptoAsset, manual = false) => {
     if (moneyMovementLocked || !user?.id) return;
@@ -415,11 +376,27 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
         const creditedSummary = (result.newlyCredited ?? [])
           .map(item => `${item.amount} ${item.asset}`)
           .join(', ');
+        (result.newlyCredited ?? []).forEach((item) => {
+          emitCryptoDepositToast({
+            asset: item.asset,
+            amount: item.amount,
+            status: 'credited',
+            subtitle: 'Credited to your Exchange wallet',
+          });
+        });
         setMessage(`Deposit credited: ${creditedSummary} added to your Exchange wallet.`);
         setSyncNotice('');
         await refreshFinance();
       } else if ((result.pendingCount ?? 0) > 0 && result.pendingDeposits?.[0]) {
         const firstPending = result.pendingDeposits[0];
+        (result.pendingDeposits ?? []).forEach((item) => {
+          emitCryptoDepositToast({
+            asset: item.asset,
+            amount: item.amount,
+            status: 'incoming',
+            subtitle: `${item.confirmations}/${item.requiredConfirmations} confirmations · Confirming`,
+          });
+        });
         setSyncNotice(
           `${firstPending.amount} ${firstPending.asset} detected (${firstPending.confirmations}/${firstPending.requiredConfirmations} confirmations). It will credit automatically once confirmed.`,
         );
@@ -937,7 +914,7 @@ export default function CryptoExchangePage({ view = 'overview' }: { view?: Crypt
                   key={item}
                   onClick={() => {
                     setAsset(item);
-                    setDepositAddress(generateDeterministicDepositAddress(userIdentifier, item));
+                    setDepositAddress(null);
                     void loadDepositAddress(item);
                   }}
                   className={`py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 transition-all ${

@@ -1,7 +1,8 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useUserData } from '@/context/UserDataContext';
+import { emitCryptoDepositToast } from '@/components/crypto/CryptoDepositToast';
 
 export type CryptoAsset = 'BTC' | 'ETH' | 'USDT';
 export type CryptoTransactionKind = 'deposit' | 'buy' | 'sell' | 'transfer_in' | 'transfer_out';
@@ -61,6 +62,8 @@ export function VexaFinanceProvider({ children }: { children: React.ReactNode })
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
+  const seenIncomingTxIdsRef = useRef<Set<string> | null>(null);
+  const seenUserIdRef = useRef<string | null>(null);
 
   const refreshFinance = useCallback(async (options?: { silent?: boolean }) => {
     if (!user) {
@@ -68,8 +71,14 @@ export function VexaFinanceProvider({ children }: { children: React.ReactNode })
       setCryptoBalances([]);
       setCryptoTransactions([]);
       setLastUpdatedAt(null);
+      seenIncomingTxIdsRef.current = null;
+      seenUserIdRef.current = null;
       setLoading(false);
       return;
+    }
+    if (seenUserIdRef.current !== user.id) {
+      seenIncomingTxIdsRef.current = null;
+      seenUserIdRef.current = user.id;
     }
     if (!options?.silent) setLoading(true);
     const [accountRes, balancesRes, transactionsRes] = await Promise.all([
@@ -82,7 +91,7 @@ export function VexaFinanceProvider({ children }: { children: React.ReactNode })
     }
     setExchangeNaira(Number(accountRes.data?.naira_balance ?? 0));
     setCryptoBalances((balancesRes.data ?? []).map(row => ({ asset: row.asset as CryptoAsset, amount: Number(row.amount) })));
-    setCryptoTransactions((transactionsRes.data ?? []).map(row => ({
+    const mappedTransactions: CryptoTransaction[] = (transactionsRes.data ?? []).map(row => ({
       id: row.id,
       kind: row.kind as CryptoTransactionKind,
       asset: row.asset,
@@ -92,7 +101,39 @@ export function VexaFinanceProvider({ children }: { children: React.ReactNode })
       counterpartyAccount: row.counterparty_account ?? undefined,
       note: row.note ?? '',
       createdAt: row.created_at,
-    })));
+    }));
+
+    const seenIds = seenIncomingTxIdsRef.current;
+    if (seenIds === null) {
+      seenIncomingTxIdsRef.current = new Set(mappedTransactions.map(item => item.id));
+    } else {
+      const now = Date.now();
+      for (const tx of mappedTransactions) {
+        if (seenIds.has(tx.id)) continue;
+        seenIds.add(tx.id);
+        if (tx.kind !== 'deposit' && tx.kind !== 'transfer_in') continue;
+        const assetUpper = tx.asset.toUpperCase();
+        if (assetUpper !== 'BTC' && assetUpper !== 'ETH' && assetUpper !== 'USDT') continue;
+        const createdMs = new Date(tx.createdAt).getTime();
+        if (Number.isFinite(createdMs) && now - createdMs > 10 * 60 * 1000) continue;
+        const hashMatch = tx.note.match(/\b(0x[a-f0-9]{6,}|[a-f0-9]{10,})\b/i);
+        emitCryptoDepositToast({
+          asset: assetUpper as CryptoAsset,
+          amount: fmtCryptoQty(tx.amount),
+          status: 'credited',
+          txHash: hashMatch?.[1],
+          dedupeKey: `tx:${tx.id}`,
+          subtitle:
+            tx.kind === 'transfer_in'
+              ? tx.counterpartyAccount
+                ? `Received from account ${tx.counterpartyAccount}`
+                : 'Received in Exchange wallet'
+              : 'Credited to your Exchange wallet',
+        });
+      }
+    }
+
+    setCryptoTransactions(mappedTransactions);
     setLastUpdatedAt(new Date().toISOString());
     setLoading(false);
   }, [user]);
@@ -137,91 +178,74 @@ export function VexaFinanceProvider({ children }: { children: React.ReactNode })
     };
   }, [user?.id, refreshFinance, refreshAll]);
 
-  const transferVexaMoney = async (accountNumber: string, amount: number, note: string, pin: string) => {
-    const { data, error: rpcErr } = await supabase.rpc('transfer_vexa_money', {
-      p_recipient_account: accountNumber,
-      p_amount: amount,
-      p_note: note,
-      p_pin: pin,
+  async function authedPost<T = Record<string, unknown>>(path: string, body: Record<string, unknown>): Promise<{ ok: boolean; data: T | null; error?: string }> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      return { ok: false, data: null, error: 'Your session has expired. Please sign in again.' };
+    }
+    const resp = await fetch(path, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify(body),
     });
-    if (rpcErr || !data) return { success: false, error: rpcError(rpcErr, 'Transfer failed') };
+    const payload = await resp.json().catch(() => null) as (T & { message?: string }) | null;
+    if (!resp.ok) {
+      return { ok: false, data: payload, error: payload?.message || 'Request failed' };
+    }
+    return { ok: true, data: payload };
+  }
+
+  const transferVexaMoney = async (accountNumber: string, amount: number, note: string, pin: string) => {
+    const res = await authedPost<{ transactionId?: string; recipientName?: string }>('/api/wallet/transfer/vexa', {
+      accountNumber,
+      amount,
+      note,
+      pin,
+    });
+    if (!res.ok || !res.data) return { success: false, error: res.error ?? 'Transfer failed' };
     await refreshFinance();
     refreshAll();
     return {
       success: true,
-      transactionId: data.transaction_id as string,
-      recipientName: data.recipient_name as string,
+      transactionId: res.data.transactionId,
+      recipientName: res.data.recipientName,
     };
   };
 
   const depositToExchange = async (amount: number) => {
-    const { data, error: rpcErr } = await supabase.rpc('deposit_to_crypto', { p_amount: amount });
-    if (rpcErr) return { success: false, error: rpcError(rpcErr, 'Deposit failed') };
+    const res = await authedPost('/api/wallet/crypto/deposit-fiat', { amount });
+    if (!res.ok) return { success: false, error: res.error ?? 'Deposit failed' };
     await refreshFinance();
-    if (!data?.notified) {
-      await addNotification({
-        type: 'crypto',
-        title: 'Exchange wallet funded',
-        body: `${fmtNaira(amount)} moved from your Vexa balance to your Exchange wallet.`,
-      });
-    }
     refreshAll();
     return { success: true };
   };
 
-  const exchangeCrypto = async (asset: CryptoAsset, side: 'buy' | 'sell', nairaAmount: number, rate: number) => {
-    const { data, error: rpcErr } = await supabase.rpc('exchange_crypto', {
-      p_asset: asset,
-      p_side: side,
-      p_naira_amount: nairaAmount,
-      p_rate: rate,
+  const exchangeCrypto = async (asset: CryptoAsset, side: 'buy' | 'sell', nairaAmount: number, _rate: number) => {
+    // Note: Exchange rate is computed authoritatively on the backend live oracle
+    const res = await authedPost('/api/wallet/crypto/exchange', {
+      asset,
+      side,
+      nairaAmount,
     });
-    if (rpcErr) return { success: false, error: rpcError(rpcErr, 'Exchange failed') };
+    if (!res.ok) return { success: false, error: res.error ?? 'Exchange failed' };
     await refreshFinance();
-    if (!data?.notified) {
-      const assetQty = Number(data?.asset_amount ?? (rate > 0 ? nairaAmount / rate : 0));
-      await addNotification({
-        type: 'crypto',
-        title: side === 'buy' ? `${asset} purchase successful` : `${asset} sale successful`,
-        body: side === 'buy'
-          ? `Bought ${fmtCryptoQty(assetQty)} ${asset} for ${fmtNaira(nairaAmount)}.`
-          : `Sold ${fmtCryptoQty(assetQty)} ${asset} for ${fmtNaira(nairaAmount)} to your Exchange balance.`,
-      });
-    }
     refreshAll();
     return { success: true };
   };
 
   const transferCrypto = async (accountNumber: string, asset: CryptoAsset, amount: number) => {
-    const { data, error: rpcErr } = await supabase.rpc('transfer_crypto', {
-      p_recipient_account: accountNumber,
-      p_asset: asset,
-      p_amount: amount,
+    const res = await authedPost<{ recipient_name?: string }>('/api/wallet/crypto/transfer', {
+      accountNumber,
+      asset,
+      amount,
     });
-    if (rpcErr || !data) return { success: false, error: rpcError(rpcErr, 'Crypto transfer failed') };
+    if (!res.ok || !res.data) return { success: false, error: res.error ?? 'Crypto transfer failed' };
     await refreshFinance();
-    if (!data.notified) {
-      await addNotification({
-        type: 'crypto',
-        title: `${asset} transfer sent`,
-        body: `${fmtCryptoQty(amount)} ${asset} sent to ${String(data.recipient_name ?? 'Vexa user')} (${String(data.recipient_account ?? accountNumber)}).`,
-      });
-      // Notify recipient via backend service-role fallback if live RPC isn't updated yet
-      void supabase.auth.getSession().then(({ data: sessionData }) => {
-        const token = sessionData.session?.access_token;
-        if (!token) return;
-        return fetch('/api/crypto/notify-transfer-recipient', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ recipientAccount: accountNumber, asset, amount }),
-        }).catch(() => {});
-      });
-    }
     refreshAll();
-    return { success: true, recipientName: data.recipient_name as string };
+    return { success: true, recipientName: res.data.recipient_name };
   };
 
   return (

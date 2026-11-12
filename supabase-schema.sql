@@ -12,37 +12,48 @@
 -- ── User profiles ─────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS public.profiles (
-  id             UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  name           TEXT NOT NULL,
-  email          TEXT NOT NULL DEFAULT '',
-  phone          TEXT NOT NULL,
-  account_number TEXT NOT NULL,
-  pin            TEXT NOT NULL DEFAULT '0000',
-  level          INTEGER NOT NULL DEFAULT 1,
-  verified       BOOLEAN NOT NULL DEFAULT false,
-  balance        NUMERIC(15, 2) NOT NULL DEFAULT 0,
-  profile_photo  TEXT,
-  referral_code  TEXT NOT NULL DEFAULT '',
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id                  UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  name                TEXT NOT NULL,
+  email               TEXT NOT NULL DEFAULT '',
+  phone               TEXT NOT NULL,
+  account_number      TEXT NOT NULL,
+  pin                 TEXT NOT NULL DEFAULT '',
+  pin_hash            TEXT,
+  pin_failed_attempts INTEGER NOT NULL DEFAULT 0,
+  pin_locked_until    TIMESTAMPTZ,
+  level               INTEGER NOT NULL DEFAULT 1,
+  verified            BOOLEAN NOT NULL DEFAULT false,
+  balance             NUMERIC(15, 2) NOT NULL DEFAULT 0,
+  profile_photo       TEXT,
+  referral_code       TEXT NOT NULL DEFAULT '',
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+REVOKE ALL ON public.profiles FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.profiles TO service_role;
+GRANT SELECT (
+  id, name, email, phone, account_number, level, verified, balance,
+  profile_photo, referral_code, created_at
+) ON public.profiles TO authenticated;
+
 DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
-CREATE POLICY "Users can view own profile"
-  ON public.profiles FOR SELECT
-  USING (auth.uid() = id);
-
 DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
-CREATE POLICY "Users can update own profile"
-  ON public.profiles FOR UPDATE
-  USING (auth.uid() = id);
-
 DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
-CREATE POLICY "Users can insert own profile"
-  ON public.profiles FOR INSERT
-  WITH CHECK (auth.uid() = id);
+CREATE POLICY "Users can view own profile"
+  ON public.profiles FOR SELECT TO authenticated
+  USING (auth.uid() = id);
+CREATE POLICY "Service role full access to profiles"
+  ON public.profiles FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
 
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS pin_hash TEXT;
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS pin_failed_attempts INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS pin_locked_until TIMESTAMPTZ;
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS two_factor_enabled BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE public.profiles
@@ -57,7 +68,11 @@ ALTER TABLE public.profiles
 -- so it works even when email confirmation is ON (no session yet).
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   acc TEXT;
 BEGIN
@@ -71,7 +86,7 @@ BEGIN
     COALESCE(NEW.email, ''),
     COALESCE(NEW.raw_user_meta_data->>'phone', ''),
     COALESCE(NEW.raw_user_meta_data->>'account_number', acc),
-    '0000',
+    '',
     1,
     false,
     0,
@@ -80,7 +95,7 @@ BEGIN
   ON CONFLICT (id) DO NOTHING;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
@@ -111,21 +126,19 @@ CREATE TABLE IF NOT EXISTS public.cashback_history (
 );
 
 ALTER TABLE public.cashback_history ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.cashback_history FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.cashback_history TO authenticated;
+GRANT ALL ON public.cashback_history TO service_role;
 
 DROP POLICY IF EXISTS "Users can view own cashback" ON public.cashback_history;
-CREATE POLICY "Users can view own cashback"
-  ON public.cashback_history FOR SELECT
-  USING (auth.uid() = user_id);
-
 DROP POLICY IF EXISTS "Users can insert own cashback" ON public.cashback_history;
-CREATE POLICY "Users can insert own cashback"
-  ON public.cashback_history FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
-
 DROP POLICY IF EXISTS "Users can update own cashback" ON public.cashback_history;
-CREATE POLICY "Users can update own cashback"
-  ON public.cashback_history FOR UPDATE
+CREATE POLICY "Users can view own cashback"
+  ON public.cashback_history FOR SELECT TO authenticated
   USING (auth.uid() = user_id);
+CREATE POLICY "Service role full access to cashback"
+  ON public.cashback_history FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
 
 -- ── Referrals ─────────────────────────────────────────────
 
@@ -141,16 +154,18 @@ CREATE TABLE IF NOT EXISTS public.referrals (
 );
 
 ALTER TABLE public.referrals ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.referrals FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.referrals TO authenticated;
+GRANT ALL ON public.referrals TO service_role;
 
 DROP POLICY IF EXISTS "Users can view own referrals" ON public.referrals;
-CREATE POLICY "Users can view own referrals"
-  ON public.referrals FOR SELECT
-  USING (auth.uid() = referrer_id);
-
 DROP POLICY IF EXISTS "Users can insert own referrals" ON public.referrals;
-CREATE POLICY "Users can insert own referrals"
-  ON public.referrals FOR INSERT
-  WITH CHECK (auth.uid() = referrer_id);
+CREATE POLICY "Users can view own referrals"
+  ON public.referrals FOR SELECT TO authenticated
+  USING (auth.uid() = referrer_id);
+CREATE POLICY "Service role full access to referrals"
+  ON public.referrals FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
 
 -- ── User notifications ────────────────────────────────────
 
@@ -166,16 +181,23 @@ CREATE TABLE IF NOT EXISTS public.notifications (
 
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.notifications TO authenticated;
+REVOKE ALL ON public.notifications FROM PUBLIC, anon, authenticated;
+GRANT SELECT, UPDATE (read) ON public.notifications TO authenticated;
 GRANT ALL ON public.notifications TO service_role;
 DROP POLICY IF EXISTS "Users can view own notifications" ON public.notifications;
 DROP POLICY IF EXISTS "Users can insert own notifications" ON public.notifications;
 DROP POLICY IF EXISTS "Users can update own notifications" ON public.notifications;
 DROP POLICY IF EXISTS "own notifications" ON public.notifications;
-CREATE POLICY "own notifications"
-  ON public.notifications FOR ALL TO authenticated
+CREATE POLICY "Users can view own notifications"
+  ON public.notifications FOR SELECT TO authenticated
+  USING (auth.uid() = user_id);
+CREATE POLICY "Users can mark own notifications read"
+  ON public.notifications FOR UPDATE TO authenticated
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Service role full access to notifications"
+  ON public.notifications FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
 
 -- ── User transactions ─────────────────────────────────────
 
@@ -199,15 +221,18 @@ ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS sender_name TEXT;
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS sender_account TEXT;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.transactions TO authenticated;
+REVOKE ALL ON public.transactions FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.transactions TO authenticated;
 GRANT ALL ON public.transactions TO service_role;
 DROP POLICY IF EXISTS "Users can view own transactions" ON public.transactions;
 DROP POLICY IF EXISTS "Users can insert own transactions" ON public.transactions;
 DROP POLICY IF EXISTS "own transactions" ON public.transactions;
-CREATE POLICY "own transactions"
-  ON public.transactions FOR ALL TO authenticated
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can view own transactions"
+  ON public.transactions FOR SELECT TO authenticated
+  USING (auth.uid() = user_id);
+CREATE POLICY "Service role full access to transactions"
+  ON public.transactions FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
 
 -- ── Vexa-to-Vexa transfers ─────────────────────────────────
 
@@ -336,7 +361,8 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.transfer_vexa_money(TEXT, NUMERIC, TEXT, TEXT) TO authenticated;
+REVOKE ALL ON FUNCTION public.transfer_vexa_money(TEXT, NUMERIC, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.transfer_vexa_money(TEXT, NUMERIC, TEXT, TEXT) TO service_role;
 
 -- ── Vexa Exchange ledger ──────────────────────────────────
 
@@ -371,20 +397,38 @@ ALTER TABLE public.crypto_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.crypto_balances ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.crypto_transactions ENABLE ROW LEVEL SECURITY;
 
+REVOKE ALL ON public.crypto_accounts FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.crypto_accounts TO authenticated;
+GRANT ALL ON public.crypto_accounts TO service_role;
 DROP POLICY IF EXISTS "Users can manage own crypto account" ON public.crypto_accounts;
-CREATE POLICY "Users can manage own crypto account"
-  ON public.crypto_accounts FOR ALL TO authenticated
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can view own crypto account"
+  ON public.crypto_accounts FOR SELECT TO authenticated
+  USING (auth.uid() = user_id);
+CREATE POLICY "Service role full access to crypto_accounts"
+  ON public.crypto_accounts FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+
+REVOKE ALL ON public.crypto_balances FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.crypto_balances TO authenticated;
+GRANT ALL ON public.crypto_balances TO service_role;
 DROP POLICY IF EXISTS "Users can manage own crypto balances" ON public.crypto_balances;
-CREATE POLICY "Users can manage own crypto balances"
-  ON public.crypto_balances FOR ALL TO authenticated
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can view own crypto balances"
+  ON public.crypto_balances FOR SELECT TO authenticated
+  USING (auth.uid() = user_id);
+CREATE POLICY "Service role full access to crypto_balances"
+  ON public.crypto_balances FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+
+REVOKE ALL ON public.crypto_transactions FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.crypto_transactions TO authenticated;
+GRANT ALL ON public.crypto_transactions TO service_role;
 DROP POLICY IF EXISTS "Users can view own crypto transactions" ON public.crypto_transactions;
 CREATE POLICY "Users can view own crypto transactions"
   ON public.crypto_transactions FOR SELECT TO authenticated
   USING (auth.uid() = user_id);
+CREATE POLICY "Service role full access to crypto_transactions"
+  ON public.crypto_transactions FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
 
 CREATE OR REPLACE FUNCTION public.deposit_to_crypto(p_amount NUMERIC)
 RETURNS JSONB
@@ -560,9 +604,12 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.deposit_to_crypto(NUMERIC) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.exchange_crypto(TEXT, TEXT, NUMERIC, NUMERIC) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.transfer_crypto(TEXT, TEXT, NUMERIC) TO authenticated;
+REVOKE ALL ON FUNCTION public.deposit_to_crypto(NUMERIC) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.exchange_crypto(TEXT, TEXT, NUMERIC, NUMERIC) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.transfer_crypto(TEXT, TEXT, NUMERIC) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.deposit_to_crypto(NUMERIC) TO service_role;
+GRANT EXECUTE ON FUNCTION public.exchange_crypto(TEXT, TEXT, NUMERIC, NUMERIC) TO service_role;
+GRANT EXECUTE ON FUNCTION public.transfer_crypto(TEXT, TEXT, NUMERIC) TO service_role;
 
 -- ── External crypto deposit addresses ──────────────────────
 CREATE TABLE IF NOT EXISTS public.crypto_deposit_addresses (
@@ -743,11 +790,17 @@ CREATE TABLE IF NOT EXISTS public.business_accounts (
 );
 
 ALTER TABLE public.business_accounts ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.business_accounts FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.business_accounts TO authenticated;
+GRANT ALL ON public.business_accounts TO service_role;
 
 DROP POLICY IF EXISTS "Business owners can manage their business" ON public.business_accounts;
-CREATE POLICY "Business owners can manage their business"
-  ON public.business_accounts FOR ALL
+CREATE POLICY "Business owners can view their business"
+  ON public.business_accounts FOR SELECT TO authenticated
   USING (auth.uid() = owner_id);
+CREATE POLICY "Service role full access to business_accounts"
+  ON public.business_accounts FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
 
 -- ── Employees ─────────────────────────────────────────────
 
@@ -769,16 +822,22 @@ CREATE TABLE IF NOT EXISTS public.employees (
 );
 
 ALTER TABLE public.employees ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.employees FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.employees TO authenticated;
+GRANT ALL ON public.employees TO service_role;
 
 DROP POLICY IF EXISTS "Business owners can manage employees" ON public.employees;
-CREATE POLICY "Business owners can manage employees"
-  ON public.employees FOR ALL
+CREATE POLICY "Business owners can view employees"
+  ON public.employees FOR SELECT TO authenticated
   USING (
     EXISTS (
       SELECT 1 FROM public.business_accounts
       WHERE id = business_id AND owner_id = auth.uid()
     )
   );
+CREATE POLICY "Service role full access to employees"
+  ON public.employees FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
 
 -- ── Payroll schedules ─────────────────────────────────────
 
@@ -794,16 +853,22 @@ CREATE TABLE IF NOT EXISTS public.payroll_schedules (
 );
 
 ALTER TABLE public.payroll_schedules ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.payroll_schedules FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.payroll_schedules TO authenticated;
+GRANT ALL ON public.payroll_schedules TO service_role;
 
 DROP POLICY IF EXISTS "Business owners can manage payroll schedules" ON public.payroll_schedules;
-CREATE POLICY "Business owners can manage payroll schedules"
-  ON public.payroll_schedules FOR ALL
+CREATE POLICY "Business owners can view payroll schedules"
+  ON public.payroll_schedules FOR SELECT TO authenticated
   USING (
     EXISTS (
       SELECT 1 FROM public.business_accounts
       WHERE id = business_id AND owner_id = auth.uid()
     )
   );
+CREATE POLICY "Service role full access to payroll_schedules"
+  ON public.payroll_schedules FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
 
 -- ── Business transactions ─────────────────────────────────
 
@@ -819,34 +884,43 @@ CREATE TABLE IF NOT EXISTS public.business_transactions (
 );
 
 ALTER TABLE public.business_transactions ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.business_transactions FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.business_transactions TO authenticated;
+GRANT ALL ON public.business_transactions TO service_role;
 
 DROP POLICY IF EXISTS "Business owners can manage business transactions" ON public.business_transactions;
-CREATE POLICY "Business owners can manage business transactions"
-  ON public.business_transactions FOR ALL
+CREATE POLICY "Business owners can view business transactions"
+  ON public.business_transactions FOR SELECT TO authenticated
   USING (
     EXISTS (
       SELECT 1 FROM public.business_accounts
       WHERE id = business_id AND owner_id = auth.uid()
     )
   );
+CREATE POLICY "Service role full access to business_transactions"
+  ON public.business_transactions FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
 
 -- ── Business security (PIN + lockout) ─────────────────────
 
 CREATE TABLE IF NOT EXISTS public.business_security (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id      UUID NOT NULL UNIQUE REFERENCES public.profiles(id) ON DELETE CASCADE,
-  pin          TEXT NOT NULL DEFAULT '123456',
+  pin          TEXT NOT NULL DEFAULT '',
+  pin_hash     TEXT,
   attempts     INTEGER NOT NULL DEFAULT 0,
   locked_until TIMESTAMPTZ,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 ALTER TABLE public.business_security ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.business_security FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.business_security TO service_role;
 
 DROP POLICY IF EXISTS "Users can manage own business security" ON public.business_security;
-CREATE POLICY "Users can manage own business security"
-  ON public.business_security FOR ALL
-  USING (auth.uid() = user_id);
+CREATE POLICY "Service role full access to business_security"
+  ON public.business_security FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
 
 -- ── Login lockouts and active devices ──────────────────────
 -- Login failures are keyed by a SHA-256 identifier hash so the public
@@ -1035,10 +1109,12 @@ CREATE TABLE IF NOT EXISTS public.admin_roles (
 );
 
 ALTER TABLE public.admin_roles ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.admin_roles FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.admin_roles TO service_role;
 
 DROP POLICY IF EXISTS "Service role has full access to admin_roles" ON public.admin_roles;
 CREATE POLICY "Service role has full access to admin_roles"
-  ON public.admin_roles FOR ALL
+  ON public.admin_roles FOR ALL TO service_role
   USING (true)
   WITH CHECK (true);
 
@@ -1060,10 +1136,12 @@ CREATE TABLE IF NOT EXISTS public.kyc_requests (
 );
 
 ALTER TABLE public.kyc_requests ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.kyc_requests FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.kyc_requests TO service_role;
 
 DROP POLICY IF EXISTS "Service role has full access to kyc_requests" ON public.kyc_requests;
 CREATE POLICY "Service role has full access to kyc_requests"
-  ON public.kyc_requests FOR ALL
+  ON public.kyc_requests FOR ALL TO service_role
   USING (true)
   WITH CHECK (true);
 
@@ -1084,10 +1162,12 @@ CREATE TABLE IF NOT EXISTS public.cards (
 );
 
 ALTER TABLE public.cards ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.cards FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.cards TO service_role;
 
 DROP POLICY IF EXISTS "Service role has full access to cards" ON public.cards;
 CREATE POLICY "Service role has full access to cards"
-  ON public.cards FOR ALL
+  ON public.cards FOR ALL TO service_role
   USING (true)
   WITH CHECK (true);
 
@@ -1109,10 +1189,12 @@ CREATE TABLE IF NOT EXISTS public.support_tickets (
 );
 
 ALTER TABLE public.support_tickets ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.support_tickets FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.support_tickets TO service_role;
 
 DROP POLICY IF EXISTS "Service role has full access to support_tickets" ON public.support_tickets;
 CREATE POLICY "Service role has full access to support_tickets"
-  ON public.support_tickets FOR ALL
+  ON public.support_tickets FOR ALL TO service_role
   USING (true)
   WITH CHECK (true);
 
@@ -1133,10 +1215,12 @@ CREATE TABLE IF NOT EXISTS public.fraud_alerts (
 );
 
 ALTER TABLE public.fraud_alerts ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.fraud_alerts FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.fraud_alerts TO service_role;
 
 DROP POLICY IF EXISTS "Service role has full access to fraud_alerts" ON public.fraud_alerts;
 CREATE POLICY "Service role has full access to fraud_alerts"
-  ON public.fraud_alerts FOR ALL
+  ON public.fraud_alerts FOR ALL TO service_role
   USING (true)
   WITH CHECK (true);
 
@@ -1157,10 +1241,12 @@ CREATE TABLE IF NOT EXISTS public.admin_audit_logs (
 );
 
 ALTER TABLE public.admin_audit_logs ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.admin_audit_logs FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.admin_audit_logs TO service_role;
 
 DROP POLICY IF EXISTS "Service role has full access to admin_audit_logs" ON public.admin_audit_logs;
 CREATE POLICY "Service role has full access to admin_audit_logs"
-  ON public.admin_audit_logs FOR ALL
+  ON public.admin_audit_logs FOR ALL TO service_role
   USING (true)
   WITH CHECK (true);
 
@@ -1173,41 +1259,18 @@ CREATE TABLE IF NOT EXISTS public.system_settings (
 );
 
 ALTER TABLE public.system_settings ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.system_settings FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.system_settings TO service_role;
 
 DROP POLICY IF EXISTS "Service role has full access to system_settings" ON public.system_settings;
 CREATE POLICY "Service role has full access to system_settings"
-  ON public.system_settings FOR ALL
+  ON public.system_settings FOR ALL TO service_role
   USING (true)
   WITH CHECK (true);
 
--- ── 8. Seed Super Admin 09067212032 & Default System Settings ──
-INSERT INTO public.admin_roles (
-  phone, name, role, permissions, is_active
-) VALUES (
-  '09067212032',
-  'Super Administrator',
-  'super_admin',
-  ARRAY[
-    'overview.view',
-    'users.view', 'users.manage', 'users.adjust_balance', 'users.suspend',
-    'kyc.view', 'kyc.manage',
-    'transactions.view', 'transactions.manage',
-    'deposits.view', 'deposits.manage',
-    'withdrawals.view', 'withdrawals.manage',
-    'cards.view', 'cards.manage',
-    'support.view', 'support.manage',
-    'security.view', 'security.manage',
-    'admins.view', 'admins.manage',
-    'audit.view',
-    'settings.view', 'settings.manage'
-  ],
-  true
-)
-ON CONFLICT (phone) DO UPDATE SET
-  role = 'super_admin',
-  is_active = true,
-  permissions = EXCLUDED.permissions;
-
+-- ── 8. Default System Settings ─────────────────────────────────
+-- NOTE: Provision initial super_admin operators explicitly in admin_roles
+-- via SQL Editor (no hardcoded phone/credentials in source).
 INSERT INTO public.system_settings (id, settings, updated_by)
 VALUES (
   'global',
@@ -1231,9 +1294,13 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
--- ── 9. Trigger to link auth.users to admin_roles on signup/login ──
+-- ── 9. Trigger to link auth.users to pre-provisioned admin_roles ──
 CREATE OR REPLACE FUNCTION public.handle_admin_user_sync()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   v_phone TEXT;
 BEGIN
@@ -1242,43 +1309,13 @@ BEGIN
     v_phone := split_part(NEW.email, '@', 1);
   END IF;
 
-  -- Normalize phone (handle 09067212032 or +2349067212032)
   IF v_phone LIKE '+234%' THEN
     v_phone := '0' || substring(v_phone FROM 5);
   ELSIF v_phone LIKE '234%' THEN
     v_phone := '0' || substring(v_phone FROM 4);
   END IF;
 
-  -- Match admin phone 09067212032
-  IF v_phone = '09067212032' THEN
-    INSERT INTO public.admin_roles (user_id, phone, name, role, permissions, is_active)
-    VALUES (
-      NEW.id,
-      '09067212032',
-      COALESCE(NEW.raw_user_meta_data->>'name', 'Super Administrator'),
-      'super_admin',
-      ARRAY[
-        'overview.view',
-        'users.view', 'users.manage', 'users.adjust_balance', 'users.suspend',
-        'kyc.view', 'kyc.manage',
-        'transactions.view', 'transactions.manage',
-        'deposits.view', 'deposits.manage',
-        'withdrawals.view', 'withdrawals.manage',
-        'cards.view', 'cards.manage',
-        'support.view', 'support.manage',
-        'security.view', 'security.manage',
-        'admins.view', 'admins.manage',
-        'audit.view',
-        'settings.view', 'settings.manage'
-      ],
-      true
-    )
-    ON CONFLICT (phone) DO UPDATE SET
-      user_id = NEW.id,
-      role = 'super_admin',
-      is_active = true;
-  ELSE
-    -- Link existing pre-created admin record by phone if present
+  IF v_phone <> '' THEN
     UPDATE public.admin_roles
     SET user_id = NEW.id, updated_at = NOW()
     WHERE phone = v_phone;
@@ -1286,7 +1323,7 @@ BEGIN
 
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 DROP TRIGGER IF EXISTS on_admin_user_sync ON auth.users;
 CREATE TRIGGER on_admin_user_sync
@@ -1317,10 +1354,10 @@ CREATE TABLE IF NOT EXISTS public.admin_credentials (
   updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Enable RLS
 ALTER TABLE public.admin_credentials ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.admin_credentials FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.admin_credentials TO service_role;
 
--- Allow ONLY service_role (backend server). No anon or authenticated client user can read or write.
 DROP POLICY IF EXISTS "Service role full access on admin_credentials" ON public.admin_credentials;
 CREATE POLICY "Service role full access on admin_credentials"
   ON public.admin_credentials FOR ALL
@@ -1328,7 +1365,6 @@ CREATE POLICY "Service role full access on admin_credentials"
   USING (true)
   WITH CHECK (true);
 
--- Ensure NO public read/write from anon or client tokens
 DROP POLICY IF EXISTS "Deny public access on admin_credentials" ON public.admin_credentials;
 CREATE POLICY "Deny public access on admin_credentials"
   ON public.admin_credentials FOR ALL
@@ -1336,36 +1372,4 @@ CREATE POLICY "Deny public access on admin_credentials"
   USING (false)
   WITH CHECK (false);
 
--- Seed Initial Encrypted Super Admin Credentials (PBKDF2-HMAC-SHA512 with 100k iterations & AES-256-GCM)
-INSERT INTO public.admin_credentials (
-  phone,
-  password_hash,
-  password_salt,
-  password_algo,
-  totp_secret_encrypted,
-  totp_secret_iv,
-  totp_secret_tag,
-  rescue_code_hash,
-  rescue_code_salt
-)
-VALUES (
-  '09067212032',
-  '0f38d5320690afcd59ae32ab98c527819197d857190a010f81ab01adc8f2e094452d23f154b75f02ce075d78cc66061ed1458ce967b84039efd75afbefe25264',
-  '3a62cf98a668eeaabd7864b816d97b66107ab00c96831b81af35330d0539b389',
-  'pbkdf2_sha512',
-  '8596b8f7ce5364993e7974b90ee9fcf1ad6a36a3d0c0c33d1dea635c61f7f45e',
-  '35f0484328f3c2bdd941ae7f',
-  'ce5fd24ad9fb85e6f79955a285b4d10c',
-  'b4b5ef6fba036a2e933467ca1003b976f8783c9926069a5a77bea4db491e6a33ce9d52a6de604d68927205fbd1200972c8eb85d708c7dbea8d083ef3d2db56a6',
-  'de81c90f2fd8e1ab6d4c041af982bce244688f60d228984e7ccc85d23ca8049a'
-)
-ON CONFLICT (phone) DO UPDATE SET
-  password_hash = EXCLUDED.password_hash,
-  password_salt = EXCLUDED.password_salt,
-  totp_secret_encrypted = EXCLUDED.totp_secret_encrypted,
-  totp_secret_iv = EXCLUDED.totp_secret_iv,
-  totp_secret_tag = EXCLUDED.totp_secret_tag,
-  rescue_code_hash = EXCLUDED.rescue_code_hash,
-  rescue_code_salt = EXCLUDED.rescue_code_salt,
-  updated_at = NOW();
 

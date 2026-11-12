@@ -1,9 +1,10 @@
-import { timingSafeEqual } from "node:crypto";
 import { Router, type IRouter, type Request, type Response } from "express";
+import { verifyUserTransactionPin } from "../lib/pinSecurity";
+import { pinRateLimiter } from "../lib/rateLimit";
 
 const router: IRouter = Router();
-const SUPABASE_URL = process.env["SUPABASE_URL"]?.replace(/\/$/, "");
-const SUPABASE_SERVICE_ROLE_KEY = process.env["SUPABASE_SERVICE_ROLE_KEY"];
+const SUPABASE_URL = (process.env["SUPABASE_URL"] || process.env["VITE_SUPABASE_URL"] || "").replace(/\/$/, "");
+const SUPABASE_SERVICE_ROLE_KEY = process.env["SUPABASE_SERVICE_ROLE_KEY"]?.trim();
 
 type LockType = "sleep_mode" | "freeze_account";
 
@@ -110,48 +111,14 @@ async function setLock(
   return response.json();
 }
 
-const pinFailedAttempts = new Map<string, { attempts: number; lockedUntil?: number }>();
-
-// Prune expired PIN lockout trackers
-setInterval(() => {
-  const now = Date.now();
-  for (const [id, t] of pinFailedAttempts) {
-    if (t.lockedUntil && t.lockedUntil <= now) pinFailedAttempts.delete(id);
-  }
-}, 60_000).unref();
-
 async function verifyPin(userId: string, suppliedPin: unknown) {
-  const now = Date.now();
-  const tracker = pinFailedAttempts.get(userId);
-  if (tracker?.lockedUntil && tracker.lockedUntil > now) {
-    const waitSec = Math.ceil((tracker.lockedUntil - now) / 1000);
-    throw new Error(`Too many incorrect PIN attempts. Locked for ${waitSec} seconds.`);
-  }
-
-  if (typeof suppliedPin !== "string" || !/^\d{4}$/.test(suppliedPin)) return false;
-  const response = await supabaseRequest(
-    `profiles?id=eq.${encodeURIComponent(userId)}&select=pin&limit=1`,
-  );
-  if (!response.ok) throw new Error("Could not verify your transaction PIN");
-  const rows = (await response.json().catch(() => [])) as Array<{ pin?: string | null }>;
-  const savedPin = rows[0]?.pin ?? "";
-  const provided = Buffer.from(suppliedPin);
-  const expected = Buffer.from(savedPin);
-  const matches = provided.length === expected.length && timingSafeEqual(provided, expected);
-
-  if (!matches) {
-    const current = (tracker?.attempts ?? 0) + 1;
-    if (current >= 5) {
-      pinFailedAttempts.set(userId, { attempts: current, lockedUntil: now + 15 * 60 * 1000 });
-      throw new Error("Too many incorrect PIN attempts. PIN verification locked for 15 minutes.");
-    } else {
-      pinFailedAttempts.set(userId, { attempts: current });
+  const result = await verifyUserTransactionPin(userId, suppliedPin);
+  if (!result.ok) {
+    if (result.nowLocked) {
+      throw new Error(result.error || "Too many incorrect PIN attempts. PIN verification locked for 15 minutes.");
     }
     return false;
   }
-
-  // Clear failed attempts upon successful verification
-  pinFailedAttempts.delete(userId);
   return true;
 }
 
@@ -186,7 +153,7 @@ router.post("/security/sleep-mode/activate", async (req, res) => {
   }
 });
 
-router.post("/security/sleep-mode/deactivate", async (req, res) => {
+router.post("/security/sleep-mode/deactivate", pinRateLimiter, async (req, res) => {
   const userId = await authenticatedUser(req, res);
   if (!userId) return;
   try {
@@ -216,7 +183,7 @@ router.post("/security/freeze/activate", async (req, res) => {
   }
 });
 
-router.post("/security/freeze/deactivate", async (req, res) => {
+router.post("/security/freeze/deactivate", pinRateLimiter, async (req, res) => {
   const userId = await authenticatedUser(req, res);
   if (!userId) return;
   try {

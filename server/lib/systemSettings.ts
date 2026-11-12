@@ -1,11 +1,7 @@
 import type { Request } from "express";
 
 const SUPABASE_URL = (process.env["SUPABASE_URL"] || process.env["VITE_SUPABASE_URL"] || "").replace(/\/$/, "");
-const SUPABASE_SERVICE_ROLE_KEY =
-  process.env["SUPABASE_SERVICE_ROLE_KEY"] ||
-  process.env["SUPABASE_ANON_KEY"] ||
-  process.env["VITE_SUPABASE_ANON_KEY"] ||
-  "";
+const SUPABASE_SERVICE_ROLE_KEY = process.env["SUPABASE_SERVICE_ROLE_KEY"]?.trim() || "";
 
 export const TATUM_WEBHOOK_PATH = "/api/crypto/webhooks/tatum";
 

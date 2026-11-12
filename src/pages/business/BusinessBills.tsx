@@ -17,7 +17,7 @@ type Step = 'categories' | 'details' | 'confirm' | 'success';
 
 export default function BusinessBills() {
   const [, navigate] = useLocation();
-  const { business, addTransaction } = useBusiness();
+  const { business, payBusinessBill } = useBusiness();
   const [step, setStep] = useState<Step>('categories');
   const [selectedCat, setSelectedCat] = useState<typeof BILL_CATEGORIES[0] | null>(null);
   const [provider, setProvider] = useState('');
@@ -35,14 +35,22 @@ export default function BusinessBills() {
     setStep('confirm');
   }
 
-  function handleConfirm() {
+  async function handleConfirm() {
     const num = parseFloat(amount);
     setProcessing(true);
-    setTimeout(() => {
-      addTransaction({ type: 'debit', description: `${selectedCat?.label} - ${provider}`, amount: num, category: 'bills' });
-      setProcessing(false);
-      setStep('success');
-    }, 1500);
+    setError('');
+    const res = await payBusinessBill({
+      categoryLabel: selectedCat?.label || 'Bill',
+      provider,
+      amount: num,
+    });
+    setProcessing(false);
+    if (!res.success) {
+      setError(res.error || 'Bill payment failed');
+      setStep('details');
+      return;
+    }
+    setStep('success');
   }
 
   function reset() { setStep('categories'); setSelectedCat(null); setProvider(''); setMeterNumber(''); setAmount(''); setError(''); }

@@ -65,24 +65,20 @@ interface BusinessContextType {
   transactions: BusinessTransaction[];
   businessLoading: boolean;
   createBusiness: (data: Omit<BusinessAccount, 'id' | 'accountNumber' | 'balance' | 'createdAt' | 'twoFAEnabled' | 'transactionLimit' | 'notificationsEnabled'>) => Promise<{ success: boolean; error?: string }>;
-  updateBusiness: (data: Partial<BusinessAccount>) => void;
-  addEmployee: (emp: Omit<Employee, 'id'>) => void;
-  updateEmployee: (id: string, data: Partial<Employee>) => void;
-  deleteEmployee: (id: string) => void;
-  addPayrollSchedule: (schedule: Omit<PayrollSchedule, 'id'>) => void;
-  updatePayrollSchedule: (id: string, data: Partial<PayrollSchedule>) => void;
-  deletePayrollSchedule: (id: string) => void;
-  runPayroll: (scheduleId: string) => { success: boolean; message: string };
-  addTransaction: (tx: Omit<BusinessTransaction, 'id' | 'date' | 'reference'>) => void;
+  updateBusiness: (data: Partial<BusinessAccount>) => Promise<{ success: boolean; error?: string }>;
+  addEmployee: (emp: Omit<Employee, 'id'>) => Promise<void>;
+  updateEmployee: (id: string, data: Partial<Employee>) => Promise<void>;
+  deleteEmployee: (id: string) => Promise<void>;
+  addPayrollSchedule: (schedule: Omit<PayrollSchedule, 'id'>) => Promise<void>;
+  updatePayrollSchedule: (id: string, data: Partial<PayrollSchedule>) => Promise<void>;
+  deletePayrollSchedule: (id: string) => Promise<void>;
+  runPayroll: (scheduleId: string) => Promise<{ success: boolean; message: string }>;
+  runBulkPayroll: (employeeIds: string[]) => Promise<{ success: boolean; message: string }>;
+  transferBusinessMoney: (input: { pin: string; amount: number; recipientName: string }) => Promise<{ success: boolean; error?: string }>;
+  payBusinessBill: (input: { categoryLabel: string; provider: string; amount: number }) => Promise<{ success: boolean; error?: string }>;
 }
 
 const BusinessContext = createContext<BusinessContextType | null>(null);
-
-/* ── Helpers ──────────────────────────────────────────────────────── */
-
-function genId()     { return Math.random().toString(36).slice(2, 10); }
-function genAccNum() { return '8' + Array.from({ length: 9 }, () => Math.floor(Math.random() * 10)).join(''); }
-function genRef()    { return 'VBX' + Date.now().toString(36).toUpperCase(); }
 
 function rowToEmployee(r: Record<string, unknown>): Employee {
   return {
@@ -144,7 +140,29 @@ function rowToBusiness(r: Record<string, unknown>): BusinessAccount {
   };
 }
 
-/* ── Provider ─────────────────────────────────────────────────────── */
+async function authedBusinessFetch<T = Record<string, unknown>>(
+  path: string,
+  method: 'POST' | 'PATCH' | 'DELETE',
+  body?: Record<string, unknown>,
+): Promise<{ ok: boolean; data: T | null; error?: string }> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) {
+    return { ok: false, data: null, error: 'Your session has expired. Please sign in again.' };
+  }
+  const resp = await fetch(path, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  const payload = await resp.json().catch(() => null) as (T & { message?: string }) | null;
+  if (!resp.ok) {
+    return { ok: false, data: payload, error: payload?.message || 'Request failed' };
+  }
+  return { ok: true, data: payload };
+}
 
 export function BusinessProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -155,7 +173,6 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
   const [transactions, setTransactions]       = useState<BusinessTransaction[]>([]);
   const [businessLoading, setBusinessLoading] = useState(true);
 
-  /* Load all business data on mount / user change */
   const loadBusiness = useCallback(async () => {
     if (!user) { setBusiness(null); setBusinessLoading(false); return; }
     setBusinessLoading(true);
@@ -191,239 +208,167 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
     setBusinessLoading(false);
   }, [user?.id]);
 
-  useEffect(() => { loadBusiness(); }, [loadBusiness]);
+  useEffect(() => { void loadBusiness(); }, [loadBusiness]);
 
-  /* ── Mutations (optimistic local + async Supabase) ─────────────── */
-
-  async function createBusiness(data: Omit<BusinessAccount, 'id' | 'accountNumber' | 'balance' | 'createdAt' | 'twoFAEnabled' | 'transactionLimit' | 'notificationsEnabled'>): Promise<{ success: boolean; error?: string }> {
+  async function createBusiness(
+    data: Omit<BusinessAccount, 'id' | 'accountNumber' | 'balance' | 'createdAt' | 'twoFAEnabled' | 'transactionLimit' | 'notificationsEnabled'>,
+  ): Promise<{ success: boolean; error?: string }> {
     if (!user) return { success: false, error: 'You must be signed in to create a business account.' };
-    const acct: BusinessAccount = {
-      ...data,
-      id:                   '',
-      accountNumber:        genAccNum(),
-      balance:              0,
-      createdAt:            new Date().toISOString(),
-      twoFAEnabled:         false,
-      transactionLimit:     5000000,
-      notificationsEnabled: true,
-    };
-
-    // Let PostgreSQL generate the UUID primary key. The old client-generated
-    // short ID was not a valid UUID, so Supabase rejected the insert.
-    const { data: savedRow, error } = await supabase.from('business_accounts').insert({
-      owner_id:             user.id,
-      business_name:        acct.businessName,
-      business_type:        acct.businessType,
-      industry:             acct.industry,
-      description:          acct.description,
-      account_number:       acct.accountNumber,
-      balance:              0,
-      owner_name:           acct.ownerName,
-      owner_phone:          acct.ownerPhone,
-      email:                acct.email,
-      address:              acct.address,
-      two_fa_enabled:       false,
-      transaction_limit:    5000000,
-      notifications_enabled: true,
-    }).select('*').single();
-
-    if (error || !savedRow) {
-      console.error('[Business] createBusiness:', error);
-      return {
-        success: false,
-        error: error?.message || 'Business account could not be saved. Please try again.',
-      };
+    const res = await authedBusinessFetch<{ business?: Record<string, unknown> }>('/api/business/create', 'POST', data as unknown as Record<string, unknown>);
+    if (!res.ok || !res.data?.business) {
+      return { success: false, error: res.error || 'Business account could not be saved.' };
     }
-
-    setBusiness(rowToBusiness(savedRow as Record<string, unknown>));
+    setBusiness(rowToBusiness(res.data.business));
     setEmployees([]);
     setSchedules([]);
     setTransactions([]);
     return { success: true };
   }
 
-  function updateBusiness(data: Partial<BusinessAccount>) {
-    setBusiness(b => b ? { ...b, ...data } : b);
-    if (!business) return;
+  async function updateBusiness(data: Partial<BusinessAccount>): Promise<{ success: boolean; error?: string }> {
+    if (!business) return { success: false, error: 'No business account found.' };
+    const safePatch: Record<string, unknown> = {};
+    if (data.businessName != null) safePatch.businessName = data.businessName;
+    if (data.industry != null) safePatch.industry = data.industry;
+    if (data.description != null) safePatch.description = data.description;
+    if (data.email != null) safePatch.email = data.email;
+    if (data.address != null) safePatch.address = data.address;
+    if (data.twoFAEnabled != null) safePatch.twoFAEnabled = data.twoFAEnabled;
+    if (data.transactionLimit != null) safePatch.transactionLimit = data.transactionLimit;
+    if (data.notificationsEnabled != null) safePatch.notificationsEnabled = data.notificationsEnabled;
 
-    const patch: Record<string, unknown> = {};
-    if (data.businessName  != null) patch.business_name         = data.businessName;
-    if (data.businessType  != null) patch.business_type         = data.businessType;
-    if (data.industry      != null) patch.industry              = data.industry;
-    if (data.description   != null) patch.description           = data.description;
-    if (data.balance       != null) patch.balance               = data.balance;
-    if (data.email         != null) patch.email                 = data.email;
-    if (data.address       != null) patch.address               = data.address;
-    if (data.twoFAEnabled  != null) patch.two_fa_enabled        = data.twoFAEnabled;
-    if (data.transactionLimit != null) patch.transaction_limit  = data.transactionLimit;
-    if (data.notificationsEnabled != null) patch.notifications_enabled = data.notificationsEnabled;
-
-    supabase.from('business_accounts').update(patch).eq('id', business.id)
-      .then(({ error }) => { if (error) console.error('[Business] updateBusiness:', error.message); });
-  }
-
-  function addEmployee(emp: Omit<Employee, 'id'>) {
-    const newEmp: Employee = { ...emp, id: genId() };
-    setEmployees(es => [...es, newEmp]);
-    if (!business) return;
-
-    supabase.from('employees').insert({
-      id:             newEmp.id,
-      business_id:    business.id,
-      name:           newEmp.name,
-      role:           newEmp.role,
-      department:     newEmp.department,
-      salary:         newEmp.salary,
-      account_number: newEmp.accountNumber,
-      bank_name:      newEmp.bankName,
-      email:          newEmp.email,
-      phone:          newEmp.phone,
-      start_date:     newEmp.startDate,
-      app_role:       newEmp.appRole,
-      active:         newEmp.active,
-    }).then(({ error }) => { if (error) console.error('[Business] addEmployee:', error.message); });
-  }
-
-  function updateEmployee(id: string, data: Partial<Employee>) {
-    setEmployees(es => es.map(e => e.id === id ? { ...e, ...data } : e));
-
-    const patch: Record<string, unknown> = {};
-    if (data.name          != null) patch.name           = data.name;
-    if (data.role          != null) patch.role           = data.role;
-    if (data.department    != null) patch.department     = data.department;
-    if (data.salary        != null) patch.salary         = data.salary;
-    if (data.accountNumber != null) patch.account_number = data.accountNumber;
-    if (data.bankName      != null) patch.bank_name      = data.bankName;
-    if (data.email         != null) patch.email          = data.email;
-    if (data.phone         != null) patch.phone          = data.phone;
-    if (data.startDate     != null) patch.start_date     = data.startDate;
-    if (data.appRole       != null) patch.app_role       = data.appRole;
-    if (data.active        != null) patch.active         = data.active;
-
-    supabase.from('employees').update(patch).eq('id', id)
-      .then(({ error }) => { if (error) console.error('[Business] updateEmployee:', error.message); });
-  }
-
-  function deleteEmployee(id: string) {
-    setEmployees(es => es.filter(e => e.id !== id));
-    supabase.from('employees').delete().eq('id', id)
-      .then(({ error }) => { if (error) console.error('[Business] deleteEmployee:', error.message); });
-  }
-
-  function addPayrollSchedule(schedule: Omit<PayrollSchedule, 'id'>) {
-    const newSched: PayrollSchedule = { ...schedule, id: genId() };
-    setSchedules(ps => [...ps, newSched]);
-    if (!business) return;
-
-    supabase.from('payroll_schedules').insert({
-      id:             newSched.id,
-      business_id:    business.id,
-      name:           newSched.name,
-      frequency:      newSched.frequency,
-      next_run_date:  newSched.nextRunDate,
-      employee_ids:   newSched.employeeIds,
-      active:         newSched.active,
-    }).then(({ error }) => { if (error) console.error('[Business] addPayrollSchedule:', error.message); });
-  }
-
-  function updatePayrollSchedule(id: string, data: Partial<PayrollSchedule>) {
-    setSchedules(ps => ps.map(s => s.id === id ? { ...s, ...data } : s));
-
-    const patch: Record<string, unknown> = {};
-    if (data.name         != null) patch.name          = data.name;
-    if (data.frequency    != null) patch.frequency     = data.frequency;
-    if (data.nextRunDate  != null) patch.next_run_date = data.nextRunDate;
-    if (data.employeeIds  != null) patch.employee_ids  = data.employeeIds;
-    if (data.active       != null) patch.active        = data.active;
-
-    supabase.from('payroll_schedules').update(patch).eq('id', id)
-      .then(({ error }) => { if (error) console.error('[Business] updatePayrollSchedule:', error.message); });
-  }
-
-  function deletePayrollSchedule(id: string) {
-    setSchedules(ps => ps.filter(s => s.id !== id));
-    supabase.from('payroll_schedules').delete().eq('id', id)
-      .then(({ error }) => { if (error) console.error('[Business] deletePayrollSchedule:', error.message); });
-  }
-
-  function runPayroll(scheduleId: string): { success: boolean; message: string } {
-    const schedule = payrollSchedules.find(s => s.id === scheduleId);
-    if (!schedule) return { success: false, message: 'Schedule not found' };
-
-    const scheduleEmployees = employees.filter(e => schedule.employeeIds.includes(e.id) && e.active);
-    const total = scheduleEmployees.reduce((sum, e) => sum + e.salary, 0);
-
-    if (!business || business.balance < total) return { success: false, message: 'Insufficient balance' };
-
-    const newBalance = business.balance - total;
-    const tx: BusinessTransaction = {
-      id:          genId(),
-      type:        'debit',
-      description: `Payroll Run - ${schedule.name}`,
-      amount:      total,
-      date:        new Date().toISOString(),
-      category:    'payroll',
-      reference:   genRef(),
-    };
-
-    setBusiness(b => b ? { ...b, balance: newBalance } : b);
-    setTransactions(ts => [tx, ...ts]);
-
-    // Persist
-    if (business) {
-      Promise.all([
-        supabase.from('business_accounts').update({ balance: newBalance }).eq('id', business.id),
-        supabase.from('business_transactions').insert({
-          id:          tx.id,
-          business_id: business.id,
-          type:        tx.type,
-          description: tx.description,
-          amount:      tx.amount,
-          category:    tx.category,
-          reference:   tx.reference,
-        }),
-      ]).then(([r1, r2]) => {
-        if (r1.error) console.error('[Business] runPayroll balance:', r1.error.message);
-        if (r2.error) console.error('[Business] runPayroll tx:', r2.error.message);
-      });
+    const res = await authedBusinessFetch<{ business?: Record<string, unknown> }>('/api/business/update', 'PATCH', safePatch);
+    if (!res.ok) return { success: false, error: res.error };
+    if (res.data?.business) {
+      setBusiness(rowToBusiness(res.data.business));
+    } else {
+      setBusiness(b => b ? { ...b, ...data } : b);
     }
-
-    return { success: true, message: `₦${total.toLocaleString()} paid to ${scheduleEmployees.length} employees` };
+    return { success: true };
   }
 
-  function addTransaction(txInput: Omit<BusinessTransaction, 'id' | 'date' | 'reference'>) {
-    const tx: BusinessTransaction = {
-      ...txInput,
-      id:        genId(),
-      date:      new Date().toISOString(),
-      reference: genRef(),
-    };
-    setTransactions(ts => [tx, ...ts]);
-
-    const newBalance = business
-      ? txInput.type === 'credit'
-        ? business.balance + txInput.amount
-        : business.balance - txInput.amount
-      : 0;
-
-    if (business) {
-      setBusiness(b => b ? { ...b, balance: newBalance } : b);
-      Promise.all([
-        supabase.from('business_accounts').update({ balance: newBalance }).eq('id', business.id),
-        supabase.from('business_transactions').insert({
-          id:          tx.id,
-          business_id: business.id,
-          type:        tx.type,
-          description: tx.description,
-          amount:      tx.amount,
-          category:    tx.category,
-          reference:   tx.reference,
-        }),
-      ]).then(([r1, r2]) => {
-        if (r1.error) console.error('[Business] addTransaction balance:', r1.error.message);
-        if (r2.error) console.error('[Business] addTransaction tx:', r2.error.message);
-      });
+  async function addEmployee(emp: Omit<Employee, 'id'>) {
+    const res = await authedBusinessFetch<{ employee?: Record<string, unknown> }>('/api/business/employees', 'POST', emp as unknown as Record<string, unknown>);
+    if (res.ok && res.data?.employee) {
+      setEmployees(es => [...es, rowToEmployee(res.data!.employee!)]);
     }
+  }
+
+  async function updateEmployee(id: string, data: Partial<Employee>) {
+    const res = await authedBusinessFetch<{ employee?: Record<string, unknown> }>(`/api/business/employees/${encodeURIComponent(id)}`, 'PATCH', data as Record<string, unknown>);
+    if (res.ok) {
+      if (res.data?.employee) {
+        const mapped = rowToEmployee(res.data.employee);
+        setEmployees(es => es.map(e => e.id === id ? mapped : e));
+      } else {
+        setEmployees(es => es.map(e => e.id === id ? { ...e, ...data } : e));
+      }
+    }
+  }
+
+  async function deleteEmployee(id: string) {
+    const res = await authedBusinessFetch(`/api/business/employees/${encodeURIComponent(id)}`, 'DELETE');
+    if (res.ok) {
+      setEmployees(es => es.filter(e => e.id !== id));
+    }
+  }
+
+  async function addPayrollSchedule(schedule: Omit<PayrollSchedule, 'id'>) {
+    const res = await authedBusinessFetch<{ schedule?: Record<string, unknown> }>('/api/business/schedules', 'POST', schedule as unknown as Record<string, unknown>);
+    if (res.ok && res.data?.schedule) {
+      setSchedules(ps => [...ps, rowToSchedule(res.data!.schedule!)]);
+    }
+  }
+
+  async function updatePayrollSchedule(id: string, data: Partial<PayrollSchedule>) {
+    const res = await authedBusinessFetch<{ schedule?: Record<string, unknown> }>(`/api/business/schedules/${encodeURIComponent(id)}`, 'PATCH', data as Record<string, unknown>);
+    if (res.ok) {
+      if (res.data?.schedule) {
+        const mapped = rowToSchedule(res.data.schedule);
+        setSchedules(ps => ps.map(s => s.id === id ? mapped : s));
+      } else {
+        setSchedules(ps => ps.map(s => s.id === id ? { ...s, ...data } : s));
+      }
+    }
+  }
+
+  async function deletePayrollSchedule(id: string) {
+    const res = await authedBusinessFetch(`/api/business/schedules/${encodeURIComponent(id)}`, 'DELETE');
+    if (res.ok) {
+      setSchedules(ps => ps.filter(s => s.id !== id));
+    }
+  }
+
+  async function runPayroll(scheduleId: string): Promise<{ success: boolean; message: string }> {
+    const res = await authedBusinessFetch<{ balance?: number; message?: string; transaction?: Record<string, unknown> }>(
+      '/api/business/payroll/run',
+      'POST',
+      { scheduleId },
+    );
+    if (!res.ok || !res.data) {
+      return { success: false, message: res.error || 'Payroll run failed' };
+    }
+    if (typeof res.data.balance === 'number') {
+      setBusiness(b => b ? { ...b, balance: res.data!.balance! } : b);
+    }
+    if (res.data.transaction) {
+      setTransactions(ts => [rowToTransaction(res.data!.transaction!), ...ts]);
+    }
+    return { success: true, message: res.data.message || 'Payroll completed' };
+  }
+
+  async function runBulkPayroll(employeeIds: string[]): Promise<{ success: boolean; message: string }> {
+    const res = await authedBusinessFetch<{ balance?: number; message?: string; transaction?: Record<string, unknown> }>(
+      '/api/business/payroll/bulk',
+      'POST',
+      { employeeIds },
+    );
+    if (!res.ok || !res.data) {
+      return { success: false, message: res.error || 'Bulk payroll failed' };
+    }
+    if (typeof res.data.balance === 'number') {
+      setBusiness(b => b ? { ...b, balance: res.data!.balance! } : b);
+    }
+    if (res.data.transaction) {
+      setTransactions(ts => [rowToTransaction(res.data!.transaction!), ...ts]);
+    }
+    return { success: true, message: res.data.message || 'Bulk payroll completed' };
+  }
+
+  async function transferBusinessMoney(input: { pin: string; amount: number; recipientName: string }): Promise<{ success: boolean; error?: string }> {
+    const res = await authedBusinessFetch<{ balance?: number; transaction?: Record<string, unknown> }>(
+      '/api/business/transfer',
+      'POST',
+      input,
+    );
+    if (!res.ok || !res.data) {
+      return { success: false, error: res.error || 'Business transfer failed' };
+    }
+    if (typeof res.data.balance === 'number') {
+      setBusiness(b => b ? { ...b, balance: res.data!.balance! } : b);
+    }
+    if (res.data.transaction) {
+      setTransactions(ts => [rowToTransaction(res.data!.transaction!), ...ts]);
+    }
+    return { success: true };
+  }
+
+  async function payBusinessBill(input: { categoryLabel: string; provider: string; amount: number }): Promise<{ success: boolean; error?: string }> {
+    const res = await authedBusinessFetch<{ balance?: number; transaction?: Record<string, unknown> }>(
+      '/api/business/bills/pay',
+      'POST',
+      input,
+    );
+    if (!res.ok || !res.data) {
+      return { success: false, error: res.error || 'Bill payment failed' };
+    }
+    if (typeof res.data.balance === 'number') {
+      setBusiness(b => b ? { ...b, balance: res.data!.balance! } : b);
+    }
+    if (res.data.transaction) {
+      setTransactions(ts => [rowToTransaction(res.data!.transaction!), ...ts]);
+    }
+    return { success: true };
   }
 
   return (
@@ -432,7 +377,7 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
       createBusiness, updateBusiness,
       addEmployee, updateEmployee, deleteEmployee,
       addPayrollSchedule, updatePayrollSchedule, deletePayrollSchedule,
-      runPayroll, addTransaction,
+      runPayroll, runBulkPayroll, transferBusinessMoney, payBusinessBill,
     }}>
       {children}
     </BusinessContext.Provider>

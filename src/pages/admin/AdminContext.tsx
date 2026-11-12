@@ -7,6 +7,8 @@ export type AdminTab =
   | 'business'
   | 'crypto'
   | 'crypto-logs'
+  | 'referrals'
+  | 'cashback'
   | 'rewards'
   | 'kyc'
   | 'transactions'
@@ -138,32 +140,38 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     setElevatedToken('');
     setIsElevated(false);
-    if (token) {
+    if (token && session?.access_token) {
       void fetch('/api/admin/auth/lock', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
           'x-admin-session-token': token,
         },
         body: JSON.stringify({ token }),
       }).catch(() => {});
     }
-  }, [elevatedToken]);
+  }, [elevatedToken, session?.access_token]);
 
   useEffect(() => {
     if (authLoading) return;
     let active = true;
 
     async function verifyAdminAccess() {
+      if (!session?.access_token) {
+        if (!active) return;
+        setIsAdmin(false);
+        setIsElevated(false);
+        setAdminUser(null);
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       try {
-        const headers: Record<string, string> = {};
-        if (session?.access_token) {
-          headers['Authorization'] = `Bearer ${session.access_token}`;
-        }
-        if (user?.phone) {
-          headers['x-vexa-phone'] = user.phone;
-        }
+        const headers: Record<string, string> = {
+          Authorization: `Bearer ${session.access_token}`,
+        };
         if (elevatedToken) {
           headers['x-admin-session-token'] = elevatedToken;
         }
@@ -176,10 +184,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (data?.isAdmin) {
           setIsAdmin(true);
           setAdminUser({
-            id: data.id || 'admin-master-001',
+            id: data.id || user?.id || '',
             phone: data.phone || user?.phone || '',
-            name: data.name || user?.name || 'Super Administrator',
-            role: data.role || 'super_admin',
+            name: data.name || user?.name || 'Administrator',
+            role: data.role || 'admin',
             permissions: Array.isArray(data.permissions) ? data.permissions : ['overview.view'],
           });
 
@@ -187,7 +195,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             setIsElevated(true);
           } else if (elevatedToken) {
             const elevRes = await fetch('/api/admin/auth/elevation-status', {
-              headers: { 'x-admin-session-token': elevatedToken },
+              headers: {
+                Authorization: `Bearer ${session.access_token}`,
+                'x-admin-session-token': elevatedToken,
+              },
             });
             const elevData = await elevRes.json().catch(() => ({ elevated: false }));
             if (!active) return;
@@ -227,6 +238,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const fetchAdminApi = useCallback(
     async <T = any>(url: string, options: RequestInit = {}): Promise<T> => {
+      if (!session?.access_token) {
+        throw new Error('Authentication session required.');
+      }
       const headers = new Headers(options.headers || {});
       if (!headers.has('Content-Type') && options.body && typeof options.body === 'string') {
         headers.set('Content-Type', 'application/json');
@@ -234,12 +248,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (elevatedToken) {
         headers.set('x-admin-session-token', elevatedToken);
       }
-      if (session?.access_token) {
-        headers.set('Authorization', `Bearer ${session.access_token}`);
-      }
-      if (user?.phone) {
-        headers.set('x-vexa-phone', user.phone);
-      }
+      headers.set('Authorization', `Bearer ${session.access_token}`);
 
       const response = await fetch(url, {
         ...options,
@@ -256,7 +265,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       return payload as T;
     },
-    [elevatedToken, session?.access_token, user?.phone, lockAdminSession],
+    [elevatedToken, session?.access_token, lockAdminSession],
   );
 
   const refreshBadgeCounts = useCallback(async () => {

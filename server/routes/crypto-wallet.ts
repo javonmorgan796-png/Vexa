@@ -1,4 +1,4 @@
-import { createHmac, createHash, timingSafeEqual, randomUUID } from "node:crypto";
+import { createHmac, timingSafeEqual, randomUUID } from "node:crypto";
 import { Router, type IRouter, type Request } from "express";
 import {
   normalizeWebhookUrl,
@@ -10,7 +10,7 @@ const router: IRouter = Router();
 type Asset = "BTC" | "ETH" | "USDT";
 type Network = "Bitcoin" | "Ethereum" | "Tron (TRC-20)";
 const SUPABASE_URL = (process.env["SUPABASE_URL"] || process.env["VITE_SUPABASE_URL"] || "").replace(/\/$/, "");
-const SUPABASE_SERVICE_ROLE_KEY = process.env["SUPABASE_SERVICE_ROLE_KEY"] || process.env["SUPABASE_ANON_KEY"] || process.env["VITE_SUPABASE_ANON_KEY"] || "";
+const SUPABASE_SERVICE_ROLE_KEY = (process.env["SUPABASE_SERVICE_ROLE_KEY"] || "").trim();
 const TATUM_API_KEY = process.env["TATUM_API_KEY"];
 const TATUM_WEBHOOK_SECRET = process.env["TATUM_WEBHOOK_SECRET"];
 
@@ -22,34 +22,6 @@ async function safeJson<T = any>(res: globalThis.Response): Promise<T | null> {
   } catch {
     return null;
   }
-}
-
-function parseJwtPayload(token: string): { sub?: string; id?: string } | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length < 2) return null;
-    const decoded = Buffer.from(parts[1], "base64").toString("utf8");
-    return JSON.parse(decoded);
-  } catch {
-    return null;
-  }
-}
-
-function generateDeterministicVaultAddress(userId: string, asset: Asset): string {
-  const hash = createHash("sha256").update(`${userId}:vexa_crypto_vault_${asset}:v1`).digest("hex");
-  if (asset === "BTC") {
-    return `bc1q${hash.slice(0, 38).toLowerCase()}`;
-  }
-  if (asset === "ETH") {
-    return `0x${hash.slice(0, 40)}`;
-  }
-  const base58Chars = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-  let tronAddr = "T";
-  for (let i = 0; i < 33; i++) {
-    const byte = parseInt(hash.slice((i * 2) % 62, (i * 2) % 62 + 2), 16);
-    tronAddr += base58Chars[byte % base58Chars.length];
-  }
-  return tronAddr;
 }
 
 const IS_TATUM_TESTNET =
@@ -109,22 +81,19 @@ async function supabaseRequest(path: string, init: RequestInit = {}) {
 }
 
 async function getUserId(token: string): Promise<string | null> {
-  if (!token) return null;
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-        headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
-      });
-      if (response.ok) {
-        const body = await safeJson<{ id?: string }>(response);
-        if (body?.id) return body.id;
-      }
-    } catch {
-      // Fall through to JWT payload parse
+  if (!token || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return null;
+  try {
+    const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
+    });
+    if (response.ok) {
+      const body = await safeJson<{ id?: string }>(response);
+      if (body?.id) return body.id;
     }
+  } catch {
+    // Reject unverified tokens
   }
-  const payload = parseJwtPayload(token);
-  return payload?.sub || payload?.id || null;
+  return null;
 }
 
 type DepositAddressRow = {
@@ -366,19 +335,15 @@ async function supabaseRpc(name: string, body: Record<string, unknown>) {
 
 function verifyTatumSignature(
   rawBody: Buffer,
-  eventBody: Record<string, unknown>,
   suppliedHash: string | undefined,
 ) {
   if (!TATUM_WEBHOOK_SECRET || !suppliedHash) return false;
-  const suppliedBuffer = Buffer.from(suppliedHash, "utf8");
-  const candidates = [rawBody.toString("utf8"), JSON.stringify(eventBody)];
-  return candidates.some((candidate) => {
-    const expected = createHmac("sha512", TATUM_WEBHOOK_SECRET)
-      .update(candidate)
-      .digest("base64");
-    const expectedBuffer = Buffer.from(expected, "utf8");
-    return expectedBuffer.length === suppliedBuffer.length && timingSafeEqual(expectedBuffer, suppliedBuffer);
-  });
+  const suppliedBuffer = Buffer.from(suppliedHash.trim(), "utf8");
+  const expected = createHmac("sha512", TATUM_WEBHOOK_SECRET)
+    .update(rawBody.toString("utf8"))
+    .digest("base64");
+  const expectedBuffer = Buffer.from(expected, "utf8");
+  return expectedBuffer.length === suppliedBuffer.length && timingSafeEqual(expectedBuffer, suppliedBuffer);
 }
 
 function nestedWebhookEvent(payload: Record<string, unknown>) {
@@ -813,12 +778,6 @@ async function fetchIncomingOnChainTxs(row: DepositAddressRow): Promise<OnChainI
   return fetchIncomingTronUsdtTxs(row.address, isTestnet);
 }
 
-async function verifyIncomingTxOnChain(row: DepositAddressRow, txHash: string): Promise<OnChainIncomingTx | null> {
-  const incoming = await fetchIncomingOnChainTxs(row);
-  const match = incoming.find((item) => item.txHash.toLowerCase() === txHash.toLowerCase());
-  return match ?? null;
-}
-
 async function recordAndCreditDeposit(
   depositAddress: DepositAddressRow,
   txHash: string,
@@ -929,65 +888,62 @@ router.get("/crypto/deposit-address", async (req, res) => {
   }
 
   try {
-    let userId = await getUserId(bearer(req));
-    if (!userId && typeof req.query.userId === "string" && req.query.userId.trim()) {
-      userId = req.query.userId.trim();
+    const userId = await getUserId(bearer(req));
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
     }
-    const effectiveUserId = userId || "vexa_custody_customer";
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      return res.status(503).json({ message: "Deposit wallet storage is not configured" });
+    }
 
-    const requestBaseUrl = resolveRequestBaseUrl(req);
     const webhookConfig = await resolveEffectiveTatumWebhook(req);
     const webhookUrl = webhookConfig.url;
-    const missingConfig: string[] = [];
-    if (!TATUM_API_KEY) missingConfig.push("TATUM_API_KEY");
-    if (!TATUM_WEBHOOK_SECRET) missingConfig.push("TATUM_WEBHOOK_SECRET");
-    if (!SUPABASE_URL) missingConfig.push("SUPABASE_URL");
-    if (!process.env["SUPABASE_SERVICE_ROLE_KEY"]) missingConfig.push("SUPABASE_SERVICE_ROLE_KEY");
+    const isFullyConfigured = Boolean(
+      TATUM_API_KEY &&
+      TATUM_WEBHOOK_SECRET &&
+      SUPABASE_URL &&
+      SUPABASE_SERVICE_ROLE_KEY,
+    );
 
     const config = assetConfig(asset);
 
-    // 1. Check existing address in Supabase
-    if (userId && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-      try {
-        const existing = await supabaseRequest(
-          `crypto_deposit_addresses?user_id=eq.${encodeURIComponent(userId)}&asset=eq.${asset}&select=id,user_id,asset,address,network,created_at,tatum_subscription_id,tatum_subscription_status&limit=1`,
-        );
-        if (existing.ok) {
-          const rows = await safeJson<DepositAddressRow[]>(existing);
-          if (rows && rows[0]?.address) {
-            let subscriptionStatus = rows[0].tatum_subscription_status || "pending";
-            let activeSubId = rows[0].tatum_subscription_id || null;
-            let subscriptionError: string | undefined;
-            if (TATUM_API_KEY) {
-              try {
-                activeSubId = await createTatumSubscription(rows[0], webhookUrl || req);
-                subscriptionStatus = "active";
-              } catch (subErr) {
-                subscriptionError = subErr instanceof Error ? subErr.message : "Tatum subscription failed";
-                req.log?.warn?.({ err: subErr }, "Tatum subscription sync note");
-              }
+    // 1. Check existing address in Supabase for authenticated user
+    try {
+      const existing = await supabaseRequest(
+        `crypto_deposit_addresses?user_id=eq.${encodeURIComponent(userId)}&asset=eq.${asset}&select=id,user_id,asset,address,network,created_at,tatum_subscription_id,tatum_subscription_status&limit=1`,
+      );
+      if (existing.ok) {
+        const rows = await safeJson<DepositAddressRow[]>(existing);
+        if (rows && rows[0]?.address) {
+          let subscriptionStatus = rows[0].tatum_subscription_status || "pending";
+          let activeSubId = rows[0].tatum_subscription_id || null;
+          let subscriptionError: string | undefined;
+          if (TATUM_API_KEY) {
+            try {
+              activeSubId = await createTatumSubscription(rows[0], webhookUrl || req);
+              subscriptionStatus = "active";
+            } catch (subErr) {
+              subscriptionError = subErr instanceof Error ? subErr.message : "Tatum subscription failed";
+              req.log?.warn?.({ err: subErr }, "Tatum subscription sync note");
             }
-            const isTestnetAddr = IS_TATUM_TESTNET || (rows[0].asset === "BTC" && /^(tb1|[mn2])/i.test(rows[0].address));
-            return res.json({
-              asset: rows[0].asset,
-              address: rows[0].address,
-              network: rows[0].network,
-              createdAt: rows[0].created_at,
-              provider: TATUM_API_KEY && activeSubId ? "tatum" : "unconfigured",
-              networkMode: isTestnetAddr ? "testnet" : "mainnet",
-              liveDepositEnabled: missingConfig.length === 0 && Boolean(webhookUrl) && Boolean(activeSubId),
-              directSyncEnabled: Boolean(TATUM_API_KEY && SUPABASE_URL && process.env["SUPABASE_SERVICE_ROLE_KEY"]),
-              subscriptionStatus,
-              subscriptionError,
-              webhookUrl: webhookUrl || undefined,
-              webhookSource: webhookConfig.source,
-              missingConfig,
-            });
           }
+          const isTestnetAddr = IS_TATUM_TESTNET || (rows[0].asset === "BTC" && /^(tb1|[mn2])/i.test(rows[0].address));
+          return res.json({
+            asset: rows[0].asset,
+            address: rows[0].address,
+            network: rows[0].network,
+            createdAt: rows[0].created_at,
+            provider: TATUM_API_KEY && activeSubId ? "tatum" : "unconfigured",
+            networkMode: isTestnetAddr ? "testnet" : "mainnet",
+            liveDepositEnabled: isFullyConfigured && Boolean(webhookUrl) && Boolean(activeSubId),
+            directSyncEnabled: Boolean(TATUM_API_KEY && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY),
+            subscriptionStatus,
+            subscriptionError,
+          });
         }
-      } catch (err) {
-        req.log?.warn?.({ err }, "Supabase existing address check note");
       }
+    } catch (err) {
+      req.log?.warn?.({ err }, "Supabase existing address check note");
     }
 
     // 2. Generate new real address via Tatum if configured
@@ -1014,16 +970,19 @@ router.get("/crypto/deposit-address", async (req, res) => {
       }
     }
 
-    // 3. Fallback preview address when Tatum is not configured (do not persist as active Tatum vault)
-    if (!generatedAddress) {
-      generatedAddress = generateDeterministicVaultAddress(effectiveUserId, asset);
+    // 3. Fail closed when Tatum cannot provision a verified custody address
+    if (!generatedAddress || !generatedFromTatum) {
+      return res.status(503).json({
+        message: "Crypto deposit wallet service is currently unavailable. Configure TATUM_API_KEY to provision deposit addresses.",
+        missingConfig: !TATUM_API_KEY ? ["TATUM_API_KEY"] : [],
+      });
     }
 
-    // 4. Only persist real Tatum-backed addresses to database
+    // 4. Persist real Tatum-backed address to database
     let savedRow: DepositAddressRow | null = null;
     let subscriptionStatus = "pending";
     let activeSubId: string | null = null;
-    if (generatedFromTatum && userId && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+    if (generatedFromTatum) {
       try {
         const insert = await supabaseRequest("crypto_deposit_addresses", {
           method: "POST",
@@ -1054,7 +1013,7 @@ router.get("/crypto/deposit-address", async (req, res) => {
         req.log?.warn?.({ err: subErr }, "Tatum subscription creation note");
       }
     }
-    if (savedRow && userId) {
+    if (savedRow) {
       await insertCryptoNotification(
         userId,
         `${asset} receive address ready`,
@@ -1071,13 +1030,10 @@ router.get("/crypto/deposit-address", async (req, res) => {
       createdAt: savedRow?.created_at ?? new Date().toISOString(),
       provider: generatedFromTatum ? "tatum" : "unconfigured",
       networkMode: isTestnetAddr ? "testnet" : "mainnet",
-      liveDepositEnabled: generatedFromTatum && missingConfig.length === 0 && Boolean(webhookUrl) && Boolean(activeSubId),
-      directSyncEnabled: Boolean(TATUM_API_KEY && SUPABASE_URL && process.env["SUPABASE_SERVICE_ROLE_KEY"]),
+      liveDepositEnabled: generatedFromTatum && isFullyConfigured && Boolean(webhookUrl) && Boolean(activeSubId),
+      directSyncEnabled: Boolean(TATUM_API_KEY && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY),
       subscriptionStatus,
       subscriptionError,
-      webhookUrl: webhookUrl || undefined,
-      webhookSource: webhookConfig.source,
-      missingConfig,
     });
   } catch (error) {
     req.log?.error?.({ err: error, asset }, "crypto deposit address error");
@@ -1391,6 +1347,22 @@ router.post("/crypto/webhooks/tatum", async (req, res) => {
   };
 
   try {
+    if (!TATUM_WEBHOOK_SECRET) {
+      return respondAndLog(503, "error", "TATUM_WEBHOOK_SECRET is not configured on server", {
+        message: "Webhook verification is not configured",
+      });
+    }
+
+    signatureValid = verifyTatumSignature(rawBuffer, req.header("x-payload-hash"));
+    if (!signatureValid) {
+      return respondAndLog(
+        401,
+        "rejected_signature",
+        !hasPayloadHash ? "Missing x-payload-hash header" : "HMAC-SHA512 signature mismatch",
+        { message: "Invalid webhook signature" },
+      );
+    }
+
     try {
       rawJson = rawBodyText ? (JSON.parse(rawBodyText) as Record<string, unknown>) : null;
     } catch {
@@ -1415,8 +1387,6 @@ router.post("/crypto/webhooks/tatum", async (req, res) => {
     parsedChain = stringValue(event.chain);
     parsedType = stringValue(event.type);
 
-    signatureValid = verifyTatumSignature(rawBuffer, event, req.header("x-payload-hash"));
-
     const address = stringValue(event.address) ?? stringValue(event.to) ?? stringValue(event.destinationAddress);
     const txHash =
       stringValue(event.txId) ??
@@ -1433,16 +1403,6 @@ router.post("/crypto/webhooks/tatum", async (req, res) => {
     parsedAmount = rawAmount;
 
     if (!address || !txHash) {
-      if (!signatureValid) {
-        return respondAndLog(
-          401,
-          "rejected_signature",
-          !hasPayloadHash
-            ? "Missing x-payload-hash header and missing address/txHash for on-chain fallback"
-            : "HMAC signature mismatch and missing address/txHash",
-          { message: "Invalid webhook signature" },
-        );
-      }
       return respondAndLog(400, "invalid_payload", "Missing address or txHash/txId in payload", {
         message: "Webhook is missing transaction details",
       });
@@ -1450,14 +1410,6 @@ router.post("/crypto/webhooks/tatum", async (req, res) => {
 
     depositAddress = await findAddress(address);
     if (!depositAddress) {
-      if (!signatureValid) {
-        return respondAndLog(
-          401,
-          "rejected_signature",
-          `Invalid HMAC signature and address ${address} is not registered in Vexa`,
-          { message: "Invalid webhook signature" },
-        );
-      }
       req.log.warn({ address }, "Tatum webhook address is not a Vexa deposit address");
       return respondAndLog(200, "ignored", `Address ${address} is not registered in crypto_deposit_addresses`, {
         received: true,
@@ -1467,23 +1419,7 @@ router.post("/crypto/webhooks/tatum", async (req, res) => {
 
     parsedAsset = depositAddress.asset;
 
-    let verifiedOnChainTx: OnChainIncomingTx | null = null;
-    if (!signatureValid) {
-      verifiedOnChainTx = await verifyIncomingTxOnChain(depositAddress, txHash);
-      verifiedOnChain = Boolean(verifiedOnChainTx);
-      if (!verifiedOnChainTx) {
-        return respondAndLog(
-          401,
-          "rejected_signature",
-          !hasPayloadHash
-            ? "No x-payload-hash header & txHash could not yet be verified incoming on-chain"
-            : "HMAC signature mismatch & txHash could not be verified incoming on-chain",
-          { message: "Invalid webhook signature" },
-        );
-      }
-    }
-
-    const amount = verifiedOnChainTx?.amount ?? rawAmount;
+    const amount = rawAmount;
     parsedAmount = amount;
     if (!amount) {
       return respondAndLog(400, "invalid_payload", "Missing amount/value in webhook payload", {
@@ -1517,7 +1453,7 @@ router.post("/crypto/webhooks/tatum", async (req, res) => {
         message: "Webhook chain does not match deposit address",
       });
     }
-    if (!verifiedOnChainTx && !eventMatchesDepositAsset(depositAddress.asset, event)) {
+    if (!eventMatchesDepositAsset(depositAddress.asset, event)) {
       req.log.warn(
         { address, asset: depositAddress.asset, eventAsset: event.asset, eventType: event.type },
         "Tatum webhook asset/token does not match deposit address",
@@ -1533,7 +1469,7 @@ router.post("/crypto/webhooks/tatum", async (req, res) => {
     const finality = stringValue(event.finality) ?? stringValue(event.status);
     const blockNumber = numberValue(event.blockNumber);
     const isMempool = event.mempool === true;
-    const webhookConfirmations =
+    const confirmations =
       numberValue(event.confirmations) ??
       numberValue(event.confirmationCount) ??
       (isMempool
@@ -1541,9 +1477,6 @@ router.post("/crypto/webhooks/tatum", async (req, res) => {
         : finality === "final" || event.confirmed === true || (blockNumber !== null && blockNumber > 0)
           ? config.confirmations
           : 0);
-    const confirmations = verifiedOnChainTx
-      ? Math.max(verifiedOnChainTx.confirmations, webhookConfirmations)
-      : webhookConfirmations;
     parsedConfirmations = Math.max(0, Math.floor(confirmations));
 
     const body = await recordAndCreditDeposit(depositAddress, txHash, amount, confirmations);

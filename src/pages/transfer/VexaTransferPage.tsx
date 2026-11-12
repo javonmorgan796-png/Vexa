@@ -350,7 +350,7 @@ export default function VexaTransferPage() {
     if (!/^\d{10}$/.test(accountNumber)) return setError('Enter or scan the recipient’s 10-digit Vexa account number');
     if (!numericAmount || numericAmount <= 0) return setError('Enter a valid amount');
     if (accountNumber === user?.accountNumber) return setError('You cannot transfer to your own account');
-    if (user?.pin === '0000') return setError('Set your transaction PIN in Settings before sending money');
+    if (!user?.hasPin) return setError('Set your transaction PIN in Settings before sending money');
     if (pin.length !== 4) return setError('Enter your 4-digit transaction PIN');
     setBusy(true);
     setError('');
@@ -375,10 +375,6 @@ export default function VexaTransferPage() {
     const numericAmount = Number(amount.replace(/,/g, ''));
     if (!/^\d{10}$/.test(accountNumber)) {
       setPinModalError('Recipient account number is invalid');
-      return;
-    }
-    if (user?.pin && user.pin !== '0000' && enteredPin !== user.pin) {
-      setPinModalError('Incorrect PIN. Please try again.');
       return;
     }
     setPinModalError('');

@@ -27,28 +27,13 @@ function storedSelectedBank(): PaystackBank | null {
 type Step = 'form' | 'confirm' | 'pin' | 'success';
 
 /* ── Transfer PIN Modal ──────────────────────────────────────── */
-function TransferPinModal({ onSuccess, onClose }: { onSuccess: () => void; onClose: () => void }) {
+function TransferPinModal({ onSuccess, onClose }: { onSuccess: (pin: string) => Promise<void> | void; onClose: () => void }) {
   const { verifyPin } = useBusinessSecurity();
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [shake, setShake] = useState(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-
-  function handleDigit(idx: number, val: string) {
-    const digit = val.replace(/\D/g, '').slice(-1);
-    const next = pin.slice(0, idx) + digit + pin.slice(idx + 1);
-    const filled = next.padEnd(6, '').slice(0, 6);
-    // build array-style
-    const arr = pin.split('').concat(Array(6).fill('')).slice(0, 6);
-    arr[idx] = digit;
-    const newPin = arr.join('');
-    setPin(newPin.slice(0, 6));
-    setError('');
-    if (digit && idx < 5) inputRefs.current[idx + 1]?.focus();
-    if (newPin.replace('', '').length === 6 && !newPin.includes('')) {
-      // auto submit when 6 digits
-    }
-  }
 
   function handleKey(idx: number, e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Backspace') {
@@ -59,6 +44,7 @@ function TransferPinModal({ onSuccess, onClose }: { onSuccess: () => void; onClo
   }
 
   function addKey(k: string) {
+    if (submitting) return;
     const len = pin.replace(/\s/g, '').length;
     if (len >= 6) return;
     // find first empty slot
@@ -71,20 +57,29 @@ function TransferPinModal({ onSuccess, onClose }: { onSuccess: () => void; onClo
     setError('');
     inputRefs.current[Math.min(idx + 1, 5)]?.focus();
     if (newPin.replace(/\s/g,'').length === 6) {
-      setTimeout(() => submitPin(newPin.replace(/\s/g,'')), 80);
+      setTimeout(() => { void submitPin(newPin.replace(/\s/g,'')); }, 80);
     }
   }
 
   function removeKey() {
+    if (submitting) return;
     const arr = (pin + '      ').slice(0, 6).split('');
     for (let i = 5; i >= 0; i--) {
       if (arr[i] !== ' ' && arr[i] !== '') { arr[i] = ''; setPin(arr.join('')); inputRefs.current[i]?.focus(); break; }
     }
   }
 
-  function submitPin(p: string) {
-    const result = verifyPin(p);
-    if (result.success) { onSuccess(); return; }
+  async function submitPin(p: string) {
+    if (submitting) return;
+    setSubmitting(true);
+    setError('');
+    const result = await verifyPin(p);
+    if (result.success) {
+      await onSuccess(p);
+      setSubmitting(false);
+      return;
+    }
+    setSubmitting(false);
     setShake(true);
     setPin('');
     setTimeout(() => setShake(false), 500);
@@ -94,7 +89,7 @@ function TransferPinModal({ onSuccess, onClose }: { onSuccess: () => void; onClo
   function handleManualSubmit() {
     const clean = pin.replace(/\s/g, '');
     if (clean.length < 6) { setError('Enter your 6-digit transfer PIN'); return; }
-    submitPin(clean);
+    void submitPin(clean);
   }
 
   const pinArr = (pin + '      ').slice(0, 6).split('');
@@ -185,7 +180,7 @@ function TransferPinModal({ onSuccess, onClose }: { onSuccess: () => void; onClo
 
 export default function BusinessTransfers() {
   const [, navigate] = useLocation();
-  const { business, employees, addTransaction } = useBusiness();
+  const { business, employees, transferBusinessMoney } = useBusiness();
   const [mode, setMode] = useState<'send' | 'receive'>('send');
   const [step, setStep] = useState<Step>('form');
   const [recipientType, setRecipientType] = useState<'employee' | 'external'>('external');
@@ -241,10 +236,19 @@ export default function BusinessTransfers() {
     setStep('confirm');
   }
 
-  function handleConfirm() {
+  async function handleConfirm(verifiedPin: string) {
     const num = parseFloat(amount.replace(/,/g, ''));
     const empName = recipientType === 'employee' ? employees.find(e => e.id === selectedEmpId)?.name : recipientName;
-    addTransaction({ type: 'debit', description: `Transfer to ${empName}`, amount: num, category: 'transfer' });
+    const res = await transferBusinessMoney({
+      pin: verifiedPin,
+      amount: num,
+      recipientName: empName || 'Recipient',
+    });
+    if (!res.success) {
+      setError(res.error || 'Business transfer failed');
+      setStep('form');
+      return;
+    }
     setStep('success');
   }
 
@@ -429,7 +433,7 @@ export default function BusinessTransfers() {
         {mode === 'send' && step === 'pin' && (
           <AnimatePresence>
             <TransferPinModal
-              onSuccess={() => { handleConfirm(); setStep('success'); }}
+              onSuccess={(verifiedPin) => handleConfirm(verifiedPin)}
               onClose={() => setStep('confirm')}
             />
           </AnimatePresence>

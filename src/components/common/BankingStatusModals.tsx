@@ -17,9 +17,9 @@ export function InsufficientFundsModal({
   onClose,
   amount,
   action = 'complete this transaction',
-  accountNumber = '9067212032',
-  accountName = 'CHIBUZOR EMMANUEL DIKE',
-  bankName = 'Moniepoint MFB',
+  accountNumber = '',
+  accountName = 'Vexa Account',
+  bankName = 'Vexa',
   onShareAccount,
 }: InsufficientFundsModalProps) {
   const [copied, setCopied] = useState(false);

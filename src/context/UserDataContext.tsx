@@ -1,6 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import {
+  emitCryptoDepositToast,
+  parseCryptoDepositNotification,
+} from '@/components/crypto/CryptoDepositToast';
 
 function playNotificationSound() {
   try {
@@ -246,7 +250,11 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
       if (previousIds) {
         mapped
           .filter(notification => !previousIds.has(notification.id) && !notification.read)
-          .forEach(() => playNotificationSound());
+          .forEach(notification => {
+            playNotificationSound();
+            const depositToast = parseCryptoDepositNotification(notification);
+            if (depositToast) emitCryptoDepositToast(depositToast);
+          });
       }
       notificationIdsRef.current = new Set(mapped.map(notification => notification.id));
       setNotifications(mapped);
@@ -322,10 +330,15 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
         { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
         payload => {
           const notification = mapNotification(payload.new as NotificationRow);
+          const alreadyKnown = notificationIdsRef.current?.has(notification.id) ?? false;
+          if (!alreadyKnown && !notification.read) {
+            playNotificationSound();
+            const depositToast = parseCryptoDepositNotification(notification);
+            if (depositToast) emitCryptoDepositToast(depositToast);
+          }
+          notificationIdsRef.current = new Set([notification.id, ...(notificationIdsRef.current ?? [])]);
           setNotifications(previous => {
             if (previous.some(item => item.id === notification.id)) return previous;
-            if (!notification.read) playNotificationSound();
-            notificationIdsRef.current = new Set([notification.id, ...(notificationIdsRef.current ?? [])]);
             return [notification, ...previous];
           });
         },
@@ -387,11 +400,19 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
 
   const redeemCashback = async () => {
     if (!user || cashbackRedeemable <= 0) return;
-    const { data, error } = await supabase.rpc('redeem_cashback');
-    if (!error && data) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) return;
+    const resp = await fetch('/api/wallet/redeem-cashback', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+    });
+    const data = await resp.json().catch(() => null) as { balance?: number } | null;
+    if (resp.ok && data) {
       setBalance(Number(data.balance ?? balance + cashbackRedeemable));
-      await fetchCashback();
-      await fetchNotifications();
+      await Promise.all([fetchCashback(), fetchNotifications(), fetchTransactions()]);
     }
   };
 
@@ -407,23 +428,9 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   };
 
-  const addNotification = async (n: Omit<AppNotification, 'id' | 'time' | 'read'>) => {
-    if (!user) return;
-    const { data } = await supabase.from('notifications').insert({
-      user_id: user.id, type: n.type, title: n.title, body: n.body, read: false,
-    }).select().single();
-    if (data) {
-      const notification = {
-        id: data.id, type: data.type, title: data.title,
-        body: data.body, read: false, time: 'Just now',
-      } as AppNotification;
-      setNotifications(prev => {
-        if (prev.some(item => item.id === notification.id)) return prev;
-        playNotificationSound();
-        notificationIdsRef.current?.add(notification.id);
-        return [notification, ...prev];
-      });
-    }
+  const addNotification = async (_n: Omit<AppNotification, 'id' | 'time' | 'read'>) => {
+    // Notifications are now created authoritatively by backend endpoints
+    await fetchNotifications();
   };
 
   const completeBankTransfer = async (input: {
@@ -434,18 +441,41 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
     recipientAccount: string;
     note: string;
   }) => {
-    const { data, error } = await supabase.rpc('complete_bank_transfer', {
-      p_amount: input.amount,
-      p_pin: input.pin,
-      p_recipient_name: input.recipientName,
-      p_recipient_bank: input.recipientBank,
-      p_recipient_account: input.recipientAccount,
-      p_note: input.note,
-    });
-    if (error || !data) {
-      return { success: false, error: error?.message?.replace(/^.*?:\s*/, '').replace(/\.$/, '') ?? 'Transfer failed' };
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      return { success: false, error: 'Your session has expired. Please sign in again.' };
     }
 
+    const resp = await fetch('/api/wallet/transfer/bank', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify(input),
+    });
+    const body = await resp.json().catch(() => null) as {
+      success?: boolean;
+      message?: string;
+      transaction?: {
+        id: string;
+        type: string;
+        name: string;
+        created_at: string;
+        amount: number;
+        note?: string;
+        recipient_bank?: string | null;
+        recipient_account?: string | null;
+        sender_name?: string | null;
+        sender_account?: string | null;
+      };
+    } | null;
+
+    if (!resp.ok || !body?.success || !body.transaction) {
+      return { success: false, error: body?.message || 'Transfer failed' };
+    }
+
+    const data = body.transaction;
     const savedTransaction = {
       id: data.id,
       type: data.type as 'in' | 'out',

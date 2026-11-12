@@ -8,6 +8,9 @@ import securityRouter from "./security";
 import adminRouter from "./admin";
 import bettingRouter from "./betting";
 import telecomRouter from "./telecom";
+import authRouter from "./auth";
+import walletRouter from "./wallet";
+import businessRouter from "./business";
 
 const router: IRouter = Router();
 
@@ -20,5 +23,8 @@ router.use(securityRouter);
 router.use(adminRouter);
 router.use(bettingRouter);
 router.use(telecomRouter);
+router.use(authRouter);
+router.use(walletRouter);
+router.use(businessRouter);
 
 export default router;

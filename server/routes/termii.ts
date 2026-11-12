@@ -1,14 +1,17 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { Router, type IRouter, type Request } from "express";
+import { otpRateLimiter, authRateLimiter } from "../lib/rateLimit";
 
 const router: IRouter = Router();
 const TERMII_API_KEY = process.env["TERMII_API_KEY"]?.trim();
 const TERMII_SENDER_ID = process.env["TERMII_SENDER_ID"]?.trim() || "N-Alert";
 const TERMII_BASE_URL = "https://v3.api.termii.com/api/sms/otp";
 const CHALLENGE_TTL_MS = 10 * 60 * 1000;
+const DEMO_OTP_CODE = process.env["DEMO_OTP_CODE"]?.trim() || "";
 const DEMO_OTP_ENABLED =
-  process.env["NODE_ENV"] !== "production" && process.env["DEMO_OTP_ENABLED"] === "true";
-const DEMO_OTP_CODE = process.env["DEMO_OTP_CODE"]?.trim() || "246810";
+  process.env["NODE_ENV"] !== "production" &&
+  process.env["DEMO_OTP_ENABLED"] === "true" &&
+  /^\d{6}$/.test(DEMO_OTP_CODE);
 
 type ChallengePurpose = "signup" | "2fa" | "sleep_mode_deactivate";
 
@@ -21,8 +24,8 @@ type PendingChallenge = {
 
 const pendingChallenges = new Map<string, PendingChallenge>();
 
-const SUPABASE_URL = process.env["SUPABASE_URL"]?.replace(/\/$/, "");
-const SUPABASE_SERVICE_ROLE_KEY = process.env["SUPABASE_SERVICE_ROLE_KEY"];
+const SUPABASE_URL = (process.env["SUPABASE_URL"] || process.env["VITE_SUPABASE_URL"] || "").replace(/\/$/, "");
+const SUPABASE_SERVICE_ROLE_KEY = process.env["SUPABASE_SERVICE_ROLE_KEY"]?.trim();
 
 function bearer(req: Request) {
   const value = req.header("authorization") ?? "";
@@ -138,12 +141,12 @@ function publicTermiiError(error: unknown) {
     return "The Termii sender ID is not approved yet. Approve the sender ID in Termii, then try again.";
   }
   if (normalized.includes("api key") || normalized.includes("unauthorized")) {
-    return "The Termii API key was rejected. Update TERMII_API_KEY in Replit Secrets, then restart the API.";
+    return "The Termii API key was rejected. Update TERMII_API_KEY in your environment configuration, then restart the API.";
   }
   return "Could not send the verification code. Please try again.";
 }
 
-router.post("/termii/otp/send", async (req, res) => {
+router.post("/termii/otp/send", otpRateLimiter, async (req, res) => {
   pruneChallenges();
   const requestedPurpose = req.body?.purpose;
   const purpose: ChallengePurpose =
@@ -217,7 +220,7 @@ router.post("/termii/otp/send", async (req, res) => {
   }
 });
 
-router.post("/termii/otp/verify", async (req, res) => {
+router.post("/termii/otp/verify", authRateLimiter, async (req, res) => {
   pruneChallenges();
   const pinId = typeof req.body?.requestId === "string" ? req.body.requestId.trim() : "";
   const pin = typeof req.body?.code === "string" ? req.body.code.trim() : "";
@@ -240,7 +243,8 @@ router.post("/termii/otp/verify", async (req, res) => {
     const demoVerified =
       DEMO_OTP_ENABLED &&
       challenge.purpose === "sleep_mode_deactivate" &&
-      pin === DEMO_OTP_CODE;
+      pin.length === DEMO_OTP_CODE.length &&
+      timingSafeEqual(Buffer.from(pin, "utf8"), Buffer.from(DEMO_OTP_CODE, "utf8"));
     const body = demoVerified ? null : await termiiRequest("verify", { pin_id: pinId, pin });
     const verified = demoVerified || (
       body?.verified === true ||
