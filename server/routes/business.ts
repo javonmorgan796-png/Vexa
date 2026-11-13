@@ -5,6 +5,7 @@ import {
   isSupabaseAdminConfigured,
   isUuid,
   supabaseRest,
+  supabaseRpc,
   verifySupabasePassword,
   verifySupabaseUser,
 } from "../lib/supabaseAdmin";
@@ -457,48 +458,66 @@ router.delete("/business/schedules/:id", async (req: Request, res: Response) => 
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function debitBusinessBalance(
+  ownerId: string,
   business: Record<string, unknown>,
   amount: number,
   description: string,
   category: "payroll" | "transfer" | "bills" | "other",
+  enforceLimit = false,
 ) {
-  const currentBalance = Number(business.balance ?? 0);
-  if (currentBalance < amount) {
-    return { ok: false, status: 400, message: "Insufficient business balance." };
-  }
-  const newBalance = roundMoney(currentBalance - amount);
-  const debitRes = await supabaseRest(
-    `business_accounts?id=eq.${encodeURIComponent(String(business.id))}&balance=eq.${encodeURIComponent(String(business.balance))}`,
-    {
-      method: "PATCH",
-      headers: { Prefer: "return=representation" },
-      body: JSON.stringify({ balance: newBalance }),
-    },
-  );
-  if (!debitRes.ok) {
-    return { ok: false, status: 503, message: "Could not debit business balance." };
-  }
-  const updated = (await debitRes.json().catch(() => [])) as Array<Record<string, unknown>>;
-  if (updated.length === 0) {
-    return { ok: false, status: 409, message: "Business balance changed. Please retry." };
-  }
-
   const ref = genBizRef();
-  const txRes = await supabaseRest("business_transactions", {
-    method: "POST",
-    headers: { Prefer: "return=representation" },
-    body: JSON.stringify({
-      business_id: business.id,
-      type: "debit",
-      description: description.slice(0, 160),
-      amount,
-      category,
-      reference: ref,
-    }),
+  const rpcResp = await supabaseRpc("debit_business_balance_srv", {
+    p_owner_id: ownerId,
+    p_business_id: String(business.id),
+    p_amount: amount,
+    p_description: description.slice(0, 160),
+    p_category: category,
+    p_reference: ref,
+    p_enforce_limit: enforceLimit,
   });
-  const txRows = txRes.ok ? ((await txRes.json().catch(() => [])) as Array<Record<string, unknown>>) : [];
 
-  return { ok: true, newBalance, transaction: txRows[0] ?? null };
+  if (!rpcResp.ok) {
+    const errBody = (await rpcResp.json().catch(() => null)) as {
+      message?: string;
+      code?: string;
+    } | null;
+    const errMsg = errBody?.message || "Could not debit business balance.";
+    const lower = errMsg.toLowerCase();
+
+    if (
+      rpcResp.status === 404 ||
+      errBody?.code === "PGRST202" ||
+      errBody?.code === "42883" ||
+      lower.includes("could not find the function")
+    ) {
+      return {
+        ok: false,
+        status: 503,
+        message: "Atomic business settlement RPC is not provisioned yet. Please run supabase-security-migration.sql.",
+      };
+    }
+    if (lower.includes("suspended") || lower.includes("freeze") || lower.includes("sleep")) {
+      return { ok: false, status: 403, message: errMsg };
+    }
+    if (lower.includes("not found")) {
+      return { ok: false, status: 404, message: errMsg };
+    }
+    if (lower.includes("insufficient") || lower.includes("limit") || lower.includes("valid")) {
+      return { ok: false, status: 400, message: errMsg };
+    }
+    return { ok: false, status: 422, message: errMsg };
+  }
+
+  const data = (await rpcResp.json().catch(() => null)) as {
+    balance?: number;
+    transaction?: Record<string, unknown> | null;
+  } | null;
+
+  return {
+    ok: true,
+    newBalance: Number(data?.balance ?? 0),
+    transaction: data?.transaction ?? null,
+  };
 }
 
 router.post("/business/payroll/run", async (req: Request, res: Response) => {
@@ -534,7 +553,7 @@ router.post("/business/payroll/run", async (req: Request, res: Response) => {
     return res.status(400).json({ message: "No active employees with positive salary in this schedule." });
   }
 
-  const debit = await debitBusinessBalance(business, total, `Payroll Run - ${String(schedule.name || "Schedule")}`, "payroll");
+  const debit = await debitBusinessBalance(authUser.id, business, total, `Payroll Run - ${String(schedule.name || "Schedule")}`, "payroll");
   if (!debit.ok) return res.status(debit.status || 400).json({ message: debit.message });
 
   return res.json({
@@ -572,7 +591,7 @@ router.post("/business/payroll/bulk", async (req: Request, res: Response) => {
     return res.status(400).json({ message: "No eligible active employees selected." });
   }
 
-  const debit = await debitBusinessBalance(business, total, `Bulk Payroll (${targets.length} employees)`, "payroll");
+  const debit = await debitBusinessBalance(authUser.id, business, total, `Bulk Payroll (${targets.length} employees)`, "payroll");
   if (!debit.ok) return res.status(debit.status || 400).json({ message: debit.message });
 
   return res.json({
@@ -619,7 +638,7 @@ router.post("/business/transfer", pinRateLimiter, async (req: Request, res: Resp
     return res.status(400).json({ message: `Amount exceeds your business transaction limit of ₦${limit.toLocaleString("en-NG")}.` });
   }
 
-  const debit = await debitBusinessBalance(business, amount, `Transfer to ${recipientName}`, "transfer");
+  const debit = await debitBusinessBalance(authUser.id, business, amount, `Transfer to ${recipientName}`, "transfer", true);
   if (!debit.ok) return res.status(debit.status || 400).json({ message: debit.message });
 
   return res.json({
@@ -647,7 +666,7 @@ router.post("/business/bills/pay", async (req: Request, res: Response) => {
   const business = await getOwnedBusiness(authUser.id);
   if (!business) return res.status(404).json({ message: "Business account not found." });
 
-  const debit = await debitBusinessBalance(business, amount, `${categoryLabel} - ${provider}`, "bills");
+  const debit = await debitBusinessBalance(authUser.id, business, amount, `${categoryLabel} - ${provider}`, "bills");
   if (!debit.ok) return res.status(debit.status || 400).json({ message: debit.message });
 
   return res.json({

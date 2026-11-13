@@ -44,6 +44,70 @@ let cachedSettings: SystemSettingsState = { ...DEFAULT_SYSTEM_SETTINGS };
 let lastLoadedAt = 0;
 const SETTINGS_CACHE_TTL_MS = 15_000;
 
+export function validatePublicWebhookUrl(candidate: string): { ok: true; url: string } | { ok: false; error: string } {
+  const raw = typeof candidate === "string" ? candidate.trim() : "";
+  if (!raw) return { ok: true, url: "" };
+
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return {
+      ok: false,
+      error: "Please enter a valid URL (e.g. https://your-domain.com/api/crypto/webhooks/tatum).",
+    };
+  }
+
+  if (parsed.username || parsed.password) {
+    return { ok: false, error: "Webhook URL must not contain embedded credentials." };
+  }
+
+  const isProd = process.env["NODE_ENV"] === "production";
+  if (parsed.protocol !== "https:" && (isProd || parsed.protocol !== "http:")) {
+    return {
+      ok: false,
+      error: isProd
+        ? "Tatum Webhook URL must use https:// in production."
+        : "Tatum Webhook URL must start with https:// or http://.",
+    };
+  }
+
+  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  const isPrivateOrReserved =
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".local") ||
+    host.endsWith(".internal") ||
+    host === "::1" ||
+    host === "::" ||
+    host.startsWith("fe80:") ||
+    host.startsWith("fc") ||
+    host.startsWith("fd") ||
+    host.startsWith("::ffff:127.") ||
+    host.startsWith("::ffff:10.") ||
+    host.startsWith("::ffff:192.168.") ||
+    host.startsWith("::ffff:169.254.") ||
+    /^0\./.test(host) ||
+    /^127\./.test(host) ||
+    /^10\./.test(host) ||
+    /^169\.254\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
+    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(host);
+
+  if (isPrivateOrReserved) {
+    return {
+      ok: false,
+      error: "Webhook URL cannot point to localhost, private network, or metadata addresses.",
+    };
+  }
+
+  if (parsed.pathname === "/" || !parsed.pathname) {
+    parsed.pathname = TATUM_WEBHOOK_PATH;
+  }
+  return { ok: true, url: parsed.toString().replace(/\/$/, "") };
+}
+
 export function normalizeWebhookUrl(value: string | undefined | null, fallbackBaseUrl?: string): string {
   const raw = typeof value === "string" ? value.trim() : "";
   const defaultAppUrl = process.env["APP_URL"]
@@ -51,15 +115,9 @@ export function normalizeWebhookUrl(value: string | undefined | null, fallbackBa
     : "";
   const candidate = raw || (fallbackBaseUrl ? `${fallbackBaseUrl.replace(/\/$/, "")}${TATUM_WEBHOOK_PATH}` : defaultAppUrl);
   if (!candidate) return "";
-  try {
-    const parsed = new URL(candidate);
-    if (parsed.pathname === "/" || !parsed.pathname) {
-      parsed.pathname = TATUM_WEBHOOK_PATH;
-    }
-    return parsed.toString().replace(/\/$/, "");
-  } catch {
-    return candidate;
-  }
+  const validated = validatePublicWebhookUrl(candidate);
+  if (!validated.ok) return "";
+  return validated.url;
 }
 
 export function resolveRequestBaseUrl(req?: Request): string {

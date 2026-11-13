@@ -102,10 +102,18 @@ export async function supabaseAuthAdmin(path: string, init: RequestInit = {}): P
   });
 }
 
-export async function verifySupabasePassword(email: string, password: string): Promise<boolean> {
+export async function signInWithSupabasePassword(
+  email: string,
+  password: string,
+): Promise<
+  | { ok: true; accessToken: string; refreshToken: string }
+  | { ok: false; emailNotConfirmed?: boolean; error?: string }
+> {
   const url = readSupabaseUrl();
   const apiKey = readAnonKey() || readServiceRoleKey();
-  if (!url || !apiKey || !email || !password) return false;
+  if (!url || !apiKey || !email || !password) {
+    return { ok: false, error: "Auth service not configured" };
+  }
   try {
     const resp = await fetch(`${url}/auth/v1/token?grant_type=password`, {
       method: "POST",
@@ -115,10 +123,34 @@ export async function verifySupabasePassword(email: string, password: string): P
       },
       body: JSON.stringify({ email, password }),
     });
-    return resp.ok;
+    const payload = (await resp.json().catch(() => null)) as {
+      access_token?: string;
+      refresh_token?: string;
+      error_description?: string;
+      msg?: string;
+      message?: string;
+    } | null;
+    if (resp.ok && payload?.access_token && payload?.refresh_token) {
+      return {
+        ok: true,
+        accessToken: payload.access_token,
+        refreshToken: payload.refresh_token,
+      };
+    }
+    const errMsg = payload?.error_description || payload?.msg || payload?.message || "";
+    return {
+      ok: false,
+      emailNotConfirmed: errMsg.toLowerCase().includes("email not confirmed"),
+      error: errMsg || "Invalid credentials",
+    };
   } catch {
-    return false;
+    return { ok: false, error: "Authentication service unavailable" };
   }
+}
+
+export async function verifySupabasePassword(email: string, password: string): Promise<boolean> {
+  const result = await signInWithSupabasePassword(email, password);
+  return result.ok;
 }
 
 export function normalizeNigerianPhone(phone: string): string {

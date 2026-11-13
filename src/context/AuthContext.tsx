@@ -1,12 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
-import {
-  checkRemoteLoginLockout,
-  clearRemoteLoginFailures,
-  recordRemoteLoginFailure,
-  normalizeLoginPhone,
-} from '@/lib/authSecurity';
+import { normalizeLoginPhone } from '@/lib/authSecurity';
 
 export interface User {
   id: string;
@@ -77,18 +72,6 @@ function normalizePhone(phone: string): string {
 
 function phoneToEmail(phone: string): string {
   return `${normalizePhone(phone)}@vexa.app`;
-}
-
-function phoneToEmailCandidates(phone: string): string[] {
-  const digits = phone.replace(/\D/g, '');
-  const local = normalizePhone(phone);
-  const candidates = [
-    `${local}@vexa.app`,
-    `${local.slice(1)}@vexa.app`,
-    `${digits}@vexa.app`,
-    phoneToEmail(phone),
-  ];
-  return [...new Set(candidates.filter(Boolean))];
 }
 
 function genAccountNumber(): string {
@@ -565,30 +548,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signIn = async (phone: string, passcode: string): Promise<{ success: boolean; error?: string; lockedUntil?: number; isProfileError?: boolean }> => {
-    const candidates = phoneToEmailCandidates(phone);
-    if (!candidates.length || passcode.length !== 6) {
+    const normalizedPhone = normalizeLoginPhone(phone);
+    if (normalizedPhone.length < 10 || !/^\d{6}$/.test(passcode)) {
       return { success: false, error: 'Enter a valid phone number and 6-digit passcode' };
     }
 
-    const normalizedPhone = normalizeLoginPhone(phone);
-    const lockout = await checkRemoteLoginLockout(normalizedPhone);
-    if (lockout.lockedUntil && lockout.lockedUntil > Date.now()) {
-      return {
-        success: false,
-        lockedUntil: lockout.lockedUntil,
-        error: 'Too many failed attempts. Please wait before trying again.',
-      };
-    }
+    try {
+      const resp = await fetch('/api/auth/signin', {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ phone: normalizedPhone, passcode }),
+      });
 
-    let lastError: string | undefined;
-    for (const email of candidates) {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password: passcode });
-      if (error || !data.user) {
-        lastError = error?.message;
-        continue;
+      const body = (await resp.json().catch(() => null)) as {
+        success?: boolean;
+        error?: string;
+        message?: string;
+        lockedUntil?: number;
+        session?: { access_token?: string; refresh_token?: string };
+      } | null;
+
+      if (!resp.ok || !body?.success || !body.session?.access_token || !body.session?.refresh_token) {
+        return {
+          success: false,
+          error: body?.error || body?.message || 'Invalid phone number or passcode',
+          lockedUntil: body?.lockedUntil,
+        };
       }
 
-      await clearRemoteLoginFailures(normalizedPhone);
+      const { data, error } = await supabase.auth.setSession({
+        access_token: body.session.access_token,
+        refresh_token: body.session.refresh_token,
+      });
+
+      if (error || !data.user) {
+        return { success: false, error: 'Could not start your session. Please try again.' };
+      }
+
       // Wait for the profile before reporting success. The route guard relies
       // on this state and must not redirect a valid user back to sign-in.
       const profileResult = await fetchProfile(data.user, data.session?.access_token);
@@ -596,27 +595,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: false, error: profileResult.error, isProfileError: true };
       }
       return { success: true };
+    } catch {
+      return { success: false, error: 'Network error. Please check your connection and try again.' };
     }
-
-    // Keep the UI message generic while logging only the provider's error
-    // category locally during development; never expose auth internals.
-    if (lastError) {
-      console.warn('[Auth] sign-in rejected');
-      if (lastError.toLowerCase().includes('email not confirmed')) {
-        return {
-          success: false,
-          error: 'Your account was created but is not activated yet. Disable email confirmations in Supabase Auth, then create the account again.',
-        };
-      }
-    }
-    const recorded = await recordRemoteLoginFailure(normalizedPhone);
-    return {
-      success: false,
-      error: recorded.lockedUntil && recorded.lockedUntil > Date.now()
-        ? 'Too many failed attempts. Please wait before trying again.'
-        : 'Invalid phone number or passcode',
-      lockedUntil: recorded.lockedUntil,
-    };
   };
 
   const signUp = async (
@@ -797,46 +778,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { success: true };
   };
 
-  const verifyPasscode = async (passcode: string): Promise<boolean> => {
-    if (!user) return false;
-    const { error } = await supabase.auth.signInWithPassword({
-      email: phoneToEmail(user.phone),
-      password: passcode,
-    });
-    return !error;
-  };
-
   const verifyPasscodeForAppReturn = async (
     passcode: string,
   ): Promise<{ success: boolean; lockedUntil?: number; error?: string }> => {
     if (!user) return { success: false, error: 'Your session has expired. Please sign in again.' };
+    const { data: { session: activeSession } } = await supabase.auth.getSession();
+    if (!activeSession?.access_token) {
+      return { success: false, error: 'Your session has expired. Please sign in again.' };
+    }
 
-    const lockout = await checkRemoteLoginLockout(user.phone);
-    if (lockout.lockedUntil && lockout.lockedUntil > Date.now()) {
+    try {
+      const resp = await fetch('/api/auth/verify-passcode', {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${activeSession.access_token}`,
+        },
+        body: JSON.stringify({ passcode }),
+      });
+      const body = (await resp.json().catch(() => null)) as {
+        success?: boolean;
+        lockedUntil?: number;
+        error?: string;
+        message?: string;
+      } | null;
+
+      if (resp.ok && body?.success) {
+        return { success: true };
+      }
       return {
         success: false,
-        lockedUntil: lockout.lockedUntil,
-        error: 'Too many failed attempts. Please wait before trying again.',
+        lockedUntil: body?.lockedUntil,
+        error: body?.error || body?.message || 'Incorrect passcode',
       };
+    } catch {
+      return { success: false, error: 'Could not verify passcode. Please try again.' };
     }
+  };
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: phoneToEmail(user.phone),
-      password: passcode,
-    });
-    if (!error) {
-      await clearRemoteLoginFailures(user.phone);
-      return { success: true };
-    }
-
-    const recorded = await recordRemoteLoginFailure(user.phone);
-    return {
-      success: false,
-      lockedUntil: recorded.lockedUntil,
-      error: recorded.lockedUntil && recorded.lockedUntil > Date.now()
-        ? 'Too many failed attempts. Please wait before trying again.'
-        : 'Incorrect passcode',
-    };
+  const verifyPasscode = async (passcode: string): Promise<boolean> => {
+    const result = await verifyPasscodeForAppReturn(passcode);
+    return result.success;
   };
 
   const setInitialTransferPin = async (newPin: string): Promise<{ success: boolean; error?: string }> => {

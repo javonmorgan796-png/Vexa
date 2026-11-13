@@ -1,12 +1,18 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { Router, type IRouter, type Request } from "express";
 import { otpRateLimiter, authRateLimiter } from "../lib/rateLimit";
+import {
+  consumeSecuritySession,
+  getSecuritySession,
+  putSecuritySession,
+} from "../lib/securityStore";
 
 const router: IRouter = Router();
 const TERMII_API_KEY = process.env["TERMII_API_KEY"]?.trim();
 const TERMII_SENDER_ID = process.env["TERMII_SENDER_ID"]?.trim() || "N-Alert";
 const TERMII_BASE_URL = "https://v3.api.termii.com/api/sms/otp";
 const CHALLENGE_TTL_MS = 10 * 60 * 1000;
+const TERMII_CHALLENGE_NS = "termii_otp_challenge";
 const DEMO_OTP_CODE = process.env["DEMO_OTP_CODE"]?.trim() || "";
 const DEMO_OTP_ENABLED =
   process.env["NODE_ENV"] !== "production" &&
@@ -19,10 +25,7 @@ type PendingChallenge = {
   pinId: string;
   purpose: ChallengePurpose;
   userId?: string;
-  expiresAt: number;
 };
-
-const pendingChallenges = new Map<string, PendingChallenge>();
 
 const SUPABASE_URL = (process.env["SUPABASE_URL"] || process.env["VITE_SUPABASE_URL"] || "").replace(/\/$/, "");
 const SUPABASE_SERVICE_ROLE_KEY = process.env["SUPABASE_SERVICE_ROLE_KEY"]?.trim();
@@ -92,13 +95,6 @@ function termiiPhone(phone: string) {
   return digits;
 }
 
-function pruneChallenges() {
-  const now = Date.now();
-  for (const [pinId, challenge] of pendingChallenges) {
-    if (challenge.expiresAt <= now) pendingChallenges.delete(pinId);
-  }
-}
-
 async function termiiRequest(
   path: "send" | "verify",
   payload: Record<string, unknown>,
@@ -147,7 +143,6 @@ function publicTermiiError(error: unknown) {
 }
 
 router.post("/termii/otp/send", otpRateLimiter, async (req, res) => {
-  pruneChallenges();
   const requestedPurpose = req.body?.purpose;
   const purpose: ChallengePurpose =
     requestedPurpose === "signup"
@@ -170,12 +165,16 @@ router.post("/termii/otp/send", otpRateLimiter, async (req, res) => {
   try {
     if (DEMO_OTP_ENABLED && purpose === "sleep_mode_deactivate") {
       const pinId = `demo-${randomUUID()}`;
-      pendingChallenges.set(pinId, {
+      await putSecuritySession<PendingChallenge>(
+        TERMII_CHALLENGE_NS,
         pinId,
-        purpose,
-        ...(userId ? { userId } : {}),
-        expiresAt: Date.now() + CHALLENGE_TTL_MS,
-      });
+        {
+          pinId,
+          purpose,
+          ...(userId ? { userId } : {}),
+        },
+        CHALLENGE_TTL_MS,
+      );
       res.json({
         requestId: pinId,
         expiresInSeconds: CHALLENGE_TTL_MS / 1000,
@@ -207,12 +206,16 @@ router.post("/termii/otp/send", otpRateLimiter, async (req, res) => {
     const pinId = body?.pinId ?? body?.pin_id;
     if (!pinId) throw new Error("Termii did not return a verification request ID");
 
-    pendingChallenges.set(pinId, {
+    await putSecuritySession<PendingChallenge>(
+      TERMII_CHALLENGE_NS,
       pinId,
-      purpose,
-      ...(userId ? { userId } : {}),
-      expiresAt: Date.now() + CHALLENGE_TTL_MS,
-    });
+      {
+        pinId,
+        purpose,
+        ...(userId ? { userId } : {}),
+      },
+      CHALLENGE_TTL_MS,
+    );
     res.json({ requestId: pinId, expiresInSeconds: CHALLENGE_TTL_MS / 1000 });
   } catch (error) {
     req.log.error({ err: error }, "Termii OTP send failed");
@@ -221,10 +224,10 @@ router.post("/termii/otp/send", otpRateLimiter, async (req, res) => {
 });
 
 router.post("/termii/otp/verify", authRateLimiter, async (req, res) => {
-  pruneChallenges();
   const pinId = typeof req.body?.requestId === "string" ? req.body.requestId.trim() : "";
   const pin = typeof req.body?.code === "string" ? req.body.code.trim() : "";
-  const challenge = pendingChallenges.get(pinId);
+  const session = pinId ? await getSecuritySession<PendingChallenge>(TERMII_CHALLENGE_NS, pinId) : null;
+  const challenge = session?.payload;
 
   if (!pinId || !/^\d{6}$/.test(pin) || !challenge) {
     res.status(400).json({ message: "That verification code is invalid or expired" });
@@ -256,7 +259,11 @@ router.post("/termii/otp/verify", authRateLimiter, async (req, res) => {
       res.status(422).json({ message: "That verification code is invalid or expired" });
       return;
     }
-    pendingChallenges.delete(pinId);
+    const consumed = await consumeSecuritySession<PendingChallenge>(TERMII_CHALLENGE_NS, pinId);
+    if (!consumed) {
+      res.status(400).json({ message: "That verification code has already been used or expired" });
+      return;
+    }
     if (challenge.purpose === "sleep_mode_deactivate" && challenge.userId) {
       await recordSecurityVerification(challenge.userId, challenge.purpose);
     }

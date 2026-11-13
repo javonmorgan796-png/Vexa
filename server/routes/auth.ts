@@ -2,6 +2,22 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypt
 import { Router, type IRouter } from "express";
 import { authRateLimiter, otpRateLimiter, pinRateLimiter } from "../lib/rateLimit";
 import { hasCustomTransactionPin, verifyUserTransactionPin } from "../lib/pinSecurity";
+import {
+  consumeDistributedRateLimit,
+  consumeSecuritySession,
+  deleteSecuritySession,
+  getSecuritySession,
+  putSecuritySession,
+  updateSecuritySessionPayload,
+} from "../lib/securityStore";
+import {
+  extractBearerToken,
+  isSupabaseAdminConfigured,
+  normalizeNigerianPhone,
+  signInWithSupabasePassword,
+  supabaseRpc,
+  verifySupabaseUser,
+} from "../lib/supabaseAdmin";
 
 const router: IRouter = Router();
 
@@ -16,6 +32,10 @@ const SEND_COOLDOWN_MS = 30 * 1000;
 const SEND_WINDOW_MS = 15 * 60 * 1000;
 const MAX_SENDS_PER_WINDOW = 5;
 const MAX_VERIFY_ATTEMPTS = 5;
+
+const FORGOT_CHALLENGE_NS = "auth_forgot_challenge";
+const RESET_TOKEN_NS = "auth_reset_token";
+const OTP_COOLDOWN_NS = "auth_otp_cooldown";
 
 const DEMO_OTP_CODE = process.env["DEMO_OTP_CODE"]?.trim() || "";
 const DEMO_OTP_ENABLED =
@@ -35,16 +55,8 @@ interface ForgotChallenge {
 }
 
 interface ResetTokenRecord {
-  token: string;
   userId: string;
   localPhone: string;
-  expiresAt: number;
-}
-
-interface SendRateLimitRecord {
-  lastSentAt: number;
-  windowStart: number;
-  count: number;
 }
 
 interface AccountLookupResult {
@@ -52,25 +64,6 @@ interface AccountLookupResult {
   localPhone: string;
   hasCustomPin: boolean;
 }
-
-const pendingChallenges = new Map<string, ForgotChallenge>();
-const pendingResetTokens = new Map<string, ResetTokenRecord>();
-const sendRateLimits = new Map<string, SendRateLimitRecord>();
-
-function pruneExpiredState() {
-  const now = Date.now();
-  for (const [id, item] of pendingChallenges) {
-    if (item.expiresAt <= now) pendingChallenges.delete(id);
-  }
-  for (const [token, item] of pendingResetTokens) {
-    if (item.expiresAt <= now) pendingResetTokens.delete(token);
-  }
-  for (const [key, item] of sendRateLimits) {
-    if (now - item.windowStart > SEND_WINDOW_MS) sendRateLimits.delete(key);
-  }
-}
-
-setInterval(pruneExpiredState, 60_000).unref();
 
 function normalizePhoneVariants(rawPhone: string) {
   const digits = rawPhone.replace(/\D/g, "");
@@ -83,6 +76,16 @@ function normalizePhoneVariants(rawPhone: string) {
   const localPhone = national ? `0${national}` : "";
   const recipient = national ? `234${national}` : "";
   return { digits, national, localPhone, recipient };
+}
+
+function buildLoginEmailCandidates(rawPhone: string): string[] {
+  const { digits, localPhone } = normalizePhoneVariants(rawPhone);
+  const candidates = [
+    localPhone ? `${localPhone}@vexa.app` : "",
+    localPhone ? `${localPhone.slice(1)}@vexa.app` : "",
+    digits ? `${digits}@vexa.app` : "",
+  ];
+  return [...new Set(candidates.filter(Boolean))];
 }
 
 function maskPhone(localPhone: string): string {
@@ -110,6 +113,167 @@ async function supabaseAdminFetch(path: string, init: RequestInit = {}) {
     },
   });
 }
+
+function parseLockoutRpc(
+  data: { locked_until?: string | null; failed_attempts?: number } | null,
+): { lockedUntil?: number; failedAttempts?: number } {
+  const lockedUntil = data?.locked_until ? new Date(data.locked_until).getTime() : undefined;
+  return {
+    lockedUntil: lockedUntil && Number.isFinite(lockedUntil) ? lockedUntil : undefined,
+    failedAttempts: typeof data?.failed_attempts === "number" ? data.failed_attempts : undefined,
+  };
+}
+
+async function checkServerLoginLockout(localPhone: string): Promise<{ lockedUntil?: number; failedAttempts?: number }> {
+  if (!isSupabaseAdminConfigured() || !localPhone) return {};
+  try {
+    const resp = await supabaseRpc("check_login_lockout", { p_identifier: localPhone });
+    if (!resp.ok) return {};
+    const data = (await resp.json().catch(() => null)) as { locked_until?: string | null; failed_attempts?: number } | null;
+    return parseLockoutRpc(data);
+  } catch {
+    return {};
+  }
+}
+
+async function recordServerLoginFailure(localPhone: string): Promise<{ lockedUntil?: number; failedAttempts?: number }> {
+  if (!isSupabaseAdminConfigured() || !localPhone) return {};
+  try {
+    const resp = await supabaseRpc("record_login_failure", { p_identifier: localPhone });
+    if (!resp.ok) return {};
+    const data = (await resp.json().catch(() => null)) as { locked_until?: string | null; failed_attempts?: number } | null;
+    return parseLockoutRpc(data);
+  } catch {
+    return {};
+  }
+}
+
+async function clearServerLoginLockout(localPhone: string) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !localPhone) return;
+  try {
+    const rpcResp = await supabaseRpc("clear_login_lockout", { p_identifier: localPhone });
+    if (rpcResp.ok) return;
+  } catch {
+    // Fallback to direct table delete if RPC signature rejects
+  }
+  const hash = createHash("sha256").update(localPhone.toLowerCase().trim()).digest("hex");
+  await supabaseAdminFetch(`/rest/v1/login_security?identifier_hash=eq.${encodeURIComponent(hash)}`, {
+    method: "DELETE",
+    headers: { Prefer: "return=minimal" },
+  }).catch(() => {});
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Server-Proxied Login & App-Return Passcode Verification (Closes anon RPC DoS)
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.post("/auth/signin", authRateLimiter, async (req, res) => {
+  const rawPhone = typeof req.body?.phone === "string" ? req.body.phone.trim() : "";
+  const passcode = typeof req.body?.passcode === "string" ? req.body.passcode.trim() : "";
+
+  const { localPhone } = normalizePhoneVariants(rawPhone);
+  const candidates = buildLoginEmailCandidates(rawPhone);
+  if (!localPhone || localPhone.length < 10 || candidates.length === 0 || !/^\d{6}$/.test(passcode)) {
+    res.status(400).json({ success: false, error: "Enter a valid phone number and 6-digit passcode" });
+    return;
+  }
+
+  const lockout = await checkServerLoginLockout(localPhone);
+  if (lockout.lockedUntil && lockout.lockedUntil > Date.now()) {
+    res.status(429).json({
+      success: false,
+      lockedUntil: lockout.lockedUntil,
+      error: "Too many failed attempts. Please wait before trying again.",
+    });
+    return;
+  }
+
+  let emailNotConfirmed = false;
+  for (const email of candidates) {
+    const signInRes = await signInWithSupabasePassword(email, passcode);
+    if (signInRes.ok) {
+      await clearServerLoginLockout(localPhone);
+      res.json({
+        success: true,
+        session: {
+          access_token: signInRes.accessToken,
+          refresh_token: signInRes.refreshToken,
+        },
+      });
+      return;
+    }
+    if (signInRes.emailNotConfirmed) {
+      emailNotConfirmed = true;
+    }
+  }
+
+  if (emailNotConfirmed) {
+    res.status(403).json({
+      success: false,
+      error:
+        "Your account was created but is not activated yet. Disable email confirmations in Supabase Auth, then create the account again.",
+    });
+    return;
+  }
+
+  const recorded = await recordServerLoginFailure(localPhone);
+  const isNowLocked = Boolean(recorded.lockedUntil && recorded.lockedUntil > Date.now());
+  res.status(isNowLocked ? 429 : 401).json({
+    success: false,
+    lockedUntil: recorded.lockedUntil,
+    error: isNowLocked
+      ? "Too many failed attempts. Please wait before trying again."
+      : "Invalid phone number or passcode",
+  });
+});
+
+router.post("/auth/verify-passcode", authRateLimiter, async (req, res) => {
+  const token = extractBearerToken(req);
+  const verifiedUser = await verifySupabaseUser(token);
+  if (!verifiedUser) {
+    res.status(401).json({ success: false, error: "Your session has expired. Please sign in again." });
+    return;
+  }
+
+  const passcode = typeof req.body?.passcode === "string" ? req.body.passcode.trim() : "";
+  if (!/^\d{6}$/.test(passcode)) {
+    res.status(400).json({ success: false, error: "Enter your 6-digit passcode" });
+    return;
+  }
+
+  const emailPhone = verifiedUser.email?.endsWith("@vexa.app") ? verifiedUser.email.split("@")[0] : "";
+  const localPhone = normalizeNigerianPhone(verifiedUser.phone || emailPhone);
+  const email = verifiedUser.email || (localPhone ? `${localPhone}@vexa.app` : "");
+  if (!email) {
+    res.status(400).json({ success: false, error: "Account email could not be resolved." });
+    return;
+  }
+
+  const lockout = localPhone ? await checkServerLoginLockout(localPhone) : {};
+  if (lockout.lockedUntil && lockout.lockedUntil > Date.now()) {
+    res.status(429).json({
+      success: false,
+      lockedUntil: lockout.lockedUntil,
+      error: "Too many failed attempts. Please wait before trying again.",
+    });
+    return;
+  }
+
+  const result = await signInWithSupabasePassword(email, passcode);
+  if (result.ok) {
+    if (localPhone) await clearServerLoginLockout(localPhone);
+    res.json({ success: true });
+    return;
+  }
+
+  const recorded = localPhone ? await recordServerLoginFailure(localPhone) : {};
+  const isNowLocked = Boolean(recorded.lockedUntil && recorded.lockedUntil > Date.now());
+  res.status(isNowLocked ? 429 : 401).json({
+    success: false,
+    lockedUntil: recorded.lockedUntil,
+    error: isNowLocked ? "Too many failed attempts. Please wait before trying again." : "Incorrect passcode",
+  });
+});
 
 async function findUserByPhone(rawPhone: string): Promise<AccountLookupResult | null> {
   const { digits, national, localPhone, recipient } = normalizePhoneVariants(rawPhone);
@@ -238,25 +402,16 @@ function publicTermiiError(error: unknown) {
   return "Could not send the verification code. Please try again.";
 }
 
-async function clearServerLoginLockout(localPhone: string) {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return;
-  const hash = createHash("sha256").update(localPhone.toLowerCase().trim()).digest("hex");
-  await supabaseAdminFetch(`/rest/v1/login_security?identifier_hash=eq.${encodeURIComponent(hash)}`, {
-    method: "DELETE",
-    headers: { Prefer: "return=minimal" },
-  }).catch(() => {});
-}
-
-function recordSendRateLimit(localPhone: string, now: number, previous?: SendRateLimitRecord) {
-  sendRateLimits.set(localPhone, {
-    lastSentAt: now,
-    windowStart: previous && now - previous.windowStart <= SEND_WINDOW_MS ? previous.windowStart : now,
-    count: previous && now - previous.windowStart <= SEND_WINDOW_MS ? previous.count + 1 : 1,
-  });
+async function recordPhoneOtpCooldownAndWindow(localPhone: string): Promise<void> {
+  await putSecuritySession<{ sentAt: number }>(
+    OTP_COOLDOWN_NS,
+    localPhone,
+    { sentAt: Date.now() },
+    SEND_COOLDOWN_MS,
+  );
 }
 
 router.post("/auth/forgot-passcode/send-otp", otpRateLimiter, async (req, res) => {
-  pruneExpiredState();
   const rawPhone = typeof req.body?.phone === "string" ? req.body.phone.trim() : "";
   const { localPhone, recipient } = normalizePhoneVariants(rawPhone);
 
@@ -266,17 +421,22 @@ router.post("/auth/forgot-passcode/send-otp", otpRateLimiter, async (req, res) =
   }
 
   const now = Date.now();
-  const limit = sendRateLimits.get(localPhone);
-  if (limit) {
-    if (now - limit.lastSentAt < SEND_COOLDOWN_MS) {
-      const waitSec = Math.ceil((SEND_COOLDOWN_MS - (now - limit.lastSentAt)) / 1000);
-      res.status(429).json({ message: `Please wait ${waitSec}s before requesting another code.` });
-      return;
-    }
-    if (now - limit.windowStart <= SEND_WINDOW_MS && limit.count >= MAX_SENDS_PER_WINDOW) {
-      res.status(429).json({ message: "Too many OTP requests. Please try again in 15 minutes." });
-      return;
-    }
+  const cooldown = await getSecuritySession<{ sentAt: number }>(OTP_COOLDOWN_NS, localPhone);
+  if (cooldown && cooldown.expiresAt > now) {
+    const waitSec = Math.max(1, Math.ceil((cooldown.expiresAt - now) / 1000));
+    res.status(429).json({ message: `Please wait ${waitSec}s before requesting another code.` });
+    return;
+  }
+
+  const phoneWindow = await consumeDistributedRateLimit(
+    `forgot_otp_phone:${localPhone}`,
+    MAX_SENDS_PER_WINDOW,
+    SEND_WINDOW_MS,
+  );
+  if (!phoneWindow.allowed) {
+    res.setHeader("Retry-After", String(phoneWindow.retryAfterSec));
+    res.status(429).json({ message: "Too many OTP requests. Please try again in 15 minutes." });
+    return;
   }
 
   let account: AccountLookupResult | null = null;
@@ -293,20 +453,25 @@ router.post("/auth/forgot-passcode/send-otp", otpRateLimiter, async (req, res) =
     return;
   }
 
-  const issueFallbackChallenge = (termiiError?: unknown) => {
+  const issueFallbackChallenge = async (termiiError?: unknown) => {
     if (DEMO_OTP_ENABLED) {
       const requestId = `demo-reset-${randomUUID()}`;
-      pendingChallenges.set(requestId, {
+      await putSecuritySession<ForgotChallenge>(
+        FORGOT_CHALLENGE_NS,
         requestId,
-        mode: "otp",
-        userId: account!.userId,
-        localPhone: account!.localPhone,
-        recipient,
-        expiresAt: now + CHALLENGE_TTL_MS,
-        attempts: 0,
-        demo: true,
-      });
-      recordSendRateLimit(localPhone, now, limit);
+        {
+          requestId,
+          mode: "otp",
+          userId: account!.userId,
+          localPhone: account!.localPhone,
+          recipient,
+          expiresAt: now + CHALLENGE_TTL_MS,
+          attempts: 0,
+          demo: true,
+        },
+        CHALLENGE_TTL_MS,
+      );
+      await recordPhoneOtpCooldownAndWindow(localPhone);
       res.json({
         mode: "otp",
         requestId,
@@ -319,16 +484,21 @@ router.post("/auth/forgot-passcode/send-otp", otpRateLimiter, async (req, res) =
 
     if (account!.hasCustomPin) {
       const requestId = `pin-reset-${randomUUID()}`;
-      pendingChallenges.set(requestId, {
+      await putSecuritySession<ForgotChallenge>(
+        FORGOT_CHALLENGE_NS,
         requestId,
-        mode: "pin_verify",
-        userId: account!.userId,
-        localPhone: account!.localPhone,
-        recipient,
-        expiresAt: now + CHALLENGE_TTL_MS,
-        attempts: 0,
-      });
-      recordSendRateLimit(localPhone, now, limit);
+        {
+          requestId,
+          mode: "pin_verify",
+          userId: account!.userId,
+          localPhone: account!.localPhone,
+          recipient,
+          expiresAt: now + CHALLENGE_TTL_MS,
+          attempts: 0,
+        },
+        CHALLENGE_TTL_MS,
+      );
+      await recordPhoneOtpCooldownAndWindow(localPhone);
       res.json({
         mode: "pin_verify",
         requestId,
@@ -343,7 +513,7 @@ router.post("/auth/forgot-passcode/send-otp", otpRateLimiter, async (req, res) =
   };
 
   if (!TERMII_API_KEY) {
-    issueFallbackChallenge(new Error("Termii is not configured"));
+    await issueFallbackChallenge(new Error("Termii is not configured"));
     return;
   }
 
@@ -365,17 +535,22 @@ router.post("/auth/forgot-passcode/send-otp", otpRateLimiter, async (req, res) =
       throw new Error("Termii did not return a verification request ID");
     }
 
-    pendingChallenges.set(requestId, {
+    await putSecuritySession<ForgotChallenge>(
+      FORGOT_CHALLENGE_NS,
       requestId,
-      mode: "otp",
-      userId: account.userId,
-      localPhone: account.localPhone,
-      recipient,
-      expiresAt: now + CHALLENGE_TTL_MS,
-      attempts: 0,
-    });
+      {
+        requestId,
+        mode: "otp",
+        userId: account.userId,
+        localPhone: account.localPhone,
+        recipient,
+        expiresAt: now + CHALLENGE_TTL_MS,
+        attempts: 0,
+      },
+      CHALLENGE_TTL_MS,
+    );
 
-    recordSendRateLimit(localPhone, now, limit);
+    await recordPhoneOtpCooldownAndWindow(localPhone);
 
     res.json({
       mode: "otp",
@@ -388,29 +563,29 @@ router.post("/auth/forgot-passcode/send-otp", otpRateLimiter, async (req, res) =
       { reason: error instanceof Error ? error.message : String(error) },
       "Termii SMS OTP unavailable for forgot-passcode; using fallback verification",
     );
-    issueFallbackChallenge(error);
+    await issueFallbackChallenge(error);
   }
 });
 
 router.post("/auth/forgot-passcode/verify-otp", authRateLimiter, async (req, res) => {
-  pruneExpiredState();
   const requestId = typeof req.body?.requestId === "string" ? req.body.requestId.trim() : "";
   const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
-  const challenge = pendingChallenges.get(requestId);
+  const session = requestId ? await getSecuritySession<ForgotChallenge>(FORGOT_CHALLENGE_NS, requestId) : null;
+  const challenge = session?.payload;
 
-  if (!requestId || !/^\d{6}$/.test(code) || !challenge || challenge.mode !== "otp") {
+  if (!requestId || !/^\d{6}$/.test(code) || !session || !challenge || challenge.mode !== "otp") {
     res.status(400).json({ message: "That verification code is invalid or expired" });
     return;
   }
 
-  if (challenge.expiresAt <= Date.now()) {
-    pendingChallenges.delete(requestId);
+  if (session.expiresAt <= Date.now()) {
+    await deleteSecuritySession(FORGOT_CHALLENGE_NS, requestId);
     res.status(400).json({ message: "That verification code has expired. Please request a new one." });
     return;
   }
 
   if (challenge.attempts >= MAX_VERIFY_ATTEMPTS) {
-    pendingChallenges.delete(requestId);
+    await deleteSecuritySession(FORGOT_CHALLENGE_NS, requestId);
     res.status(429).json({ message: "Too many incorrect codes. Please request a new verification code." });
     return;
   }
@@ -432,22 +607,31 @@ router.post("/auth/forgot-passcode/verify-otp", authRateLimiter, async (req, res
     if (!verified) {
       challenge.attempts += 1;
       if (challenge.attempts >= MAX_VERIFY_ATTEMPTS) {
-        pendingChallenges.delete(requestId);
+        await deleteSecuritySession(FORGOT_CHALLENGE_NS, requestId);
         res.status(429).json({ message: "Too many incorrect codes. Please request a new verification code." });
         return;
       }
+      await updateSecuritySessionPayload(FORGOT_CHALLENGE_NS, requestId, challenge, session.expiresAt);
       res.status(422).json({ message: "Incorrect or expired verification code" });
       return;
     }
 
-    pendingChallenges.delete(requestId);
+    const consumed = await consumeSecuritySession<ForgotChallenge>(FORGOT_CHALLENGE_NS, requestId);
+    if (!consumed) {
+      res.status(400).json({ message: "That verification code has already been used or expired" });
+      return;
+    }
+
     const resetToken = randomBytes(32).toString("hex");
-    pendingResetTokens.set(resetToken, {
-      token: resetToken,
-      userId: challenge.userId,
-      localPhone: challenge.localPhone,
-      expiresAt: Date.now() + RESET_TOKEN_TTL_MS,
-    });
+    await putSecuritySession<ResetTokenRecord>(
+      RESET_TOKEN_NS,
+      resetToken,
+      {
+        userId: challenge.userId,
+        localPhone: challenge.localPhone,
+      },
+      RESET_TOKEN_TTL_MS,
+    );
 
     res.json({
       verified: true,
@@ -458,32 +642,34 @@ router.post("/auth/forgot-passcode/verify-otp", authRateLimiter, async (req, res
     req.log.warn({ err: error }, "Forgot passcode OTP verify failed");
     challenge.attempts += 1;
     if (challenge.attempts >= MAX_VERIFY_ATTEMPTS) {
-      pendingChallenges.delete(requestId);
+      await deleteSecuritySession(FORGOT_CHALLENGE_NS, requestId);
+    } else {
+      await updateSecuritySessionPayload(FORGOT_CHALLENGE_NS, requestId, challenge, session.expiresAt);
     }
     res.status(422).json({ message: "Incorrect or expired verification code" });
   }
 });
 
 router.post("/auth/forgot-passcode/verify-account", pinRateLimiter, async (req, res) => {
-  pruneExpiredState();
   const requestId = typeof req.body?.requestId === "string" ? req.body.requestId.trim() : "";
   const accountNumber = typeof req.body?.accountNumber === "string" ? req.body.accountNumber.replace(/\D/g, "") : "";
   const pin = typeof req.body?.pin === "string" ? req.body.pin.trim() : "";
-  const challenge = pendingChallenges.get(requestId);
+  const session = requestId ? await getSecuritySession<ForgotChallenge>(FORGOT_CHALLENGE_NS, requestId) : null;
+  const challenge = session?.payload;
 
-  if (!requestId || !challenge || challenge.mode !== "pin_verify") {
+  if (!requestId || !session || !challenge || challenge.mode !== "pin_verify") {
     res.status(400).json({ message: "Your verification session is invalid or expired. Please start again." });
     return;
   }
 
-  if (challenge.expiresAt <= Date.now()) {
-    pendingChallenges.delete(requestId);
+  if (session.expiresAt <= Date.now()) {
+    await deleteSecuritySession(FORGOT_CHALLENGE_NS, requestId);
     res.status(400).json({ message: "Your verification session has expired. Please start again." });
     return;
   }
 
   if (challenge.attempts >= MAX_VERIFY_ATTEMPTS) {
-    pendingChallenges.delete(requestId);
+    await deleteSecuritySession(FORGOT_CHALLENGE_NS, requestId);
     res.status(429).json({ message: "Too many failed verification attempts. Please start again." });
     return;
   }
@@ -515,7 +701,7 @@ router.post("/auth/forgot-passcode/verify-account", pinRateLimiter, async (req, 
     const savedAccountNumber = String(rows[0]?.account_number ?? "").replace(/\D/g, "");
 
     if (!savedAccountNumber || !hasCustomTransactionPin(rows[0])) {
-      pendingChallenges.delete(requestId);
+      await deleteSecuritySession(FORGOT_CHALLENGE_NS, requestId);
       res.status(422).json({ message: "Account PIN verification is not available for this profile." });
       return;
     }
@@ -526,10 +712,11 @@ router.post("/auth/forgot-passcode/verify-account", pinRateLimiter, async (req, 
     if (!accountMatches || !pinResult.ok) {
       challenge.attempts += 1;
       if (challenge.attempts >= MAX_VERIFY_ATTEMPTS || pinResult.nowLocked) {
-        pendingChallenges.delete(requestId);
+        await deleteSecuritySession(FORGOT_CHALLENGE_NS, requestId);
         res.status(429).json({ message: "Too many incorrect details. Please restart passcode recovery." });
         return;
       }
+      await updateSecuritySessionPayload(FORGOT_CHALLENGE_NS, requestId, challenge, session.expiresAt);
       const left = MAX_VERIFY_ATTEMPTS - challenge.attempts;
       res.status(422).json({
         message: `Account number or Transaction PIN is incorrect (${left} attempt${left !== 1 ? "s" : ""} left)`,
@@ -537,14 +724,22 @@ router.post("/auth/forgot-passcode/verify-account", pinRateLimiter, async (req, 
       return;
     }
 
-    pendingChallenges.delete(requestId);
+    const consumed = await consumeSecuritySession<ForgotChallenge>(FORGOT_CHALLENGE_NS, requestId);
+    if (!consumed) {
+      res.status(400).json({ message: "Your verification session has already been used or expired. Please start again." });
+      return;
+    }
+
     const resetToken = randomBytes(32).toString("hex");
-    pendingResetTokens.set(resetToken, {
-      token: resetToken,
-      userId: challenge.userId,
-      localPhone: challenge.localPhone,
-      expiresAt: Date.now() + RESET_TOKEN_TTL_MS,
-    });
+    await putSecuritySession<ResetTokenRecord>(
+      RESET_TOKEN_NS,
+      resetToken,
+      {
+        userId: challenge.userId,
+        localPhone: challenge.localPhone,
+      },
+      RESET_TOKEN_TTL_MS,
+    );
 
     res.json({
       verified: true,
@@ -558,7 +753,6 @@ router.post("/auth/forgot-passcode/verify-account", pinRateLimiter, async (req, 
 });
 
 router.post("/auth/forgot-passcode/reset", authRateLimiter, async (req, res) => {
-  pruneExpiredState();
   const resetToken = typeof req.body?.resetToken === "string" ? req.body.resetToken.trim() : "";
   const newPasscode = typeof req.body?.newPasscode === "string" ? req.body.newPasscode.trim() : "";
 
@@ -571,15 +765,13 @@ router.post("/auth/forgot-passcode/reset", authRateLimiter, async (req, res) => 
     return;
   }
 
-  const record = pendingResetTokens.get(resetToken);
-  if (!record || record.expiresAt <= Date.now()) {
-    pendingResetTokens.delete(resetToken);
+  // Consume token atomically immediately so it can only be used once
+  const consumed = await consumeSecuritySession<ResetTokenRecord>(RESET_TOKEN_NS, resetToken);
+  if (!consumed || consumed.expiresAt <= Date.now()) {
     res.status(401).json({ message: "Your verification session has expired. Please verify your phone again." });
     return;
   }
-
-  // Consume token immediately so it can only be used once
-  pendingResetTokens.delete(resetToken);
+  const record = consumed.payload;
 
   try {
     const updateRes = await supabaseAdminFetch(

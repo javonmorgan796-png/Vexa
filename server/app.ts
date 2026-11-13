@@ -3,8 +3,13 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { getClientIp } from "./lib/rateLimit";
 
 const app: Express = express();
+// Trust the immediate reverse proxy (Cloud Run / AI Studio) so req.ip and req.protocol
+// reflect the real client IP and HTTPS scheme without trusting client-spoofed headers.
+app.set("trust proxy", 1);
+
 const configuredOrigins = (process.env["CORS_ORIGINS"] ?? "")
   .split(",")
   .map((origin) => origin.trim())
@@ -21,6 +26,18 @@ function pruneRateLimits() {
   }
 }
 setInterval(pruneRateLimits, 60_000).unref();
+
+const supabaseOrigins = (() => {
+  const raw = (process.env["SUPABASE_URL"] || process.env["VITE_SUPABASE_URL"] || "").trim();
+  if (!raw) return ["https://*.supabase.co", "wss://*.supabase.co"];
+  try {
+    const parsed = new URL(raw);
+    const wsProtocol = parsed.protocol === "https:" ? "wss:" : "ws:";
+    return [parsed.origin, `${wsProtocol}//${parsed.host}`, "https://*.supabase.co", "wss://*.supabase.co"];
+  } catch {
+    return ["https://*.supabase.co", "wss://*.supabase.co"];
+  }
+})();
 
 app.disable("x-powered-by");
 
@@ -44,18 +61,45 @@ app.use(
   }),
 );
 
-// Comprehensive Defensive Security Headers
-app.use((_req, res, next) => {
+// Comprehensive Defensive Security Headers & Full Content-Security-Policy
+app.use((req, res, next) => {
+  const isProd = process.env["NODE_ENV"] === "production";
+  const isHttps = req.secure || req.header("x-forwarded-proto")?.split(",")[0]?.trim() === "https";
+
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("X-XSS-Protection", "1; mode=block");
-  res.setHeader("Permissions-Policy", "camera=*, microphone=(), geolocation=()");
-  // Protect against clickjacking while allowing verified same-origin and AI Studio frames
-  const frameAncestors =
-    process.env["NODE_ENV"] === "production"
-      ? "frame-ancestors 'self' https:;"
-      : "frame-ancestors 'self' https: http://localhost:* http://127.0.0.1:*;";
-  res.setHeader("Content-Security-Policy", frameAncestors);
+  res.setHeader("Permissions-Policy", "camera=(self), microphone=(), geolocation=()");
+  if (isProd && isHttps) {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+
+  const scriptSrc = isProd
+    ? "script-src 'self';"
+    : "script-src 'self' 'unsafe-inline' 'unsafe-eval';";
+  const connectSrc = [
+    "'self'",
+    ...supabaseOrigins,
+    ...(isProd ? [] : ["ws://localhost:*", "ws://127.0.0.1:*", "http://localhost:*", "http://127.0.0.1:*"]),
+  ].join(" ");
+  const frameAncestors = isProd
+    ? "frame-ancestors 'self' https://aistudio.google.com https://*.aistudio.google.com https://*.ai.studio;"
+    : "frame-ancestors 'self' https: http://localhost:* http://127.0.0.1:*;";
+
+  const cspDirectives = [
+    "default-src 'self';",
+    scriptSrc,
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com;",
+    "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com;",
+    "img-src 'self' data: blob: https://img.logo.dev;",
+    "media-src 'self' blob:;",
+    `connect-src ${connectSrc};`,
+    "object-src 'none';",
+    "base-uri 'self';",
+    "form-action 'self';",
+    frameAncestors,
+  ];
+  res.setHeader("Content-Security-Policy", cspDirectives.join(" "));
   next();
 });
 
@@ -69,9 +113,10 @@ const appUrlOrigin = (() => {
   }
 })();
 
-// Secure Cross-Origin Resource Sharing
+// Strict Cross-Origin Resource Sharing (no blanket wildcard PaaS subdomain trust in production)
 app.use((req, res, next) => {
   const reqHost = (req.get("x-forwarded-host") || req.get("host") || "").split(",")[0].trim().toLowerCase();
+  const isProd = process.env["NODE_ENV"] === "production";
   const corsMiddleware = cors({
     origin(origin, callback) {
       if (!origin) return callback(null, true);
@@ -85,13 +130,17 @@ app.use((req, res, next) => {
         const parsed = new URL(origin);
         const hostname = parsed.hostname.toLowerCase();
         const originHost = parsed.host.toLowerCase();
+        // Same-host requests (including custom domains, vexa42.ai.studio, Cloud Run service host)
+        if (reqHost && originHost === reqHost && (parsed.protocol === "https:" || !isProd)) {
+          return callback(null, true);
+        }
+        // Only allow localhost and AI Studio dev origins outside production
         if (
-          (reqHost && originHost === reqHost) ||
-          hostname.endsWith(".run.app") ||
-          hostname.endsWith(".ai.studio") ||
-          hostname.endsWith(".aistudio.google.com") ||
-          (process.env["NODE_ENV"] !== "production" &&
-            (hostname === "localhost" || hostname === "127.0.0.1"))
+          !isProd &&
+          (hostname === "localhost" ||
+            hostname === "127.0.0.1" ||
+            hostname === "aistudio.google.com" ||
+            hostname.endsWith(".aistudio.google.com"))
         ) {
           return callback(null, true);
         }
@@ -112,11 +161,11 @@ app.use("/api/paystack/webhooks", express.raw({ type: "application/json", limit:
 app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 
-// Rate limiter with bounds protection
+// Rate limiter with bounds protection using trusted proxy req.ip
 app.use("/api", (req, res, next) => {
   const now = Date.now();
-  const key = req.ip ?? "unknown";
-  
+  const key = getClientIp(req);
+
   if (requestCounts.size >= MAX_RATE_LIMIT_ENTRIES) {
     pruneRateLimits();
   }

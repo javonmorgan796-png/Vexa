@@ -13,6 +13,7 @@ import {
   getSystemSettings,
   updateSystemSettings,
   resolveEffectiveTatumWebhook,
+  validatePublicWebhookUrl,
 } from "../lib/systemSettings";
 import {
   createTatumSubscription,
@@ -31,6 +32,12 @@ import {
 } from "../lib/supabaseAdmin";
 import { adminAuthRateLimiter } from "../lib/rateLimit";
 import { getLiveCryptoPricesNgn } from "../lib/cryptoPrices";
+import {
+  consumeSecuritySession,
+  deleteSecuritySession,
+  getSecuritySession,
+  putSecuritySession,
+} from "../lib/securityStore";
 
 const router: IRouter = Router();
 
@@ -386,19 +393,15 @@ function verifyTOTP(token: string, secretBase32: string): boolean {
   return false;
 }
 
-const tempChallengeTokens = new Map<string, { userId: string; adminPhone: string; expiresAt: number }>();
-const activeElevatedSessions = new Map<string, { userId: string; adminPhone: string; expiresAt: number }>();
+const ADMIN_CHALLENGE_NS = "admin_challenge";
+const ADMIN_ELEVATED_NS = "admin_elevated";
+const ADMIN_CHALLENGE_TTL_MS = 5 * 60 * 1000;
+const ADMIN_ELEVATED_TTL_MS = 2 * 60 * 60 * 1000;
 
-function pruneAdminSecurityCaches() {
-  const now = Date.now();
-  for (const [key, value] of tempChallengeTokens) {
-    if (value.expiresAt <= now) tempChallengeTokens.delete(key);
-  }
-  for (const [key, value] of activeElevatedSessions) {
-    if (value.expiresAt <= now) activeElevatedSessions.delete(key);
-  }
+interface AdminSessionPayload {
+  userId: string;
+  adminPhone: string;
 }
-setInterval(pruneAdminSecurityCaches, 60_000).unref();
 
 export interface AdminUserContext {
   id: string;
@@ -565,14 +568,14 @@ async function authenticateAdmin(req: Request, res: Response, next: NextFunction
     });
   }
 
-  const elevatedSession = activeElevatedSessions.get(elevatedToken);
+  const elevatedSession = await getSecuritySession<AdminSessionPayload>(ADMIN_ELEVATED_NS, elevatedToken);
   if (
     !elevatedSession ||
     Date.now() >= elevatedSession.expiresAt ||
-    elevatedSession.userId !== verifiedAdmin.userId
+    elevatedSession.payload.userId !== verifiedAdmin.userId
   ) {
     if (elevatedSession && Date.now() >= elevatedSession.expiresAt) {
-      activeElevatedSessions.delete(elevatedToken);
+      await deleteSecuritySession(ADMIN_ELEVATED_NS, elevatedToken);
     }
     return res.status(403).json({
       error: "Unauthorized",
@@ -596,11 +599,11 @@ router.get("/admin/auth/check", async (req: Request, res: Response) => {
   const elevatedToken = req.header("x-admin-session-token");
   let isElevated = false;
   if (elevatedToken) {
-    const session = activeElevatedSessions.get(elevatedToken);
-    if (session && Date.now() < session.expiresAt && session.userId === verifiedAdmin.userId) {
+    const session = await getSecuritySession<AdminSessionPayload>(ADMIN_ELEVATED_NS, elevatedToken);
+    if (session && Date.now() < session.expiresAt && session.payload.userId === verifiedAdmin.userId) {
       isElevated = true;
     } else if (session && Date.now() >= session.expiresAt) {
-      activeElevatedSessions.delete(elevatedToken);
+      await deleteSecuritySession(ADMIN_ELEVATED_NS, elevatedToken);
     }
   }
 
@@ -681,11 +684,15 @@ router.post("/admin/auth/verify-password", adminAuthRateLimiter, async (req: Req
 
   await updateAdminAttempts(verifiedAdmin.phone, 0);
   const tempChallengeToken = `challenge-${randomUUID()}`;
-  tempChallengeTokens.set(tempChallengeToken, {
-    userId: verifiedAdmin.userId,
-    adminPhone: verifiedAdmin.phone,
-    expiresAt: Date.now() + 5 * 60 * 1000,
-  });
+  await putSecuritySession<AdminSessionPayload>(
+    ADMIN_CHALLENGE_NS,
+    tempChallengeToken,
+    {
+      userId: verifiedAdmin.userId,
+      adminPhone: verifiedAdmin.phone,
+    },
+    ADMIN_CHALLENGE_TTL_MS,
+  );
 
   return res.json({
     success: true,
@@ -709,13 +716,18 @@ router.post("/admin/auth/verify-totp", adminAuthRateLimiter, async (req: Request
     return res.status(400).json({ error: "Challenge token missing or session expired. Please re-enter password." });
   }
 
-  const challenge = tempChallengeTokens.get(tempChallengeToken);
-  if (!challenge || Date.now() > challenge.expiresAt || challenge.userId !== verifiedAdmin.userId) {
-    if (challenge && Date.now() > challenge.expiresAt) {
-      tempChallengeTokens.delete(tempChallengeToken);
+  const challengeRecord = await getSecuritySession<AdminSessionPayload>(ADMIN_CHALLENGE_NS, tempChallengeToken);
+  if (
+    !challengeRecord ||
+    Date.now() > challengeRecord.expiresAt ||
+    challengeRecord.payload.userId !== verifiedAdmin.userId
+  ) {
+    if (challengeRecord && Date.now() > challengeRecord.expiresAt) {
+      await deleteSecuritySession(ADMIN_CHALLENGE_NS, tempChallengeToken);
     }
     return res.status(401).json({ error: "Security challenge expired or invalid. Please restart the admin login." });
   }
+  const challenge = challengeRecord.payload;
 
   let creds: AdminCredentialRecord | null = null;
   try {
@@ -791,7 +803,7 @@ router.post("/admin/auth/verify-totp", adminAuthRateLimiter, async (req: Request
     if (currentAttempts >= 5) {
       const lockoutTime = Date.now() + 15 * 60 * 1000;
       await updateAdminAttempts(challenge.adminPhone, currentAttempts, lockoutTime);
-      tempChallengeTokens.delete(tempChallengeToken);
+      await deleteSecuritySession(ADMIN_CHALLENGE_NS, tempChallengeToken);
       return res.status(429).json({
         error: "Lockout Triggered",
         message: "Too many invalid 2FA attempts. Administrative access locked for 15 minutes.",
@@ -803,6 +815,12 @@ router.post("/admin/auth/verify-totp", adminAuthRateLimiter, async (req: Request
       error: "Verification Failed",
       message: "The 6-digit authenticator or rescue code entered is invalid or has expired.",
     });
+  }
+
+  // Consume the single-use challenge atomically so parallel replays cannot succeed twice
+  const consumed = await consumeSecuritySession<AdminSessionPayload>(ADMIN_CHALLENGE_NS, tempChallengeToken);
+  if (!consumed) {
+    return res.status(401).json({ error: "Security challenge expired or already used. Please restart the admin login." });
   }
 
   // Self-heal stale/un-decryptable DB TOTP ciphertext if verified via env ADMIN_TOTP_SECRET
@@ -824,14 +842,16 @@ router.post("/admin/auth/verify-totp", adminAuthRateLimiter, async (req: Request
     }
   }
 
-  tempChallengeTokens.delete(tempChallengeToken);
   const elevatedToken = `elevated-${randomUUID()}`;
-  const expiresAt = Date.now() + 2 * 60 * 60 * 1000;
-  activeElevatedSessions.set(elevatedToken, {
-    userId: verifiedAdmin.userId,
-    adminPhone: challenge.adminPhone,
-    expiresAt,
-  });
+  await putSecuritySession<AdminSessionPayload>(
+    ADMIN_ELEVATED_NS,
+    elevatedToken,
+    {
+      userId: verifiedAdmin.userId,
+      adminPhone: challenge.adminPhone,
+    },
+    ADMIN_ELEVATED_TTL_MS,
+  );
 
   await recordAdminLogin(challenge.adminPhone, req.ip || "127.0.0.1");
 
@@ -862,16 +882,16 @@ router.get("/admin/auth/elevation-status", async (req: Request, res: Response) =
     return res.json({ elevated: false });
   }
 
-  const session = activeElevatedSessions.get(elevatedToken);
-  if (!session || Date.now() > session.expiresAt || session.userId !== verifiedAdmin.userId) {
-    if (session && Date.now() > session.expiresAt) activeElevatedSessions.delete(elevatedToken);
+  const session = await getSecuritySession<AdminSessionPayload>(ADMIN_ELEVATED_NS, elevatedToken);
+  if (!session || Date.now() > session.expiresAt || session.payload.userId !== verifiedAdmin.userId) {
+    if (session && Date.now() > session.expiresAt) await deleteSecuritySession(ADMIN_ELEVATED_NS, elevatedToken);
     return res.json({ elevated: false });
   }
 
   const remainingSeconds = Math.max(0, Math.floor((session.expiresAt - Date.now()) / 1000));
   return res.json({
     elevated: true,
-    phone: session.adminPhone,
+    phone: session.payload.adminPhone,
     remainingSeconds,
   });
 });
@@ -880,9 +900,9 @@ router.post("/admin/auth/lock", async (req: Request, res: Response) => {
   const verifiedAdmin = await resolveVerifiedAdmin(req);
   const elevatedToken = req.header("x-admin-session-token");
   if (verifiedAdmin && elevatedToken) {
-    const session = activeElevatedSessions.get(elevatedToken);
-    if (session && session.userId === verifiedAdmin.userId) {
-      activeElevatedSessions.delete(elevatedToken);
+    const session = await getSecuritySession<AdminSessionPayload>(ADMIN_ELEVATED_NS, elevatedToken);
+    if (session && session.payload.userId === verifiedAdmin.userId) {
+      await deleteSecuritySession(ADMIN_ELEVATED_NS, elevatedToken);
     }
   }
   return res.json({ success: true, locked: true, message: "Administrative console locked." });
@@ -2210,14 +2230,11 @@ router.post("/admin/settings/update", requirePermission("settings.manage"), asyn
     }
     const candidate = incoming.tatum_webhook_url.trim();
     if (candidate) {
-      try {
-        const parsed = new URL(candidate);
-        if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-          return res.status(400).json({ error: "Tatum Webhook URL must start with https:// or http://." });
-        }
-      } catch {
-        return res.status(400).json({ error: "Please enter a valid URL (e.g. https://your-domain.com/api/crypto/webhooks/tatum)." });
+      const check = validatePublicWebhookUrl(candidate);
+      if (!check.ok) {
+        return res.status(400).json({ error: check.error });
       }
+      incoming.tatum_webhook_url = check.url;
     }
   }
 

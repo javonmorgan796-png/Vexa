@@ -1141,10 +1141,404 @@ GRANT EXECUTE ON FUNCTION public.process_tatum_crypto_deposit(
   TEXT, UUID, TEXT, TEXT, TEXT, TEXT, NUMERIC, INTEGER, INTEGER
 ) TO service_role;
 
--- Defense-in-depth: deny-by-default lockdown of EVERY SECURITY DEFINER function
--- in public schema (including legacy/live-only functions such as
--- credit_external_crypto_deposit and record_tatum_crypto_deposit_failure),
--- leaving ONLY the 3 client login-lockout helpers accessible to clients.
+-- ── 10. Distributed Security Tables, Atomic Telecom/Business RPCs & Full Lockdown ──
+
+-- Fix redeem_cashback_srv (lock rows with FOR UPDATE before summing)
+CREATE OR REPLACE FUNCTION public.redeem_cashback_srv(p_user_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_profile public.profiles;
+  v_cb RECORD;
+  v_redeemed NUMERIC := 0;
+  v_new_balance NUMERIC := 0;
+BEGIN
+  IF p_user_id IS NULL THEN
+    RAISE EXCEPTION 'User ID required';
+  END IF;
+
+  SELECT * INTO v_profile FROM public.profiles WHERE id = p_user_id FOR UPDATE;
+  IF v_profile.id IS NULL THEN
+    RAISE EXCEPTION 'User profile not found';
+  END IF;
+
+  FOR v_cb IN
+    SELECT id, earned
+    FROM public.cashback_history
+    WHERE user_id = p_user_id AND status = 'cleared'
+    FOR UPDATE
+  LOOP
+    v_redeemed := ROUND((v_redeemed + GREATEST(0, COALESCE(v_cb.earned, 0)))::NUMERIC, 2);
+  END LOOP;
+
+  IF v_redeemed <= 0 THEN
+    RAISE EXCEPTION 'No cleared cashback available to redeem';
+  END IF;
+
+  UPDATE public.cashback_history
+  SET status = 'redeemed'
+  WHERE user_id = p_user_id AND status = 'cleared';
+
+  UPDATE public.profiles
+  SET balance = balance + v_redeemed
+  WHERE id = p_user_id
+  RETURNING balance INTO v_new_balance;
+
+  INSERT INTO public.transactions (user_id, type, name, amount, note)
+  VALUES (p_user_id, 'in', 'Cashback Redemption', v_redeemed, 'Redeemed cleared cashback rewards to Vexa balance');
+
+  INSERT INTO public.notifications (user_id, type, title, body, read)
+  VALUES (
+    p_user_id,
+    'credit',
+    'Cashback Redeemed',
+    '₦' || to_char(v_redeemed, 'FM999G999G999G990D00') || ' cashback was added to your Vexa balance.',
+    false
+  );
+
+  RETURN jsonb_build_object('balance', v_new_balance, 'redeemed', v_redeemed);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.redeem_cashback_srv(UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.redeem_cashback_srv(UUID) TO service_role;
+
+-- Distributed rate-limit bucket storage (persists across Cloud Run instances & restarts)
+CREATE TABLE IF NOT EXISTS public.api_rate_limits (
+  bucket_key  TEXT PRIMARY KEY,
+  hit_count   INTEGER NOT NULL DEFAULT 1 CHECK (hit_count >= 0),
+  reset_at    TIMESTAMPTZ NOT NULL,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS api_rate_limits_reset_idx
+  ON public.api_rate_limits(reset_at);
+
+ALTER TABLE public.api_rate_limits ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.api_rate_limits FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.api_rate_limits TO service_role;
+
+DROP POLICY IF EXISTS "Service role full access on api_rate_limits" ON public.api_rate_limits;
+CREATE POLICY "Service role full access on api_rate_limits"
+  ON public.api_rate_limits FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+
+CREATE OR REPLACE FUNCTION public.consume_rate_limit_srv(
+  p_bucket_key TEXT,
+  p_max_hits INTEGER,
+  p_window_seconds INTEGER
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_now TIMESTAMPTZ := NOW();
+  v_window_sec INTEGER := GREATEST(1, COALESCE(p_window_seconds, 60));
+  v_max INTEGER := GREATEST(1, COALESCE(p_max_hits, 10));
+  v_row public.api_rate_limits;
+  v_retry INTEGER;
+BEGIN
+  IF p_bucket_key IS NULL OR trim(p_bucket_key) = '' THEN
+    RAISE EXCEPTION 'Bucket key required';
+  END IF;
+
+  INSERT INTO public.api_rate_limits (bucket_key, hit_count, reset_at, updated_at)
+  VALUES (p_bucket_key, 1, v_now + make_interval(secs => v_window_sec), v_now)
+  ON CONFLICT (bucket_key) DO UPDATE SET
+    hit_count = CASE
+      WHEN public.api_rate_limits.reset_at <= v_now THEN 1
+      ELSE public.api_rate_limits.hit_count + 1
+    END,
+    reset_at = CASE
+      WHEN public.api_rate_limits.reset_at <= v_now THEN v_now + make_interval(secs => v_window_sec)
+      ELSE public.api_rate_limits.reset_at
+    END,
+    updated_at = v_now
+  RETURNING * INTO v_row;
+
+  v_retry := GREATEST(1, CEIL(EXTRACT(EPOCH FROM (v_row.reset_at - v_now)))::INTEGER);
+  RETURN jsonb_build_object(
+    'allowed', v_row.hit_count <= v_max,
+    'count', v_row.hit_count,
+    'retry_after_seconds', v_retry
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.consume_rate_limit_srv(TEXT, INTEGER, INTEGER) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.consume_rate_limit_srv(TEXT, INTEGER, INTEGER) TO service_role;
+
+-- Distributed SHA-256 hashed ephemeral session/challenge store (Admin 2FA, OTP, Reset tokens)
+CREATE TABLE IF NOT EXISTS public.auth_security_sessions (
+  token_hash  TEXT PRIMARY KEY,
+  namespace   TEXT NOT NULL,
+  payload     JSONB NOT NULL DEFAULT '{}'::jsonb,
+  expires_at  TIMESTAMPTZ NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS auth_security_sessions_expires_idx
+  ON public.auth_security_sessions(expires_at);
+
+ALTER TABLE public.auth_security_sessions ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.auth_security_sessions FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.auth_security_sessions TO service_role;
+
+DROP POLICY IF EXISTS "Service role full access on auth_security_sessions" ON public.auth_security_sessions;
+CREATE POLICY "Service role full access on auth_security_sessions"
+  ON public.auth_security_sessions FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+
+-- Atomic single-transaction telecom airtime/data settlement
+CREATE OR REPLACE FUNCTION public.telecom_purchase_srv(
+  p_user_id UUID,
+  p_product_type TEXT,
+  p_network_name TEXT,
+  p_phone TEXT,
+  p_data_bundle TEXT,
+  p_amount NUMERIC,
+  p_use_cashback BOOLEAN DEFAULT FALSE
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_profile public.profiles;
+  v_sec public.account_security_state;
+  v_cb RECORD;
+  v_total_cleared NUMERIC := 0;
+  v_cashback_used NUMERIC := 0;
+  v_payable NUMERIC := 0;
+  v_remaining NUMERIC := 0;
+  v_row_earned NUMERIC := 0;
+  v_leftover NUMERIC := 0;
+  v_cashback_earned NUMERIC := 0;
+  v_new_balance NUMERIC := 0;
+  v_clean_network TEXT := left(trim(coalesce(p_network_name, '')), 40);
+  v_clean_phone TEXT := regexp_replace(coalesce(p_phone, ''), '\D', '', 'g');
+  v_clean_bundle TEXT := left(trim(coalesce(p_data_bundle, '')), 80);
+  v_amount NUMERIC := ROUND(COALESCE(p_amount, 0)::NUMERIC, 2);
+  v_date_label TEXT := to_char(NOW(), 'DD Mon YYYY');
+  v_tx_name TEXT;
+  v_note TEXT;
+  v_notif_title TEXT;
+  v_notif_body TEXT;
+BEGIN
+  IF p_user_id IS NULL THEN RAISE EXCEPTION 'User ID required'; END IF;
+  IF p_product_type NOT IN ('airtime', 'data') THEN RAISE EXCEPTION 'Invalid telecom product type'; END IF;
+  IF v_clean_network = '' THEN RAISE EXCEPTION 'Please select a network provider'; END IF;
+  IF length(v_clean_phone) < 10 OR length(v_clean_phone) > 13 THEN RAISE EXCEPTION 'Enter a valid recipient mobile number'; END IF;
+  IF v_amount <= 0 OR v_amount > 500000 THEN RAISE EXCEPTION 'Enter a valid purchase amount'; END IF;
+
+  SELECT * INTO v_profile FROM public.profiles WHERE id = p_user_id FOR UPDATE;
+  IF v_profile.id IS NULL THEN RAISE EXCEPTION 'User profile not found'; END IF;
+  IF COALESCE(v_profile.is_suspended, false) THEN RAISE EXCEPTION 'Your Vexa account is currently suspended'; END IF;
+
+  SELECT * INTO v_sec FROM public.account_security_state WHERE user_id = p_user_id;
+  IF v_sec.user_id IS NOT NULL THEN
+    IF COALESCE(v_sec.freeze_active, false) THEN RAISE EXCEPTION 'Freeze Account is active. Money movement is blocked.'; END IF;
+    IF COALESCE(v_sec.sleep_mode_active, false) THEN RAISE EXCEPTION 'Sleep Mode is active. Money movement is blocked.'; END IF;
+  END IF;
+
+  IF COALESCE(p_use_cashback, false) THEN
+    FOR v_cb IN
+      SELECT id, earned
+      FROM public.cashback_history
+      WHERE user_id = p_user_id AND status = 'cleared'
+      ORDER BY created_at ASC
+      FOR UPDATE
+    LOOP
+      v_total_cleared := ROUND((v_total_cleared + GREATEST(0, COALESCE(v_cb.earned, 0)))::NUMERIC, 2);
+    END LOOP;
+    v_cashback_used := ROUND(LEAST(v_amount, v_total_cleared)::NUMERIC, 2);
+  END IF;
+
+  v_payable := ROUND(GREATEST(0, v_amount - v_cashback_used)::NUMERIC, 2);
+  IF v_profile.balance < v_payable THEN
+    RAISE EXCEPTION 'Insufficient wallet balance for this purchase';
+  END IF;
+
+  v_new_balance := ROUND((v_profile.balance - v_payable)::NUMERIC, 2);
+  IF v_payable > 0 THEN
+    UPDATE public.profiles
+    SET balance = v_new_balance
+    WHERE id = p_user_id;
+  END IF;
+
+  IF v_cashback_used > 0 THEN
+    v_remaining := v_cashback_used;
+    FOR v_cb IN
+      SELECT id, earned
+      FROM public.cashback_history
+      WHERE user_id = p_user_id AND status = 'cleared'
+      ORDER BY created_at ASC
+    LOOP
+      EXIT WHEN v_remaining <= 0;
+      v_row_earned := ROUND(GREATEST(0, COALESCE(v_cb.earned, 0))::NUMERIC, 2);
+      CONTINUE WHEN v_row_earned <= 0;
+
+      IF v_row_earned <= v_remaining + 0.001 THEN
+        UPDATE public.cashback_history SET status = 'redeemed' WHERE id = v_cb.id;
+        v_remaining := ROUND(GREATEST(0, v_remaining - v_row_earned)::NUMERIC, 2);
+      ELSE
+        v_leftover := ROUND((v_row_earned - v_remaining)::NUMERIC, 2);
+        UPDATE public.cashback_history SET earned = v_leftover WHERE id = v_cb.id;
+        INSERT INTO public.cashback_history (user_id, description, date, rate, earned, status)
+        VALUES (
+          p_user_id,
+          'Applied to ' || v_clean_network || ' ' || CASE WHEN p_product_type = 'data' THEN 'Data' ELSE 'Airtime' END || ' (' || v_clean_phone || ')',
+          v_date_label,
+          'Applied',
+          v_remaining,
+          'redeemed'
+        );
+        v_remaining := 0;
+      END IF;
+    END LOOP;
+  END IF;
+
+  v_cashback_earned := ROUND((v_amount * 0.05)::NUMERIC, 2);
+  IF v_cashback_earned > 0 THEN
+    INSERT INTO public.cashback_history (user_id, description, date, rate, earned, status)
+    VALUES (
+      p_user_id,
+      v_clean_network || ' ' || CASE WHEN p_product_type = 'data' THEN 'Data' ELSE 'Airtime' END || ' · ' || v_clean_phone,
+      v_date_label,
+      '5%',
+      v_cashback_earned,
+      'cleared'
+    );
+  END IF;
+
+  v_tx_name := v_clean_network || ' ' || CASE WHEN p_product_type = 'data' THEN 'Mobile Data' ELSE 'Airtime' END;
+  v_note := concat_ws(
+    ' · ',
+    CASE WHEN p_product_type = 'data' AND v_clean_bundle <> '' THEN v_clean_bundle ELSE NULL END,
+    v_clean_phone,
+    CASE WHEN v_cashback_used > 0 THEN 'Cashback used -₦' || to_char(v_cashback_used, 'FM999G999G990D00') ELSE NULL END
+  );
+
+  INSERT INTO public.transactions (user_id, type, name, amount, note)
+  VALUES (p_user_id, 'out', v_tx_name, v_payable, v_note);
+
+  v_notif_title := CASE
+    WHEN p_product_type = 'data' THEN v_clean_network || ' Data Activated'
+    ELSE v_clean_network || ' Airtime Sent'
+  END;
+  v_notif_body := CASE
+    WHEN p_product_type = 'data' THEN COALESCE(NULLIF(v_clean_bundle, ''), '₦' || to_char(v_amount, 'FM999G999G990D00') || ' data') || ' sent to ' || v_clean_phone
+    ELSE '₦' || to_char(v_amount, 'FM999G999G990D00') || ' airtime sent to ' || v_clean_phone
+  END || '. Paid ₦' || to_char(v_payable, 'FM999G999G990D00')
+    || CASE WHEN v_cashback_used > 0 THEN ' (₦' || to_char(v_cashback_used, 'FM999G999G990D00') || ' cashback used)' ELSE '' END
+    || CASE WHEN v_cashback_earned > 0 THEN ' · +₦' || to_char(v_cashback_earned, 'FM999G999G990D00') || ' cashback earned' ELSE '' END
+    || '.';
+
+  INSERT INTO public.notifications (user_id, type, title, body, read)
+  VALUES (p_user_id, 'debit', v_notif_title, v_notif_body, false);
+
+  RETURN jsonb_build_object(
+    'new_balance', v_new_balance,
+    'payable_amount', v_payable,
+    'cashback_used', v_cashback_used,
+    'cashback_earned', v_cashback_earned
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.telecom_purchase_srv(UUID, TEXT, TEXT, TEXT, TEXT, NUMERIC, BOOLEAN) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.telecom_purchase_srv(UUID, TEXT, TEXT, TEXT, TEXT, NUMERIC, BOOLEAN) TO service_role;
+
+-- Atomic single-transaction business debit (payroll, transfers, business bills)
+CREATE OR REPLACE FUNCTION public.debit_business_balance_srv(
+  p_owner_id UUID,
+  p_business_id UUID,
+  p_amount NUMERIC,
+  p_description TEXT,
+  p_category TEXT,
+  p_reference TEXT,
+  p_enforce_limit BOOLEAN DEFAULT FALSE
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_profile public.profiles;
+  v_sec public.account_security_state;
+  v_biz public.business_accounts;
+  v_tx public.business_transactions;
+  v_amount NUMERIC := ROUND(COALESCE(p_amount, 0)::NUMERIC, 2);
+  v_new_balance NUMERIC := 0;
+BEGIN
+  IF p_owner_id IS NULL OR p_business_id IS NULL THEN RAISE EXCEPTION 'Invalid business owner context'; END IF;
+  IF v_amount <= 0 THEN RAISE EXCEPTION 'Enter a valid amount'; END IF;
+  IF p_category NOT IN ('payroll', 'transfer', 'bills', 'other') THEN RAISE EXCEPTION 'Invalid transaction category'; END IF;
+
+  SELECT * INTO v_profile FROM public.profiles WHERE id = p_owner_id FOR UPDATE;
+  IF v_profile.id IS NULL THEN RAISE EXCEPTION 'User profile not found'; END IF;
+  IF COALESCE(v_profile.is_suspended, false) THEN RAISE EXCEPTION 'Your Vexa account is currently suspended'; END IF;
+
+  SELECT * INTO v_sec FROM public.account_security_state WHERE user_id = p_owner_id;
+  IF v_sec.user_id IS NOT NULL THEN
+    IF COALESCE(v_sec.freeze_active, false) THEN RAISE EXCEPTION 'Freeze Account is active. Money movement is blocked.'; END IF;
+    IF COALESCE(v_sec.sleep_mode_active, false) THEN RAISE EXCEPTION 'Sleep Mode is active. Money movement is blocked.'; END IF;
+  END IF;
+
+  SELECT * INTO v_biz
+  FROM public.business_accounts
+  WHERE id = p_business_id AND owner_id = p_owner_id
+  FOR UPDATE;
+
+  IF v_biz.id IS NULL THEN
+    RAISE EXCEPTION 'Business account not found';
+  END IF;
+
+  IF COALESCE(p_enforce_limit, false) AND v_amount > COALESCE(v_biz.transaction_limit, 5000000) THEN
+    RAISE EXCEPTION 'Amount exceeds your business transaction limit';
+  END IF;
+
+  IF v_biz.balance < v_amount THEN
+    RAISE EXCEPTION 'Insufficient business balance';
+  END IF;
+
+  v_new_balance := ROUND((v_biz.balance - v_amount)::NUMERIC, 2);
+  UPDATE public.business_accounts
+  SET balance = v_new_balance
+  WHERE id = v_biz.id;
+
+  INSERT INTO public.business_transactions (business_id, type, description, amount, category, reference)
+  VALUES (
+    v_biz.id,
+    'debit',
+    left(coalesce(nullif(trim(p_description), ''), 'Business debit'), 160),
+    v_amount,
+    p_category,
+    left(coalesce(nullif(trim(p_reference), ''), 'VBX'), 64)
+  )
+  RETURNING * INTO v_tx;
+
+  RETURN jsonb_build_object(
+    'balance', v_new_balance,
+    'transaction', to_jsonb(v_tx)
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.debit_business_balance_srv(UUID, UUID, NUMERIC, TEXT, TEXT, TEXT, BOOLEAN) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.debit_business_balance_srv(UUID, UUID, NUMERIC, TEXT, TEXT, TEXT, BOOLEAN) TO service_role;
+
+-- Defense-in-depth: 100% deny-by-default lockdown of EVERY SECURITY DEFINER
+-- function in public schema (now including check_login_lockout,
+-- record_login_failure, and clear_login_lockout since login is server-proxied).
 REVOKE ALL ON FUNCTION public.protect_profile_privileged_columns() FROM PUBLIC, anon, authenticated;
 
 DO $$
@@ -1160,11 +1554,6 @@ BEGIN
     JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'public'
       AND p.prosecdef = true
-      AND p.proname NOT IN (
-        'check_login_lockout',
-        'record_login_failure',
-        'clear_login_lockout'
-      )
   LOOP
     BEGIN
       EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon, authenticated', fn.sig);

@@ -1,70 +1,32 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { verifyUserTransactionPin } from "../lib/pinSecurity";
 import { pinRateLimiter } from "../lib/rateLimit";
+import {
+  extractBearerToken,
+  isSupabaseAdminConfigured,
+  supabaseRest,
+  supabaseRpc,
+  verifySupabaseUser,
+} from "../lib/supabaseAdmin";
 
 const router: IRouter = Router();
-const SUPABASE_URL = (process.env["SUPABASE_URL"] || process.env["VITE_SUPABASE_URL"] || "").replace(/\/$/, "");
-const SUPABASE_SERVICE_ROLE_KEY = process.env["SUPABASE_SERVICE_ROLE_KEY"]?.trim();
-
-function extractBearer(req: Request): string {
-  const value = req.header("authorization") ?? "";
-  return value.startsWith("Bearer ") ? value.slice(7).trim() : "";
-}
-
-async function getAuthenticatedUserId(token: string): Promise<string | null> {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !token) return null;
-  const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-    headers: {
-      apikey: SUPABASE_SERVICE_ROLE_KEY,
-      Authorization: `Bearer ${token}`,
-    },
-  });
-  if (!response.ok) return null;
-  const body = (await response.json().catch(() => null)) as { id?: string } | null;
-  return body?.id ?? null;
-}
-
-async function supabaseRest(path: string, init: RequestInit = {}) {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error("Database storage is not configured");
-  }
-  return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    ...init,
-    headers: {
-      apikey: SUPABASE_SERVICE_ROLE_KEY,
-      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-      "Content-Type": "application/json",
-      ...(init.headers ?? {}),
-    },
-  });
-}
 
 function roundMoney(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
-function formatNaira(value: number): string {
-  return roundMoney(value).toLocaleString("en-NG", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
-function formatCashbackDate(): string {
-  return new Date().toLocaleDateString("en-NG", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
 router.post("/telecom/purchase", pinRateLimiter, async (req: Request, res: Response) => {
   try {
-    const token = extractBearer(req);
-    const userId = await getAuthenticatedUserId(token);
-    if (!userId) {
+    if (!isSupabaseAdminConfigured()) {
+      return res.status(503).json({ message: "Database storage is not configured." });
+    }
+
+    const token = extractBearerToken(req);
+    const verifiedUser = await verifySupabaseUser(token);
+    if (!verifiedUser) {
       return res.status(401).json({ message: "Your session has expired. Please sign in again." });
     }
+    const userId = verifiedUser.id;
 
     const {
       productType,
@@ -97,10 +59,27 @@ router.post("/telecom/purchase", pinRateLimiter, async (req: Request, res: Respo
 
     const cleanBundle = typeof dataBundle === "string" ? dataBundle.trim().slice(0, 80) : "";
 
-    // 1. Check account security lock state
-    const secResp = await supabaseRest(
-      `account_security_state?user_id=eq.${encodeURIComponent(userId)}&select=sleep_mode_active,freeze_active&limit=1`,
-    );
+    // 1. Pre-check profile existence, suspension, and account security lock state
+    const [profileResp, secResp] = await Promise.all([
+      supabaseRest(`profiles?id=eq.${encodeURIComponent(userId)}&select=id,is_suspended&limit=1`),
+      supabaseRest(`account_security_state?user_id=eq.${encodeURIComponent(userId)}&select=sleep_mode_active,freeze_active&limit=1`),
+    ]);
+
+    if (!profileResp.ok) {
+      return res.status(503).json({ message: "Could not load your account profile." });
+    }
+    const profileRows = (await profileResp.json().catch(() => [])) as Array<{
+      id: string;
+      is_suspended?: boolean;
+    }>;
+    const profile = profileRows[0];
+    if (!profile) {
+      return res.status(404).json({ message: "User profile not found." });
+    }
+    if (profile.is_suspended) {
+      return res.status(403).json({ message: "Your Vexa account is currently suspended." });
+    }
+
     if (secResp.ok) {
       const secRows = (await secResp.json().catch(() => [])) as Array<{
         sleep_mode_active?: boolean;
@@ -114,23 +93,7 @@ router.post("/telecom/purchase", pinRateLimiter, async (req: Request, res: Respo
       }
     }
 
-    // 2. Load user's profile balance
-    const profileResp = await supabaseRest(
-      `profiles?id=eq.${encodeURIComponent(userId)}&select=id,balance&limit=1`,
-    );
-    if (!profileResp.ok) {
-      return res.status(503).json({ message: "Could not load your account profile." });
-    }
-    const profileRows = (await profileResp.json().catch(() => [])) as Array<{
-      id: string;
-      balance: number | string;
-    }>;
-    const profile = profileRows[0];
-    if (!profile) {
-      return res.status(404).json({ message: "User profile not found." });
-    }
-
-    // 3. Verify hashed transaction PIN with lockout enforcement
+    // 2. Verify hashed transaction PIN with lockout enforcement
     const pinCheck = await verifyUserTransactionPin(userId, pin);
     if (!pinCheck.ok) {
       return res.status(pinCheck.nowLocked ? 429 : 422).json({
@@ -138,152 +101,60 @@ router.post("/telecom/purchase", pinRateLimiter, async (req: Request, res: Respo
       });
     }
 
-    // 4. Read redeemable ("cleared") cashback rows
-    const shouldUseCashback = Boolean(useCashback);
-    let cashbackRows: Array<{ id: string; earned: number | string }> = [];
-    if (shouldUseCashback) {
-      const cbResp = await supabaseRest(
-        `cashback_history?user_id=eq.${encodeURIComponent(userId)}&status=eq.cleared&select=id,earned&order=created_at.asc`,
-      );
-      if (!cbResp.ok) {
-        return res.status(503).json({ message: "Could not read your cashback balance." });
-      }
-      cashbackRows = (await cbResp.json().catch(() => [])) as Array<{
-        id: string;
-        earned: number | string;
-      }>;
-    }
-
-    const totalClearedCashback = roundMoney(
-      cashbackRows.reduce((sum, row) => sum + Math.max(0, Number(row.earned) || 0), 0),
-    );
-    const cashbackUsed = shouldUseCashback
-      ? roundMoney(Math.min(numAmount, totalClearedCashback))
-      : 0;
-    const payableAmount = roundMoney(Math.max(0, numAmount - cashbackUsed));
-
-    const currentBalance = Number(profile.balance ?? 0);
-    if (payableAmount > currentBalance) {
-      return res.status(400).json({ message: "Insufficient wallet balance for this purchase." });
-    }
-
-    // 5. Optimistically debit wallet balance (CAS on current balance)
-    const newBalance = roundMoney(currentBalance - payableAmount);
-    if (payableAmount > 0) {
-      const debitResp = await supabaseRest(
-        `profiles?id=eq.${encodeURIComponent(userId)}&balance=eq.${encodeURIComponent(String(profile.balance))}`,
-        {
-          method: "PATCH",
-          headers: { Prefer: "return=representation" },
-          body: JSON.stringify({ balance: newBalance }),
-        },
-      );
-      if (!debitResp.ok) {
-        return res.status(503).json({ message: "Could not debit your wallet balance." });
-      }
-      const updatedProfiles = (await debitResp.json().catch(() => [])) as Array<{ id: string }>;
-      if (updatedProfiles.length === 0) {
-        return res.status(409).json({ message: "Your balance changed. Please try again." });
-      }
-    }
-
-    // 6. Consume applied cashback from cleared rows
-    const dateLabel = formatCashbackDate();
-    if (cashbackUsed > 0) {
-      let remainingToConsume = cashbackUsed;
-      for (const row of cashbackRows) {
-        if (remainingToConsume <= 0) break;
-        const rowEarned = roundMoney(Math.max(0, Number(row.earned) || 0));
-        if (rowEarned <= 0) continue;
-
-        if (rowEarned <= remainingToConsume + 0.001) {
-          await supabaseRest(`cashback_history?id=eq.${encodeURIComponent(row.id)}`, {
-            method: "PATCH",
-            body: JSON.stringify({ status: "redeemed" }),
-          });
-          remainingToConsume = roundMoney(Math.max(0, remainingToConsume - rowEarned));
-        } else {
-          const leftover = roundMoney(rowEarned - remainingToConsume);
-          await supabaseRest(`cashback_history?id=eq.${encodeURIComponent(row.id)}`, {
-            method: "PATCH",
-            body: JSON.stringify({ earned: leftover }),
-          });
-          await supabaseRest("cashback_history", {
-            method: "POST",
-            body: JSON.stringify({
-              user_id: userId,
-              description: `Applied to ${cleanNetwork} ${productType === "data" ? "Data" : "Airtime"} (${cleanPhone})`,
-              date: dateLabel,
-              rate: "Applied",
-              earned: remainingToConsume,
-              status: "redeemed",
-            }),
-          });
-          remainingToConsume = 0;
-        }
-      }
-    }
-
-    // 7. Credit 5% cashback reward on the purchase
-    const cashbackEarned = roundMoney(numAmount * 0.05);
-    if (cashbackEarned > 0) {
-      await supabaseRest("cashback_history", {
-        method: "POST",
-        body: JSON.stringify({
-          user_id: userId,
-          description: `${cleanNetwork} ${productType === "data" ? "Data" : "Airtime"} · ${cleanPhone}`,
-          date: dateLabel,
-          rate: "5%",
-          earned: cashbackEarned,
-          status: "cleared",
-        }),
-      });
-    }
-
-    // 8. Record transaction history
-    const txName = `${cleanNetwork} ${productType === "data" ? "Mobile Data" : "Airtime"}`;
-    const noteParts = [
-      productType === "data" && cleanBundle ? cleanBundle : null,
-      cleanPhone,
-      cashbackUsed > 0 ? `Cashback used -₦${formatNaira(cashbackUsed)}` : null,
-    ].filter(Boolean);
-
-    await supabaseRest("transactions", {
-      method: "POST",
-      body: JSON.stringify({
-        user_id: userId,
-        type: "out",
-        name: txName,
-        amount: payableAmount,
-        note: noteParts.join(" · "),
-      }),
+    // 3. Execute single atomic database transaction via service_role RPC (fails closed if missing)
+    const rpcResp = await supabaseRpc("telecom_purchase_srv", {
+      p_user_id: userId,
+      p_product_type: productType,
+      p_network_name: cleanNetwork,
+      p_phone: cleanPhone,
+      p_data_bundle: cleanBundle,
+      p_amount: numAmount,
+      p_use_cashback: Boolean(useCashback),
     });
 
-    // 9. Record user notification
-    const notifTitle =
-      productType === "data" ? `${cleanNetwork} Data Activated` : `${cleanNetwork} Airtime Sent`;
-    const notifBody =
-      productType === "data"
-        ? `${cleanBundle || `₦${formatNaira(numAmount)} data`} sent to ${cleanPhone}. Paid ₦${formatNaira(payableAmount)}${cashbackUsed > 0 ? ` (₦${formatNaira(cashbackUsed)} cashback used)` : ""}${cashbackEarned > 0 ? ` · +₦${formatNaira(cashbackEarned)} cashback earned` : ""}.`
-        : `₦${formatNaira(numAmount)} airtime sent to ${cleanPhone}. Paid ₦${formatNaira(payableAmount)}${cashbackUsed > 0 ? ` (₦${formatNaira(cashbackUsed)} cashback used)` : ""}${cashbackEarned > 0 ? ` · +₦${formatNaira(cashbackEarned)} cashback earned` : ""}.`;
+    if (!rpcResp.ok) {
+      const errBody = (await rpcResp.json().catch(() => null)) as {
+        message?: string;
+        code?: string;
+        details?: string;
+      } | null;
+      const errMsg = errBody?.message || "Could not complete purchase.";
+      const lower = errMsg.toLowerCase();
 
-    await supabaseRest("notifications", {
-      method: "POST",
-      body: JSON.stringify({
-        user_id: userId,
-        type: "debit",
-        title: notifTitle,
-        body: notifBody,
-        read: false,
-      }),
-    });
+      if (
+        rpcResp.status === 404 ||
+        errBody?.code === "PGRST202" ||
+        errBody?.code === "42883" ||
+        lower.includes("could not find the function")
+      ) {
+        req.log?.error({ err: errBody }, "telecom_purchase_srv RPC is not provisioned");
+        return res.status(503).json({
+          message: "Atomic telecom settlement RPC is not provisioned yet. Please run supabase-security-migration.sql.",
+        });
+      }
+
+      if (lower.includes("suspended") || lower.includes("freeze") || lower.includes("sleep")) {
+        return res.status(403).json({ message: errMsg });
+      }
+      if (lower.includes("insufficient") || lower.includes("invalid") || lower.includes("valid")) {
+        return res.status(400).json({ message: errMsg });
+      }
+      return res.status(422).json({ message: errMsg });
+    }
+
+    const data = (await rpcResp.json().catch(() => null)) as {
+      new_balance?: number;
+      payable_amount?: number;
+      cashback_used?: number;
+      cashback_earned?: number;
+    } | null;
 
     return res.json({
       success: true,
-      newBalance,
-      payableAmount,
-      cashbackUsed,
-      cashbackEarned,
+      newBalance: Number(data?.new_balance ?? 0),
+      payableAmount: Number(data?.payable_amount ?? 0),
+      cashbackUsed: Number(data?.cashback_used ?? 0),
+      cashbackEarned: Number(data?.cashback_earned ?? 0),
     });
   } catch (error) {
     req.log?.error({ err: error }, "telecom purchase failed");
