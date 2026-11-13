@@ -52,6 +52,7 @@ interface ForgotChallenge {
   expiresAt: number;
   attempts: number;
   demo?: boolean;
+  dummy?: boolean;
 }
 
 interface ResetTokenRecord {
@@ -322,9 +323,12 @@ async function findUserByPhone(rawPhone: string): Promise<AccountLookupResult | 
     }
   }
 
-  // Fallback: inspect Supabase Auth users if profile phone formatting differed
-  const authRes = await supabaseAdminFetch(`/auth/v1/admin/users?page=1&per_page=1000`);
-  if (authRes.ok) {
+  // Targeted Auth lookup only if profile phone formatting differed (never scan 1000 users)
+  for (const filterVal of [localPhone, national].filter(Boolean)) {
+    const authRes = await supabaseAdminFetch(
+      `/auth/v1/admin/users?filter=${encodeURIComponent(filterVal)}&page=1&per_page=10`,
+    );
+    if (!authRes.ok) continue;
     const payload = (await authRes.json().catch(() => null)) as {
       users?: Array<{ id?: string; email?: string; phone?: string; user_metadata?: { phone?: string } }>;
     } | null;
@@ -449,7 +453,31 @@ router.post("/auth/forgot-passcode/send-otp", otpRateLimiter, async (req, res) =
   }
 
   if (!account) {
-    res.status(404).json({ message: "No Vexa account was found with this phone number" });
+    // Anti-enumeration: issue an indistinguishable dummy challenge so callers
+    // cannot determine whether a phone number is registered with Vexa.
+    const requestId = `otp-${randomUUID()}`;
+    await putSecuritySession<ForgotChallenge>(
+      FORGOT_CHALLENGE_NS,
+      requestId,
+      {
+        requestId,
+        mode: "otp",
+        userId: "00000000-0000-0000-0000-000000000000",
+        localPhone,
+        recipient,
+        expiresAt: now + CHALLENGE_TTL_MS,
+        attempts: 0,
+        dummy: true,
+      },
+      CHALLENGE_TTL_MS,
+    );
+    await recordPhoneOtpCooldownAndWindow(localPhone);
+    res.json({
+      mode: "otp",
+      requestId,
+      expiresInSeconds: CHALLENGE_TTL_MS / 1000,
+      maskedPhone: maskPhone(localPhone),
+    });
     return;
   }
 
@@ -592,7 +620,9 @@ router.post("/auth/forgot-passcode/verify-otp", authRateLimiter, async (req, res
 
   try {
     let verified = false;
-    if (challenge.demo && DEMO_OTP_ENABLED) {
+    if (challenge.dummy) {
+      verified = false;
+    } else if (challenge.demo && DEMO_OTP_ENABLED) {
       verified = safeEqualText(code, DEMO_OTP_CODE);
     } else {
       const body = await termiiRequest("verify", { pin_id: requestId, pin: code });

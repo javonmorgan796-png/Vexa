@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useLocation } from 'wouter';
+import { AnimatePresence } from 'framer-motion';
 import { useBusiness } from '@/context/BusinessContext';
+import { BusinessPinModal } from '@/components/business/BusinessPinModal';
 
 function fmt(n: number) { return '₦' + n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
@@ -25,6 +27,7 @@ export default function BusinessBills() {
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
   const [processing, setProcessing] = useState(false);
+  const [showPinModal, setShowPinModal] = useState(false);
 
   function handlePay() {
     setError('');
@@ -35,7 +38,13 @@ export default function BusinessBills() {
     setStep('confirm');
   }
 
-  async function handleConfirm() {
+  function handleConfirmClick() {
+    setError('');
+    setShowPinModal(true);
+  }
+
+  async function handleConfirmWithPin(pin: string) {
+    setShowPinModal(false);
     const num = parseFloat(amount);
     setProcessing(true);
     setError('');
@@ -43,6 +52,7 @@ export default function BusinessBills() {
       categoryLabel: selectedCat?.label || 'Bill',
       provider,
       amount: num,
+      pin,
     });
     setProcessing(false);
     if (!res.success) {
@@ -164,7 +174,7 @@ export default function BusinessBills() {
             </div>
             <div className="flex gap-3">
               <button onClick={() => setStep('details')} className="flex-1 h-[52px] rounded-xl border-2 border-[#E2E8F0] text-[#555] text-[14px] font-semibold">Back</button>
-              <button onClick={handleConfirm} disabled={processing} className="flex-1 h-[52px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[14px] font-bold shadow-sm disabled:opacity-45 transition-all">
+              <button onClick={handleConfirmClick} disabled={processing} className="flex-1 h-[52px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[14px] font-bold shadow-sm disabled:opacity-45 transition-all">
                 {processing ? <span className="flex items-center justify-center gap-2"><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40 20"/></svg>Processing…</span> : 'Pay Now'}
               </button>
             </div>
@@ -184,6 +194,18 @@ export default function BusinessBills() {
         )}
         <div className="pb-6" />
       </div>
+
+      <AnimatePresence>
+        {showPinModal && (
+          <BusinessPinModal
+            title="Authorize Bill Payment"
+            subtitle={`Pay ${fmt(parseFloat(amount) || 0)} to ${provider}`}
+            confirmLabel="Pay Bill"
+            onSuccess={handleConfirmWithPin}
+            onClose={() => setShowPinModal(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

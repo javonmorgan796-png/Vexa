@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useLocation } from 'wouter';
+import { AnimatePresence } from 'framer-motion';
 import { useBusiness, PayrollFrequency } from '@/context/BusinessContext';
+import { BusinessPinModal } from '@/components/business/BusinessPinModal';
 
 function fmt(n: number) { return '₦' + n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
@@ -20,6 +22,11 @@ export default function PayrollManagement() {
   const [bulkRunning, setBulkRunning] = useState(false);
   const [bulkResult, setBulkResult] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [pendingAction, setPendingAction] = useState<
+    | { type: 'schedule'; scheduleId: string; total: number; count: number }
+    | { type: 'bulk'; total: number; count: number }
+    | null
+  >(null);
 
   const activeEmployees = employees.filter(e => e.active);
   const payrollTx = transactions.filter(t => t.category === 'payroll');
@@ -36,16 +43,31 @@ export default function PayrollManagement() {
     setShowNewSchedule(false); setSchedName(''); setSelectedEmpIds([]); setError('');
   }
 
-  async function handleRunSchedule(id: string) {
-    const result = await runPayroll(id);
-    setRunResult({ msg: result.message, ok: result.success });
-    setTimeout(() => setRunResult(null), 4000);
+  function handleRunSchedule(id: string, total: number, count: number) {
+    setPendingAction({ type: 'schedule', scheduleId: id, total, count });
   }
 
-  async function handleBulkPay() {
+  function handleBulkPay() {
     if (bulkSelected.length === 0) return;
+    const targets = activeEmployees.filter(e => bulkSelected.includes(e.id));
+    const total = targets.reduce((s, e) => s + e.salary, 0);
+    setPendingAction({ type: 'bulk', total, count: targets.length });
+  }
+
+  async function executePendingPayroll(pin: string) {
+    const action = pendingAction;
+    setPendingAction(null);
+    if (!action) return;
+
+    if (action.type === 'schedule') {
+      const result = await runPayroll(action.scheduleId, pin);
+      setRunResult({ msg: result.message, ok: result.success });
+      setTimeout(() => setRunResult(null), 4000);
+      return;
+    }
+
     setBulkRunning(true);
-    const result = await runBulkPayroll(bulkSelected);
+    const result = await runBulkPayroll(bulkSelected, pin);
     setBulkResult(result.success ? `✅ ${result.message}` : `❌ ${result.message}`);
     setBulkRunning(false);
     if (result.success) {
@@ -129,7 +151,7 @@ export default function PayrollManagement() {
                       className="flex-1 py-3 text-[12px] font-semibold text-[#555] border-r border-[#F5F5F5] hover:bg-[#F9F9F9]">
                       {s.active ? 'Pause' : 'Resume'}
                     </button>
-                    <button onClick={() => { void handleRunSchedule(s.id); }}
+                    <button onClick={() => handleRunSchedule(s.id, total, schedEmps.length)}
                       className="flex-1 py-3 text-[12px] font-bold text-[#162353] border-r border-[#F5F5F5] hover:bg-[#F0F4FF]">
                       Run Now
                     </button>
@@ -183,7 +205,7 @@ export default function PayrollManagement() {
                   <span className="text-[12px] text-[#888]">Selected ({bulkSelected.length})</span>
                   <span className="text-[13px] font-bold text-[#111]">{fmt(activeEmployees.filter(e => bulkSelected.includes(e.id)).reduce((s, e) => s + e.salary, 0))}</span>
                 </div>
-                <button onClick={() => { void handleBulkPay(); }} disabled={bulkRunning}
+                <button onClick={handleBulkPay} disabled={bulkRunning}
                   className="w-full h-[48px] rounded-xl bg-[#F0B90B] hover:bg-[#FCD535] active:bg-[#DDAA09] text-[#181A20] text-[14px] font-bold shadow-sm disabled:opacity-45 transition-all">
                   {bulkRunning ? (
                     <span className="flex items-center justify-center gap-2">
@@ -275,6 +297,18 @@ export default function PayrollManagement() {
           </div>
         </div>
       )}
+
+      <AnimatePresence>
+        {pendingAction && (
+          <BusinessPinModal
+            title="Authorize Payroll"
+            subtitle={`Disburse ${fmt(pendingAction.total)} to ${pendingAction.count} employee${pendingAction.count === 1 ? '' : 's'}`}
+            confirmLabel="Authorize Payroll"
+            onSuccess={executePendingPayroll}
+            onClose={() => setPendingAction(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

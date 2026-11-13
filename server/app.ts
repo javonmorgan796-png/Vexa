@@ -161,6 +161,14 @@ app.use("/api/paystack/webhooks", express.raw({ type: "application/json", limit:
 app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 
+// Prevent caching of sensitive financial, authentication, or administrative API responses
+app.use("/api", (req, res, next) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  next();
+});
+
 // Rate limiter with bounds protection using trusted proxy req.ip
 app.use("/api", (req, res, next) => {
   const now = Date.now();

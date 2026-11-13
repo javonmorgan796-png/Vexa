@@ -520,15 +520,26 @@ async function debitBusinessBalance(
   };
 }
 
-router.post("/business/payroll/run", async (req: Request, res: Response) => {
+router.post("/business/payroll/run", pinRateLimiter, async (req: Request, res: Response) => {
   const authUser = await requireAuth(req, res);
   if (!authUser) return;
 
   const lockErr = await checkOwnerAccountSecurity(authUser.id);
   if (lockErr) return res.status(403).json({ message: lockErr });
 
+  const pin = typeof req.body?.pin === "string" ? req.body.pin.trim() : "";
   const scheduleId = typeof req.body?.scheduleId === "string" ? req.body.scheduleId.trim() : "";
   if (!isUuid(scheduleId)) return res.status(400).json({ message: "Invalid schedule ID." });
+
+  const pinCheck = await verifyBusinessPin(authUser.id, pin);
+  if (!pinCheck.ok) {
+    return res.status(pinCheck.nowLocked ? 429 : 422).json({
+      message: pinCheck.error || "Incorrect PIN.",
+      attempts: pinCheck.attempts,
+      lockedUntil: pinCheck.lockedUntil,
+      nowLocked: Boolean(pinCheck.nowLocked),
+    });
+  }
 
   const business = await getOwnedBusiness(authUser.id);
   if (!business) return res.status(404).json({ message: "Business account not found." });
@@ -564,17 +575,28 @@ router.post("/business/payroll/run", async (req: Request, res: Response) => {
   });
 });
 
-router.post("/business/payroll/bulk", async (req: Request, res: Response) => {
+router.post("/business/payroll/bulk", pinRateLimiter, async (req: Request, res: Response) => {
   const authUser = await requireAuth(req, res);
   if (!authUser) return;
 
   const lockErr = await checkOwnerAccountSecurity(authUser.id);
   if (lockErr) return res.status(403).json({ message: lockErr });
 
+  const pin = typeof req.body?.pin === "string" ? req.body.pin.trim() : "";
   const employeeIds = Array.isArray(req.body?.employeeIds)
     ? req.body.employeeIds.filter((id: unknown): id is string => typeof id === "string" && isUuid(id))
     : [];
   if (employeeIds.length === 0) return res.status(400).json({ message: "Select at least one employee." });
+
+  const pinCheck = await verifyBusinessPin(authUser.id, pin);
+  if (!pinCheck.ok) {
+    return res.status(pinCheck.nowLocked ? 429 : 422).json({
+      message: pinCheck.error || "Incorrect PIN.",
+      attempts: pinCheck.attempts,
+      lockedUntil: pinCheck.lockedUntil,
+      nowLocked: Boolean(pinCheck.nowLocked),
+    });
+  }
 
   const business = await getOwnedBusiness(authUser.id);
   if (!business) return res.status(404).json({ message: "Business account not found." });
@@ -648,19 +670,30 @@ router.post("/business/transfer", pinRateLimiter, async (req: Request, res: Resp
   });
 });
 
-router.post("/business/bills/pay", async (req: Request, res: Response) => {
+router.post("/business/bills/pay", pinRateLimiter, async (req: Request, res: Response) => {
   const authUser = await requireAuth(req, res);
   if (!authUser) return;
 
   const lockErr = await checkOwnerAccountSecurity(authUser.id);
   if (lockErr) return res.status(403).json({ message: lockErr });
 
+  const pin = typeof req.body?.pin === "string" ? req.body.pin.trim() : "";
   const categoryLabel = typeof req.body?.categoryLabel === "string" ? req.body.categoryLabel.trim().slice(0, 60) : "";
   const provider = typeof req.body?.provider === "string" ? req.body.provider.trim().slice(0, 80) : "";
   const amount = roundMoney(Number(req.body?.amount));
 
   if (!categoryLabel || !provider || !Number.isFinite(amount) || amount <= 0 || amount > 50_000_000) {
     return res.status(400).json({ message: "Valid bill provider and amount are required." });
+  }
+
+  const pinCheck = await verifyBusinessPin(authUser.id, pin);
+  if (!pinCheck.ok) {
+    return res.status(pinCheck.nowLocked ? 429 : 422).json({
+      message: pinCheck.error || "Incorrect PIN.",
+      attempts: pinCheck.attempts,
+      lockedUntil: pinCheck.lockedUntil,
+      nowLocked: Boolean(pinCheck.nowLocked),
+    });
   }
 
   const business = await getOwnedBusiness(authUser.id);

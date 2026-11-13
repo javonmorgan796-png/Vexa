@@ -72,10 +72,10 @@ interface BusinessContextType {
   addPayrollSchedule: (schedule: Omit<PayrollSchedule, 'id'>) => Promise<void>;
   updatePayrollSchedule: (id: string, data: Partial<PayrollSchedule>) => Promise<void>;
   deletePayrollSchedule: (id: string) => Promise<void>;
-  runPayroll: (scheduleId: string) => Promise<{ success: boolean; message: string }>;
-  runBulkPayroll: (employeeIds: string[]) => Promise<{ success: boolean; message: string }>;
+  runPayroll: (scheduleId: string, pin: string) => Promise<{ success: boolean; message: string }>;
+  runBulkPayroll: (employeeIds: string[], pin: string) => Promise<{ success: boolean; message: string }>;
   transferBusinessMoney: (input: { pin: string; amount: number; recipientName: string }) => Promise<{ success: boolean; error?: string }>;
-  payBusinessBill: (input: { categoryLabel: string; provider: string; amount: number }) => Promise<{ success: boolean; error?: string }>;
+  payBusinessBill: (input: { categoryLabel: string; provider: string; amount: number; pin: string }) => Promise<{ success: boolean; error?: string }>;
 }
 
 const BusinessContext = createContext<BusinessContextType | null>(null);
@@ -299,11 +299,11 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  async function runPayroll(scheduleId: string): Promise<{ success: boolean; message: string }> {
+  async function runPayroll(scheduleId: string, pin: string): Promise<{ success: boolean; message: string }> {
     const res = await authedBusinessFetch<{ balance?: number; message?: string; transaction?: Record<string, unknown> }>(
       '/api/business/payroll/run',
       'POST',
-      { scheduleId },
+      { scheduleId, pin },
     );
     if (!res.ok || !res.data) {
       return { success: false, message: res.error || 'Payroll run failed' };
@@ -317,11 +317,11 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
     return { success: true, message: res.data.message || 'Payroll completed' };
   }
 
-  async function runBulkPayroll(employeeIds: string[]): Promise<{ success: boolean; message: string }> {
+  async function runBulkPayroll(employeeIds: string[], pin: string): Promise<{ success: boolean; message: string }> {
     const res = await authedBusinessFetch<{ balance?: number; message?: string; transaction?: Record<string, unknown> }>(
       '/api/business/payroll/bulk',
       'POST',
-      { employeeIds },
+      { employeeIds, pin },
     );
     if (!res.ok || !res.data) {
       return { success: false, message: res.error || 'Bulk payroll failed' };
@@ -353,7 +353,7 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
     return { success: true };
   }
 
-  async function payBusinessBill(input: { categoryLabel: string; provider: string; amount: number }): Promise<{ success: boolean; error?: string }> {
+  async function payBusinessBill(input: { categoryLabel: string; provider: string; amount: number; pin: string }): Promise<{ success: boolean; error?: string }> {
     const res = await authedBusinessFetch<{ balance?: number; transaction?: Record<string, unknown> }>(
       '/api/business/bills/pay',
       'POST',
