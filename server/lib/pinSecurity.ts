@@ -1,23 +1,16 @@
 import { pbkdf2Sync, randomBytes, timingSafeEqual } from "node:crypto";
 import { supabaseRest, supabaseRpc } from "./supabaseAdmin";
+import { deleteSecuritySession, getSecuritySession, putSecuritySession } from "./securityStore";
 
 const PBKDF2_PREFIX = "pbkdf2_sha512$";
 const PBKDF2_ITERATIONS = 100_000;
 const PBKDF2_KEYLEN = 64;
+const PIN_LOCKOUT_NS = "tx_pin_lockout";
 
-interface AttemptRecord {
+interface PinAttemptState {
   attempts: number;
   lockedUntil?: number;
 }
-
-const memoryPinAttempts = new Map<string, AttemptRecord>();
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of memoryPinAttempts) {
-    if (v.lockedUntil && v.lockedUntil <= now) memoryPinAttempts.delete(k);
-  }
-}, 60_000).unref();
 
 export function hashPin(pin: string): string {
   const salt = randomBytes(16).toString("hex");
@@ -106,17 +99,6 @@ export async function verifyUserTransactionPin(
   const lockMs = options.lockMs ?? 15 * 60 * 1000;
   const lockKey = `tx:${userId}`;
   const now = Date.now();
-  const tracker = memoryPinAttempts.get(lockKey);
-
-  if (tracker?.lockedUntil && tracker.lockedUntil > now) {
-    const waitSec = Math.ceil((tracker.lockedUntil - now) / 1000);
-    return {
-      ok: false,
-      lockedUntil: tracker.lockedUntil,
-      nowLocked: true,
-      error: `Too many incorrect PIN attempts. Try again in ${waitSec} seconds.`,
-    };
-  }
 
   if (typeof suppliedPin !== "string" || !/^\d{4}$/.test(suppliedPin)) {
     return { ok: false, error: "Enter a valid 4-digit transaction PIN." };
@@ -126,7 +108,18 @@ export async function verifyUserTransactionPin(
     `profiles?id=eq.${encodeURIComponent(userId)}&select=id,pin,pin_hash,pin_failed_attempts,pin_locked_until&limit=1`,
   );
   if (!res.ok) {
-    // Fallback if migration columns don't exist yet on Supabase
+    // Fallback if migration columns don't exist yet on Supabase — use distributed securityStore
+    const stored = (await getSecuritySession<PinAttemptState>(PIN_LOCKOUT_NS, lockKey))?.payload;
+    if (stored?.lockedUntil && stored.lockedUntil > now) {
+      const waitSec = Math.ceil((stored.lockedUntil - now) / 1000);
+      return {
+        ok: false,
+        lockedUntil: stored.lockedUntil,
+        nowLocked: true,
+        error: `Too many incorrect PIN attempts. Try again in ${waitSec} seconds.`,
+      };
+    }
+
     const legacyRes = await supabaseRest(
       `profiles?id=eq.${encodeURIComponent(userId)}&select=id,pin&limit=1`,
     );
@@ -141,16 +134,17 @@ export async function verifyUserTransactionPin(
       return { ok: false, error: "Set your transaction PIN before sending money." };
     }
     if (!safeEqualString(suppliedPin, legacyPin)) {
-      const next = (tracker?.attempts ?? 0) + 1;
+      const baseAttempts = stored?.lockedUntil && stored.lockedUntil <= now ? 0 : (stored?.attempts ?? 0);
+      const next = baseAttempts + 1;
       if (next >= maxAttempts) {
         const lu = now + lockMs;
-        memoryPinAttempts.set(lockKey, { attempts: next, lockedUntil: lu });
+        await putSecuritySession<PinAttemptState>(PIN_LOCKOUT_NS, lockKey, { attempts: next, lockedUntil: lu }, lockMs);
         return { ok: false, nowLocked: true, lockedUntil: lu, error: "Too many incorrect PIN attempts. Locked for 15 minutes." };
       }
-      memoryPinAttempts.set(lockKey, { attempts: next });
+      await putSecuritySession<PinAttemptState>(PIN_LOCKOUT_NS, lockKey, { attempts: next }, lockMs);
       return { ok: false, error: "Incorrect transaction PIN." };
     }
-    memoryPinAttempts.delete(lockKey);
+    await deleteSecuritySession(PIN_LOCKOUT_NS, lockKey);
     return { ok: true };
   }
 
@@ -183,11 +177,10 @@ export async function verifyUserTransactionPin(
   const { matched, needsPbkdf2Upgrade } = await verifyStoredSecret(suppliedPin, row.pin_hash, legacyNonDefault);
 
   if (!matched) {
-    const prevAttempts = Math.max(tracker?.attempts ?? 0, Number(row.pin_failed_attempts ?? 0));
+    const prevAttempts = dbLockedUntil > 0 && dbLockedUntil <= now ? 0 : Number(row.pin_failed_attempts ?? 0);
     const nextAttempts = prevAttempts + 1;
     if (nextAttempts >= maxAttempts) {
       const lu = now + lockMs;
-      memoryPinAttempts.set(lockKey, { attempts: nextAttempts, lockedUntil: lu });
       await supabaseRest(`profiles?id=eq.${encodeURIComponent(userId)}`, {
         method: "PATCH",
         headers: { Prefer: "return=minimal" },
@@ -203,11 +196,13 @@ export async function verifyUserTransactionPin(
         error: "Too many incorrect PIN attempts. Locked for 15 minutes.",
       };
     }
-    memoryPinAttempts.set(lockKey, { attempts: nextAttempts });
     await supabaseRest(`profiles?id=eq.${encodeURIComponent(userId)}`, {
       method: "PATCH",
       headers: { Prefer: "return=minimal" },
-      body: JSON.stringify({ pin_failed_attempts: nextAttempts }),
+      body: JSON.stringify({
+        pin_failed_attempts: nextAttempts,
+        ...(dbLockedUntil > 0 && dbLockedUntil <= now ? { pin_locked_until: null } : {}),
+      }),
     }).catch(() => {});
     const remaining = maxAttempts - nextAttempts;
     return {
@@ -216,7 +211,6 @@ export async function verifyUserTransactionPin(
     };
   }
 
-  memoryPinAttempts.delete(lockKey);
   const patch: Record<string, unknown> = {
     pin_failed_attempts: 0,
     pin_locked_until: null,
