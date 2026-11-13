@@ -116,6 +116,13 @@ export const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }
   const handleOtpChange = (index: number, value: string) => {
     const digitsOnly = value.replace(/\D/g, '');
     if (digitsOnly.length > 1) {
+      if (digitsOnly.length >= 6) {
+        const full = digitsOnly.slice(0, 6).split('');
+        setTotpDigits(full);
+        otpInputRefs.current[5]?.focus();
+        verifyTotpCode(full.join(''));
+        return;
+      }
       const updated = [...totpDigits];
       const slice = digitsOnly.slice(0, 6 - index);
       for (let i = 0; i < slice.length; i++) {
@@ -587,7 +594,10 @@ export const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }
 
                   <button
                     type="button"
-                    onClick={() => setShowRescueModal(true)}
+                    onClick={() => {
+                      setErrorMessage('');
+                      setShowRescueModal(true);
+                    }}
                     className="text-amber-500 hover:underline font-semibold flex items-center space-x-1"
                   >
                     <LifeBuoy className="w-4 h-4" />
@@ -618,7 +628,11 @@ export const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }
                   <h4 className="text-sm font-bold">Emergency Rescue Authorization</h4>
                 </div>
                 <button
-                  onClick={() => setShowRescueModal(false)}
+                  type="button"
+                  onClick={() => {
+                    setErrorMessage('');
+                    setShowRescueModal(false);
+                  }}
                   className={`p-1.5 rounded-lg transition-colors ${isDark ? 'text-gray-400 hover:text-white' : 'text-slate-400 hover:text-slate-900'}`}
                 >
                   ✕
@@ -629,6 +643,13 @@ export const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }
                 <p className={`text-xs leading-relaxed ${isDark ? 'text-gray-400' : 'text-slate-600'}`}>
                   If your Google Authenticator device is unavailable, enter your 6-digit Emergency Master Rescue Code.
                 </p>
+
+                {errorMessage && (
+                  <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-500 text-xs flex items-center space-x-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span className="font-medium">{errorMessage}</span>
+                  </div>
+                )}
 
                 <input
                   type="text"

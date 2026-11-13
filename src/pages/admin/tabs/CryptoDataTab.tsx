@@ -713,7 +713,7 @@ export const CryptoDataTab: React.FC = () => {
                         <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm text-emerald-500">
                           +{Number(d.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })} {d.asset}
                         </td>
-                        <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm text-slate-900 dark:text-white">
+                        <td className={`py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
                           <span className="inline-flex items-center justify-end"><Naira />{Number(d.nairaAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         </td>
                         <td className="py-4 px-4 sm:px-5 font-mono text-xs">
@@ -853,7 +853,7 @@ export const CryptoDataTab: React.FC = () => {
                         <td className="py-4 px-4 sm:px-5">
                           <span className="font-bold text-xs font-mono text-emerald-400">{b.asset}</span>
                         </td>
-                        <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm text-slate-900 dark:text-white">
+                        <td className={`py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
                           {Number(b.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })} {b.asset}
                         </td>
                         <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums text-xs text-gray-400">
@@ -982,7 +982,7 @@ export const CryptoDataTab: React.FC = () => {
                         <td className="py-4 px-4 sm:px-5">
                           <span className="font-bold text-xs font-mono text-rose-400">{s.asset}</span>
                         </td>
-                        <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm text-slate-900 dark:text-white">
+                        <td className={`py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
                           {Number(s.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })} {s.asset}
                         </td>
                         <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums text-xs text-gray-400">

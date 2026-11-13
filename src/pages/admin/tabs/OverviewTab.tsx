@@ -86,10 +86,10 @@ export const OverviewTab: React.FC = () => {
   const recentTransactions = data?.recentTransactions || [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Welcome Banner & System Status */}
       <div
-        className={`p-6 rounded-2xl border ${
+        className={`p-4 sm:p-6 rounded-none sm:rounded-2xl border-y sm:border ${
           isDark
             ? 'bg-gradient-to-r from-[#161A23] to-[#12151D] border-gray-800'
             : 'bg-gradient-to-r from-white to-gray-50 border-gray-200'
@@ -134,7 +134,7 @@ export const OverviewTab: React.FC = () => {
 
       {/* Action Alerts Ribbon */}
       {(metrics.pendingKyc > 0 || metrics.unresolvedAlerts > 0 || metrics.openTickets > 0) && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
           {metrics.pendingKyc > 0 && (
             <div
               onClick={() => setActiveTab('kyc')}
@@ -204,9 +204,9 @@ export const OverviewTab: React.FC = () => {
       )}
 
       {/* Key Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Total Wallet Balances */}
-        <div className={`p-5 rounded-2xl border ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-gray-200'}`}>
+        <div className={`p-4 sm:p-5 rounded-none sm:rounded-2xl border-y sm:border ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-gray-200'}`}>
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-gray-400">Total Vault Balances</span>
             <div className="p-2 rounded-xl bg-amber-500/10 text-[#F0B90B]">
@@ -227,7 +227,7 @@ export const OverviewTab: React.FC = () => {
         {/* Registered Users */}
         <div
           onClick={() => setActiveTab('users')}
-          className={`p-5 rounded-2xl border cursor-pointer transition-all hover:border-[#F0B90B]/50 ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-gray-200'}`}
+          className={`p-4 sm:p-5 rounded-none sm:rounded-2xl border-y sm:border cursor-pointer transition-all hover:border-[#F0B90B]/50 ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-gray-200'}`}
         >
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-gray-400">Total Registered Users</span>
@@ -245,7 +245,7 @@ export const OverviewTab: React.FC = () => {
         </div>
 
         {/* Total Deposits */}
-        <div className={`p-5 rounded-2xl border ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-gray-200'}`}>
+        <div className={`p-4 sm:p-5 rounded-none sm:rounded-2xl border-y sm:border ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-gray-200'}`}>
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-gray-400">Inbound Deposits</span>
             <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-500">
@@ -262,7 +262,7 @@ export const OverviewTab: React.FC = () => {
         </div>
 
         {/* Total Withdrawals */}
-        <div className={`p-5 rounded-2xl border ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-gray-200'}`}>
+        <div className={`p-4 sm:p-5 rounded-none sm:rounded-2xl border-y sm:border ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-gray-200'}`}>
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-gray-400">Outbound Withdrawals</span>
             <div className="p-2 rounded-xl bg-rose-500/10 text-rose-500">
@@ -280,7 +280,7 @@ export const OverviewTab: React.FC = () => {
       </div>
 
       {/* Main Chart Section: Volume Analytics */}
-      <div className={`p-6 rounded-2xl border ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-gray-200'}`}>
+      <div className={`p-4 sm:p-6 rounded-none sm:rounded-2xl border-y sm:border ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-gray-200'}`}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
           <div>
             <h2 className={`text-base font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
@@ -376,33 +376,94 @@ export const OverviewTab: React.FC = () => {
       </div>
 
       {/* Live Transaction Stream Table */}
-      <div className={`p-6 rounded-2xl border ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-gray-200'}`}>
-        <div className="flex items-center justify-between mb-4">
+      <div className={`rounded-none sm:rounded-2xl border-y sm:border overflow-hidden ${isDark ? 'bg-[#161A23] border-gray-800' : 'bg-white border-gray-200'}`}>
+        <div className={`px-4 py-4 sm:p-6 flex items-center justify-between border-b ${isDark ? 'border-gray-800/80' : 'border-slate-200'}`}>
           <div>
             <h2 className={`text-base font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
               Real-Time Settlement Feed
             </h2>
-            <p className="text-xs text-gray-400 mt-0.5">Most recent banking and digital transfer events.</p>
+            <p className={`text-xs mt-0.5 ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
+              Most recent banking and digital transfer events.
+            </p>
           </div>
           <button
             onClick={() => setActiveTab('transactions')}
-            className="text-xs font-semibold text-[#F0B90B] hover:underline flex items-center space-x-1"
+            className="text-xs font-semibold text-[#F0B90B] hover:underline flex items-center space-x-1 shrink-0 ml-3"
           >
-            <span>View All Transactions</span>
+            <span>View All</span>
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-gray-800/80">
+        {/* Mobile Edge-to-Edge Feed Cards (Zero clipping, full-visibility amounts) */}
+        <div className={`md:hidden divide-y ${isDark ? 'divide-gray-800/70' : 'divide-slate-100'}`}>
+          {recentTransactions.length === 0 ? (
+            <div className="py-10 px-4 text-center">
+              <p className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-slate-600'}`}>
+                No transactions recorded yet in the core ledger
+              </p>
+              <p className={`text-xs mt-1 ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
+                Real inbound deposits and customer transfers will stream here automatically.
+              </p>
+            </div>
+          ) : (
+            recentTransactions.map((tx: any) => (
+              <div
+                key={tx.id}
+                className={`px-4 py-3.5 flex items-start justify-between gap-3 ${isDark ? 'bg-[#161A23]' : 'bg-white'}`}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className={`text-sm font-semibold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    {tx.user}
+                  </div>
+                  <div className={`text-xs font-mono mt-0.5 ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
+                    {tx.phone}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5 text-[11px] font-mono">
+                    <span className={isDark ? 'text-gray-300 font-semibold' : 'text-slate-700 font-semibold'}>
+                      {tx.reference}
+                    </span>
+                    <span className={isDark ? 'text-gray-600' : 'text-slate-300'}>•</span>
+                    <span className={`uppercase ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{tx.type}</span>
+                    <span className={isDark ? 'text-gray-600' : 'text-slate-300'}>•</span>
+                    <span className={isDark ? 'text-gray-400' : 'text-slate-500'}>
+                      {new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right shrink-0 flex flex-col items-end gap-1.5">
+                  <div className={`font-mono tabular-nums font-bold text-sm inline-flex items-baseline ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    <Naira className="mr-0.5 text-xs" />
+                    {Number(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <span
+                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider font-mono ${
+                      tx.status === 'successful'
+                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25'
+                        : tx.status === 'pending'
+                        ? 'bg-amber-500/10 text-amber-400 border border-amber-500/25'
+                        : 'bg-rose-500/10 text-rose-400 border border-rose-500/25'
+                    }`}
+                  >
+                    {tx.status}
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Desktop & Tablet Full Table */}
+        <div className={`hidden md:block overflow-x-auto`}>
           <table className="w-full text-left">
             <thead>
               <tr className={`border-b ${isDark ? 'border-gray-800 bg-[#12151D]/80 text-gray-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
-                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Reference</th>
-                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">User</th>
-                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Type</th>
-                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Amount</th>
-                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-center">Status</th>
-                <th className="py-3.5 px-4 sm:px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Timestamp</th>
+                <th className="py-3.5 px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Reference</th>
+                <th className="py-3.5 px-5 text-[11px] font-bold uppercase tracking-wider font-mono">User</th>
+                <th className="py-3.5 px-5 text-[11px] font-bold uppercase tracking-wider font-mono">Type</th>
+                <th className="py-3.5 px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Amount</th>
+                <th className="py-3.5 px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-center">Status</th>
+                <th className="py-3.5 px-5 text-[11px] font-bold uppercase tracking-wider font-mono text-right">Timestamp</th>
               </tr>
             </thead>
             <tbody className={`divide-y ${isDark ? 'divide-gray-800/60 bg-[#161A23]' : 'divide-slate-100 bg-white'}`}>
@@ -420,22 +481,22 @@ export const OverviewTab: React.FC = () => {
               ) : (
                 recentTransactions.map((tx: any) => (
                   <tr key={tx.id} className={`${isDark ? 'hover:bg-gray-800/20' : 'hover:bg-slate-50/80'} transition-colors`}>
-                    <td className="py-4 px-4 sm:px-5 font-mono text-xs font-semibold text-slate-700 dark:text-gray-300">
+                    <td className={`py-4 px-5 font-mono text-xs font-semibold ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>
                       {tx.reference}
                     </td>
-                    <td className="py-4 px-4 sm:px-5">
+                    <td className="py-4 px-5">
                       <div className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{tx.user}</div>
                       <div className={`text-xs font-mono mt-0.5 ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{tx.phone}</div>
                     </td>
-                    <td className="py-4 px-4 sm:px-5">
+                    <td className="py-4 px-5">
                       <span className={`text-xs font-medium uppercase tracking-wide ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>{tx.type}</span>
                     </td>
-                    <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm text-slate-900 dark:text-white">
+                    <td className={`py-4 px-5 text-right font-mono tabular-nums font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
                       <span className="inline-flex items-baseline justify-end">
                         <Naira className="mr-0.5 text-xs" />{Number(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     </td>
-                    <td className="py-4 px-4 sm:px-5 text-center">
+                    <td className="py-4 px-5 text-center">
                       <span
                         className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider font-mono ${
                           tx.status === 'successful'
@@ -448,7 +509,7 @@ export const OverviewTab: React.FC = () => {
                         {tx.status}
                       </span>
                     </td>
-                    <td className="py-4 px-4 sm:px-5 text-right font-mono text-xs text-slate-500 dark:text-gray-400">
+                    <td className={`py-4 px-5 text-right font-mono text-xs ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
                       {new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                     </td>
                   </tr>

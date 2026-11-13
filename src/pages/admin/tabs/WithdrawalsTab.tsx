@@ -106,7 +106,7 @@ export const WithdrawalsTab: React.FC = () => {
                       {w.bankName} · {w.recipientAccount}
                     </div>
                   </td>
-                  <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm text-slate-900 dark:text-white">
+                  <td className={`py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
                     <span className="inline-flex items-baseline justify-end">
                       <Naira className="mr-0.5 text-xs" />{Number(w.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
@@ -125,7 +125,7 @@ export const WithdrawalsTab: React.FC = () => {
                         Risk: {w.riskScore}
                       </span>
                       {w.riskNotes && (
-                        <div className="text-[11px] text-slate-400 dark:text-gray-500 mt-1 max-w-xs truncate">
+                        <div className={`text-[11px] mt-1 max-w-xs truncate ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
                           {w.riskNotes}
                         </div>
                       )}
@@ -161,7 +161,7 @@ export const WithdrawalsTab: React.FC = () => {
                         </button>
                       </div>
                     ) : (
-                      <span className="text-xs font-mono text-slate-400 dark:text-gray-500">
+                      <span className={`text-xs font-mono ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
                         {w.reviewedBy || 'Settled'}
                       </span>
                     )}

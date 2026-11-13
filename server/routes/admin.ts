@@ -150,7 +150,11 @@ export function encryptTotpSecret(secret: string): { encrypted: string; iv: stri
   return { encrypted, iv: iv.toString("hex"), tag };
 }
 
-export function decryptTotpSecret(encryptedHex: string, ivHex: string, tagHex: string): string {
+function decryptTotpSecretStrict(
+  encryptedHex: string,
+  ivHex: string,
+  tagHex: string,
+): { ok: true; secret: string } | { ok: false; error: string } {
   try {
     const key = getRequiredEncryptionKey();
     const iv = Buffer.from(ivHex, "hex");
@@ -159,11 +163,17 @@ export function decryptTotpSecret(encryptedHex: string, ivHex: string, tagHex: s
     decipher.setAuthTag(tag);
     let decrypted = decipher.update(encryptedHex, "hex", "utf8");
     decrypted += decipher.final("utf8");
-    return decrypted;
+    return { ok: true, secret: decrypted };
   } catch (err) {
-    console.error("[AdminCrypto] Failed to decrypt TOTP secret:", err instanceof Error ? err.message : err);
-    return "";
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[AdminCrypto] Failed to decrypt TOTP secret:", message);
+    return { ok: false, error: message };
   }
+}
+
+export function decryptTotpSecret(encryptedHex: string, ivHex: string, tagHex: string): string {
+  const result = decryptTotpSecretStrict(encryptedHex, ivHex, tagHex);
+  return result.ok ? result.secret : "";
 }
 
 interface AdminCredentialRecord {
@@ -303,12 +313,32 @@ async function recordAdminLogin(phone: string, ip: string) {
   }
 }
 
+function normalizeTotpSecret(raw: string): string {
+  const trimmed = String(raw || "").trim();
+  if (!trimmed) return "";
+  if (/^otpauth:\/\//i.test(trimmed)) {
+    try {
+      const parsed = new URL(trimmed);
+      const paramSecret = parsed.searchParams.get("secret");
+      if (paramSecret) {
+        return paramSecret.replace(/[\s-]+/g, "").replace(/=+$/, "").toUpperCase();
+      }
+    } catch {
+      const match = trimmed.match(/[?&]secret=([^&]+)/i);
+      if (match?.[1]) {
+        return match[1].replace(/[\s-]+/g, "").replace(/=+$/, "").toUpperCase();
+      }
+    }
+  }
+  return trimmed.replace(/[\s-]+/g, "").replace(/=+$/, "").toUpperCase();
+}
+
 function base32Decode(str: string): Buffer {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
   let bits = 0;
   let value = 0;
   const output: number[] = [];
-  const clean = str.replace(/=+$/, "").toUpperCase();
+  const clean = normalizeTotpSecret(str);
   for (let i = 0; i < clean.length; i++) {
     const idx = alphabet.indexOf(clean[i]);
     if (idx === -1) continue;
@@ -323,10 +353,11 @@ function base32Decode(str: string): Buffer {
 }
 
 function generateTOTP(secretBase32: string, timeStep = 30, windowOffset = 0): string {
+  const key = base32Decode(secretBase32);
+  if (key.length === 0) return "";
   const counter = Math.floor(Date.now() / 1000 / timeStep) + windowOffset;
   const buf = Buffer.alloc(8);
   buf.writeBigInt64BE(BigInt(counter));
-  const key = base32Decode(secretBase32);
   const hmac = createHmac("sha1", key).update(buf).digest();
   const offset = hmac[hmac.length - 1] & 0xf;
   const binary =
@@ -339,11 +370,15 @@ function generateTOTP(secretBase32: string, timeStep = 30, windowOffset = 0): st
 }
 
 function verifyTOTP(token: string, secretBase32: string): boolean {
-  const cleanToken = token.replace(/\s+/g, "");
+  const cleanToken = token.replace(/\D/g, "");
   if (cleanToken.length !== 6) return false;
+  const key = base32Decode(secretBase32);
+  if (key.length === 0) return false;
   const tokenBuf = Buffer.from(cleanToken, "utf8");
-  for (let w = -1; w <= 1; w++) {
-    const candidateBuf = Buffer.from(generateTOTP(secretBase32, 30, w), "utf8");
+  for (let w = -2; w <= 2; w++) {
+    const candidate = generateTOTP(secretBase32, 30, w);
+    if (!candidate) continue;
+    const candidateBuf = Buffer.from(candidate, "utf8");
     if (candidateBuf.length === tokenBuf.length && timingSafeEqual(candidateBuf, tokenBuf)) {
       return true;
     }
@@ -705,27 +740,51 @@ router.post("/admin/auth/verify-totp", adminAuthRateLimiter, async (req: Request
     });
   }
 
-  let decryptedSecret = "";
-  try {
-    decryptedSecret = decryptTotpSecret(
-      creds.totp_secret_encrypted,
-      creds.totp_secret_iv,
-      creds.totp_secret_tag,
-    );
-  } catch (err) {
-    return res.status(503).json({
-      error: "Service Unavailable",
-      message: err instanceof Error ? err.message : "Unable to decrypt TOTP configuration.",
-    });
-  }
-
   const inputCode = String(code || "").replace(/\D/g, "").trim();
   const rescueInput = String(rescueCode || "").trim();
-  const isRescue =
+  const envTotpSecret = normalizeTotpSecret(process.env["ADMIN_TOTP_SECRET"] || "");
+  const envRescueCode = (process.env["ADMIN_RESCUE_CODE"] || "").trim();
+
+  let dbDecryptFailed = false;
+  let decryptedSecret = "";
+  const decryptResult = decryptTotpSecretStrict(
+    creds.totp_secret_encrypted,
+    creds.totp_secret_iv,
+    creds.totp_secret_tag,
+  );
+  if (decryptResult.ok) {
+    decryptedSecret = normalizeTotpSecret(decryptResult.secret);
+  } else {
+    dbDecryptFailed = true;
+  }
+
+  let isRescue =
     Boolean(rescueInput) &&
     verifyCredentialHash(rescueInput, creds.rescue_code_salt, creds.rescue_code_hash);
+  if (!isRescue && Boolean(rescueInput) && envRescueCode) {
+    const a = Buffer.from(rescueInput, "utf8");
+    const b = Buffer.from(envRescueCode, "utf8");
+    if (a.length === b.length && timingSafeEqual(a, b)) {
+      isRescue = true;
+    }
+  }
 
-  const isTotpValid = Boolean(decryptedSecret) && inputCode.length === 6 && verifyTOTP(inputCode, decryptedSecret);
+  const dbTotpMatched =
+    Boolean(decryptedSecret) && inputCode.length === 6 && verifyTOTP(inputCode, decryptedSecret);
+  const envTotpMatched =
+    !dbTotpMatched &&
+    Boolean(envTotpSecret) &&
+    inputCode.length === 6 &&
+    verifyTOTP(inputCode, envTotpSecret);
+  const isTotpValid = dbTotpMatched || envTotpMatched;
+
+  if (!isTotpValid && !isRescue && dbDecryptFailed && !envTotpSecret) {
+    return res.status(503).json({
+      error: "2FA Decryption Error",
+      message:
+        "Stored Google Authenticator secret could not be decrypted with the current ADMIN_ENCRYPTION_KEY. Enter your Emergency Rescue Code or update ADMIN_TOTP_SECRET.",
+    });
+  }
 
   if (!isTotpValid && !isRescue) {
     const currentAttempts = (creds.failed_attempts || 0) + 1;
@@ -744,6 +803,25 @@ router.post("/admin/auth/verify-totp", adminAuthRateLimiter, async (req: Request
       error: "Verification Failed",
       message: "The 6-digit authenticator or rescue code entered is invalid or has expired.",
     });
+  }
+
+  // Self-heal stale/un-decryptable DB TOTP ciphertext if verified via env ADMIN_TOTP_SECRET
+  if (envTotpMatched && envTotpSecret && isSupabaseAdminConfigured()) {
+    try {
+      const reEncrypted = encryptTotpSecret(envTotpSecret);
+      await supabaseRest(`admin_credentials?phone=eq.${encodeURIComponent(challenge.adminPhone)}`, {
+        method: "PATCH",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({
+          totp_secret_encrypted: reEncrypted.encrypted,
+          totp_secret_iv: reEncrypted.iv,
+          totp_secret_tag: reEncrypted.tag,
+          updated_at: new Date().toISOString(),
+        }),
+      });
+    } catch {
+      // Non-fatal
+    }
   }
 
   tempChallengeTokens.delete(tempChallengeToken);

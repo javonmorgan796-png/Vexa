@@ -123,7 +123,7 @@ export const DepositsTab: React.FC = () => {
                   <td className="py-4 px-4 sm:px-5">
                     <span className={`text-xs font-medium uppercase tracking-wide ${isDark ? 'text-gray-300' : 'text-slate-700'}`}>{d.channel}</span>
                   </td>
-                  <td className="py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm text-slate-900 dark:text-white">
+                  <td className={`py-4 px-4 sm:px-5 text-right font-mono tabular-nums font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
                     <span className="inline-flex items-baseline justify-end">
                       <Naira className="mr-0.5 text-xs" />{Number(d.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
@@ -139,9 +139,9 @@ export const DepositsTab: React.FC = () => {
                       {d.status}
                     </span>
                   </td>
-                  <td className="py-4 px-4 sm:px-5 text-right font-mono text-xs text-slate-500 dark:text-gray-400">
+                  <td className={`py-4 px-4 sm:px-5 text-right font-mono text-xs ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
                     <div>{new Date(d.createdAt).toLocaleDateString(undefined, { dateStyle: 'short' })}</div>
-                    <div className="text-[11px] text-slate-400 dark:text-gray-500">{new Date(d.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                    <div className={`text-[11px] ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>{new Date(d.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                   </td>
                   <td className="py-4 px-4 sm:px-5 text-right">
                     {d.status === 'failed' && hasPermission('deposits.manage') ? (
@@ -155,7 +155,7 @@ export const DepositsTab: React.FC = () => {
                         Investigate & Credit
                       </button>
                     ) : (
-                      <span className="text-xs font-mono text-slate-400 dark:text-gray-500">Settled</span>
+                      <span className={`text-xs font-mono ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>Settled</span>
                     )}
                   </td>
                 </tr>

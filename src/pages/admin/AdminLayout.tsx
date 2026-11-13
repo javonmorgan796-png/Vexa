@@ -339,11 +339,11 @@ export const AdminLayout: React.FC = () => {
                       </div>
                       <div>
                         <div className="text-xs font-bold uppercase tracking-wider font-mono">Live Action Queue</div>
-                        <div className="text-[10px] text-slate-400 dark:text-gray-400">Real-time terminal alerts</div>
+                        <div className={`text-[10px] ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>Real-time terminal alerts</div>
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-red-500/10 text-red-500 dark:text-red-400 border border-red-500/20">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-red-500/10 border border-red-500/20 ${isDark ? 'text-red-400' : 'text-red-500'}`}>
                         {badgeCounts.total} pending
                       </span>
                       <button
@@ -460,7 +460,7 @@ export const AdminLayout: React.FC = () => {
         </header>
 
         {/* Tab Content Canvas with smooth scrolling */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto animate-fade-in" style={{ scrollbarGutter: 'stable', WebkitOverflowScrolling: 'touch' }}>
+        <main className="flex-1 overflow-y-auto px-0 py-3 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto animate-fade-in" style={{ WebkitOverflowScrolling: 'touch' }}>
           {renderActiveTab()}
         </main>
       </div>
