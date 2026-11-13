@@ -341,66 +341,11 @@ router.post("/paystack/webhooks", async (req: Request, res: Response) => {
     }
 
     const errBody = (await rpcRes.json().catch(() => null)) as { code?: string; message?: string } | null;
-    const isMissingFn =
-      rpcRes.status === 404 ||
-      errBody?.code === "PGRST202" ||
-      errBody?.code === "42883" ||
-      String(errBody?.message || "").toLowerCase().includes("could not find the function");
-
-    if (!isMissingFn) {
-      return res.status(500).json({ message: errBody?.message || "Failed to credit deposit" });
-    }
-
-    // Idempotent CAS fallback when process_paystack_deposit RPC isn't migrated yet
-    const refTag = `Paystack Ref: ${reference}`;
-    const dupCheck = await supabaseRest(
-      `transactions?user_id=eq.${encodeURIComponent(targetUserId)}&note=eq.${encodeURIComponent(refTag)}&select=id&limit=1`,
-    );
-    if (dupCheck.ok) {
-      const existing = (await dupCheck.json().catch(() => [])) as Array<unknown>;
-      if (existing.length > 0) {
-        return res.status(200).json({ received: true, status: "already_processed" });
-      }
-    }
-
-    const pRes = await supabaseRest(`profiles?id=eq.${encodeURIComponent(targetUserId)}&select=id,balance&limit=1`);
-    const pRows = pRes.ok ? ((await pRes.json().catch(() => [])) as Array<{ balance: number }>) : [];
-    if (!pRows[0]) return res.status(200).json({ received: true, ignored: true, reason: "user_not_found" });
-
-    const newBalance = Math.round((Number(pRows[0].balance) + amountNaira) * 100) / 100;
-    await supabaseRest(`profiles?id=eq.${encodeURIComponent(targetUserId)}`, {
-      method: "PATCH",
-      headers: { Prefer: "return=minimal" },
-      body: JSON.stringify({ balance: newBalance }),
-    });
-
-    await Promise.all([
-      supabaseRest("transactions", {
-        method: "POST",
-        body: JSON.stringify({
-          user_id: targetUserId,
-          type: "in",
-          name: "Wallet Deposit (Paystack)",
-          amount: amountNaira,
-          note: refTag,
-        }),
-      }),
-      supabaseRest("notifications", {
-        method: "POST",
-        body: JSON.stringify({
-          user_id: targetUserId,
-          type: "credit",
-          title: "Deposit received",
-          body: `₦${amountNaira.toLocaleString("en-NG", { minimumFractionDigits: 2 })} added to your Vexa wallet.`,
-          read: false,
-        }),
-      }),
-    ]);
-
-    return res.status(200).json({ received: true, status: "credited" });
+    req.log?.error?.({ reference, status: rpcRes.status, errBody }, "Paystack deposit RPC failed or unavailable");
+    return res.status(503).json({ message: "Deposit processing service unavailable" });
   } catch (error) {
     req.log?.error?.({ err: error, reference }, "Paystack webhook processing failed");
-    return res.status(500).json({ message: "Failed to process webhook" });
+    return res.status(503).json({ message: "Deposit processing service unavailable" });
   }
 });
 

@@ -1020,3 +1020,180 @@ $$;
 
 REVOKE ALL ON FUNCTION public.transfer_crypto_srv(UUID, TEXT, TEXT, NUMERIC) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.transfer_crypto_srv(UUID, TEXT, TEXT, NUMERIC) TO service_role;
+
+-- ── 9. Harden process_tatum_crypto_deposit & Audit All SECURITY DEFINER RPCs ──
+
+CREATE OR REPLACE FUNCTION public.process_tatum_crypto_deposit(
+  p_deposit_reference TEXT,
+  p_user_id UUID,
+  p_asset TEXT,
+  p_network TEXT,
+  p_address TEXT,
+  p_transaction_hash TEXT,
+  p_amount NUMERIC,
+  p_confirmations INTEGER,
+  p_required_confirmations INTEGER
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  deposit_event public.crypto_deposit_events;
+  formatted_crypto TEXT;
+BEGIN
+  IF p_user_id IS NULL
+     OR COALESCE(trim(p_deposit_reference), '') = ''
+     OR COALESCE(trim(p_transaction_hash), '') = ''
+     OR p_asset NOT IN ('BTC', 'ETH', 'USDT')
+     OR p_amount IS NULL
+     OR p_amount <= 0 THEN
+    RAISE EXCEPTION 'Invalid crypto deposit';
+  END IF;
+  IF p_confirmations IS NULL OR p_required_confirmations IS NULL OR p_required_confirmations <= 0 THEN
+    RAISE EXCEPTION 'Invalid confirmation data';
+  END IF;
+
+  INSERT INTO public.crypto_deposit_events (
+    deposit_reference, user_id, asset, network, address, transaction_hash,
+    amount, confirmations, required_confirmations
+  )
+  VALUES (
+    p_deposit_reference, p_user_id, p_asset, p_network, p_address, p_transaction_hash,
+    p_amount, p_confirmations, p_required_confirmations
+  )
+  ON CONFLICT (deposit_reference) DO UPDATE
+    SET confirmations = GREATEST(public.crypto_deposit_events.confirmations, EXCLUDED.confirmations)
+  RETURNING * INTO deposit_event;
+
+  IF deposit_event.status = 'credited' THEN
+    RETURN jsonb_build_object('status', 'already_processed', 'notified', true);
+  END IF;
+
+  formatted_crypto := regexp_replace(to_char(ROUND(deposit_event.amount, 8), 'FM999G999G990.00000000'), '\.?0+$', '');
+
+  IF deposit_event.confirmations < deposit_event.required_confirmations THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM public.notifications
+      WHERE user_id = deposit_event.user_id
+        AND type = 'crypto'
+        AND title = deposit_event.asset || ' deposit incoming'
+        AND body LIKE '%' || LEFT(deposit_event.transaction_hash, 10) || '%'
+    ) THEN
+      INSERT INTO public.notifications (user_id, type, title, body)
+      VALUES (
+        deposit_event.user_id,
+        'crypto',
+        deposit_event.asset || ' deposit incoming',
+        formatted_crypto || ' ' || deposit_event.asset || ' detected on ' || deposit_event.network ||
+          ' (' || deposit_event.confirmations || '/' || deposit_event.required_confirmations ||
+          ' confirmations · Tx ' || LEFT(deposit_event.transaction_hash, 10) || '…).'
+      );
+    END IF;
+
+    RETURN jsonb_build_object(
+      'status', 'pending',
+      'confirmations', deposit_event.confirmations,
+      'required_confirmations', deposit_event.required_confirmations,
+      'notified', true
+    );
+  END IF;
+
+  INSERT INTO public.crypto_balances (user_id, asset, amount)
+  VALUES (deposit_event.user_id, deposit_event.asset, 0)
+  ON CONFLICT (user_id, asset) DO NOTHING;
+
+  UPDATE public.crypto_balances
+  SET amount = amount + deposit_event.amount, updated_at = NOW()
+  WHERE user_id = deposit_event.user_id AND asset = deposit_event.asset;
+
+  INSERT INTO public.crypto_transactions (user_id, kind, asset, amount, note)
+  VALUES (
+    deposit_event.user_id,
+    'deposit',
+    deposit_event.asset,
+    deposit_event.amount,
+    'Confirmed blockchain deposit ' || deposit_event.transaction_hash
+  );
+
+  UPDATE public.crypto_deposit_events
+  SET status = 'credited', credited_at = NOW()
+  WHERE id = deposit_event.id;
+
+  INSERT INTO public.notifications (user_id, type, title, body)
+  VALUES (
+    deposit_event.user_id,
+    'crypto',
+    deposit_event.asset || ' deposit received',
+    formatted_crypto || ' ' || deposit_event.asset || ' received on ' || deposit_event.network ||
+      ' and credited to your Exchange wallet (Tx ' || LEFT(deposit_event.transaction_hash, 10) || '…).'
+  );
+
+  RETURN jsonb_build_object('status', 'credited', 'notified', true);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.process_tatum_crypto_deposit(
+  TEXT, UUID, TEXT, TEXT, TEXT, TEXT, NUMERIC, INTEGER, INTEGER
+) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.process_tatum_crypto_deposit(
+  TEXT, UUID, TEXT, TEXT, TEXT, TEXT, NUMERIC, INTEGER, INTEGER
+) TO service_role;
+
+-- Defense-in-depth: deny-by-default lockdown of EVERY SECURITY DEFINER function
+-- in public schema (including legacy/live-only functions such as
+-- credit_external_crypto_deposit and record_tatum_crypto_deposit_failure),
+-- leaving ONLY the 3 client login-lockout helpers accessible to clients.
+REVOKE ALL ON FUNCTION public.protect_profile_privileged_columns() FROM PUBLIC, anon, authenticated;
+
+DO $$
+DECLARE
+  fn RECORD;
+BEGIN
+  FOR fn IN
+    SELECT
+      p.oid::regprocedure AS sig,
+      p.proname,
+      pg_catalog.pg_get_function_result(p.oid) AS return_type
+    FROM pg_catalog.pg_proc p
+    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.prosecdef = true
+      AND p.proname NOT IN (
+        'check_login_lockout',
+        'record_login_failure',
+        'clear_login_lockout'
+      )
+  LOOP
+    BEGIN
+      EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon, authenticated', fn.sig);
+      IF fn.return_type NOT IN ('trigger', 'event_trigger') THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role', fn.sig);
+      END IF;
+    EXCEPTION
+      WHEN insufficient_privilege THEN
+        IF fn.return_type = 'event_trigger' THEN
+          RAISE NOTICE 'Skipped event trigger % due to ownership', fn.sig;
+        ELSE
+          RAISE;
+        END IF;
+    END;
+  END LOOP;
+END
+$$;
+
+-- Verification output: compact permission columns first so they are immediately
+-- visible on mobile screens without horizontal scrolling.
+SELECT
+  p.proname AS function_name,
+  has_function_privilege('anon', p.oid, 'EXECUTE') AS anon,
+  has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth,
+  has_function_privilege('service_role', p.oid, 'EXECUTE') AS srv,
+  pg_catalog.pg_get_function_identity_arguments(p.oid) AS arguments
+FROM pg_catalog.pg_proc p
+JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'public'
+  AND p.prosecdef = true
+ORDER BY p.proname;
+

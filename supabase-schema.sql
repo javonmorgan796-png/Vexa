@@ -681,7 +681,12 @@ DECLARE
   deposit_event public.crypto_deposit_events;
   formatted_crypto TEXT;
 BEGIN
-  IF p_asset NOT IN ('BTC', 'ETH', 'USDT') OR p_amount IS NULL OR p_amount <= 0 THEN
+  IF p_user_id IS NULL
+     OR COALESCE(trim(p_deposit_reference), '') = ''
+     OR COALESCE(trim(p_transaction_hash), '') = ''
+     OR p_asset NOT IN ('BTC', 'ETH', 'USDT')
+     OR p_amount IS NULL
+     OR p_amount <= 0 THEN
     RAISE EXCEPTION 'Invalid crypto deposit';
   END IF;
   IF p_confirmations IS NULL OR p_required_confirmations IS NULL OR p_required_confirmations <= 0 THEN
@@ -767,6 +772,9 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION public.process_tatum_crypto_deposit(
+  TEXT, UUID, TEXT, TEXT, TEXT, TEXT, NUMERIC, INTEGER, INTEGER
+) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.process_tatum_crypto_deposit(
   TEXT, UUID, TEXT, TEXT, TEXT, TEXT, NUMERIC, INTEGER, INTEGER
 ) TO service_role;

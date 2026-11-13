@@ -32,17 +32,6 @@ function roundCrypto(v: number): number {
   return Math.round((v + Number.EPSILON) * 1e10) / 1e10;
 }
 
-function formatNaira(v: number): string {
-  return roundMoney(v).toLocaleString("en-NG", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
-function formatCrypto(v: number): string {
-  return Number(v.toFixed(8)).toString();
-}
-
 function isMissingRpcError(status: number, body: { code?: string; message?: string } | null): boolean {
   const msg = String(body?.message || "").toLowerCase();
   return status === 404 || body?.code === "PGRST202" || body?.code === "42883" || msg.includes("could not find the function");
@@ -407,77 +396,14 @@ router.post("/wallet/redeem-cashback", async (req: Request, res: Response) => {
     }
 
     const errBody = (await rpcRes.json().catch(() => null)) as { code?: string; message?: string } | null;
-    if (!isMissingRpcError(rpcRes.status, errBody)) {
-      return res.status(400).json({ message: errBody?.message || "Could not redeem cashback." });
+    if (isMissingRpcError(rpcRes.status, errBody) || rpcRes.status >= 500) {
+      req.log?.error({ status: rpcRes.status, code: errBody?.code }, "redeem_cashback_srv unavailable");
+      return res.status(503).json({ message: "Cashback service is temporarily unavailable. Please try again later." });
     }
-
-    // Fallback atomic REST path (backend service_role only)
-    const [profileRes, cbRes] = await Promise.all([
-      supabaseRest(`profiles?id=eq.${encodeURIComponent(authUser.id)}&select=id,balance&limit=1`),
-      supabaseRest(`cashback_history?user_id=eq.${encodeURIComponent(authUser.id)}&status=eq.cleared&select=id,earned`),
-    ]);
-    if (!profileRes.ok || !cbRes.ok) {
-      return res.status(503).json({ message: "Could not load cashback balance." });
-    }
-    const profiles = (await profileRes.json().catch(() => [])) as Array<{ id: string; balance: number }>;
-    const cbRows = (await cbRes.json().catch(() => [])) as Array<{ id: string; earned: number }>;
-    const profile = profiles[0];
-    if (!profile) return res.status(404).json({ message: "Profile not found." });
-
-    const redeemable = roundMoney(cbRows.reduce((s, r) => s + Math.max(0, Number(r.earned) || 0), 0));
-    if (redeemable <= 0) {
-      return res.status(400).json({ message: "No cleared cashback available to redeem." });
-    }
-
-    const newBalance = roundMoney(Number(profile.balance) + redeemable);
-    const debitCb = await supabaseRest(
-      `cashback_history?user_id=eq.${encodeURIComponent(authUser.id)}&status=eq.cleared`,
-      {
-        method: "PATCH",
-        headers: { Prefer: "return=representation" },
-        body: JSON.stringify({ status: "redeemed" }),
-      },
-    );
-    if (!debitCb.ok) return res.status(500).json({ message: "Could not update cashback status." });
-    const updatedRows = (await debitCb.json().catch(() => [])) as Array<unknown>;
-    if (updatedRows.length === 0) return res.status(409).json({ message: "Cashback already redeemed." });
-
-    await supabaseRest(
-      `profiles?id=eq.${encodeURIComponent(authUser.id)}&balance=eq.${encodeURIComponent(String(profile.balance))}`,
-      {
-        method: "PATCH",
-        headers: { Prefer: "return=minimal" },
-        body: JSON.stringify({ balance: newBalance }),
-      },
-    );
-
-    await Promise.all([
-      supabaseRest("transactions", {
-        method: "POST",
-        body: JSON.stringify({
-          user_id: authUser.id,
-          type: "in",
-          name: "Cashback Redemption",
-          amount: redeemable,
-          note: "Redeemed cleared cashback rewards to Vexa balance",
-        }),
-      }),
-      supabaseRest("notifications", {
-        method: "POST",
-        body: JSON.stringify({
-          user_id: authUser.id,
-          type: "credit",
-          title: "Cashback Redeemed",
-          body: `₦${formatNaira(redeemable)} cashback was added to your Vexa balance.`,
-          read: false,
-        }),
-      }),
-    ]);
-
-    return res.json({ success: true, balance: newBalance, redeemed: redeemable });
+    return res.status(400).json({ message: errBody?.message || "Could not redeem cashback." });
   } catch (err) {
     req.log?.error({ err }, "redeem-cashback failed");
-    return res.status(500).json({ message: "Could not redeem cashback." });
+    return res.status(503).json({ message: "Cashback service is temporarily unavailable. Please try again later." });
   }
 });
 
@@ -530,70 +456,14 @@ router.post("/wallet/transfer/bank", pinRateLimiter, async (req: Request, res: R
     }
 
     const errBody = (await rpcRes.json().catch(() => null)) as { code?: string; message?: string } | null;
-    if (!isMissingRpcError(rpcRes.status, errBody)) {
-      return res.status(400).json({ message: errBody?.message || "Transfer failed." });
+    if (isMissingRpcError(rpcRes.status, errBody) || rpcRes.status >= 500) {
+      req.log?.error({ status: rpcRes.status, code: errBody?.code }, "complete_bank_transfer_srv unavailable");
+      return res.status(503).json({ message: "Transfer service is temporarily unavailable. Please try again later." });
     }
-
-    // Atomic CAS fallback
-    const profileRes = await supabaseRest(
-      `profiles?id=eq.${encodeURIComponent(authUser.id)}&select=id,name,account_number,balance&limit=1`,
-    );
-    const profiles = profileRes.ok ? ((await profileRes.json().catch(() => [])) as Array<Record<string, unknown>>) : [];
-    const sender = profiles[0];
-    if (!sender) return res.status(404).json({ message: "Sender account not found." });
-
-    const fee = 10.75;
-    const totalDebit = roundMoney(amount + fee);
-    const currentBal = Number(sender.balance ?? 0);
-    if (currentBal < totalDebit) {
-      return res.status(400).json({ message: "Insufficient Vexa balance (including ₦10.75 fee)." });
-    }
-
-    const nextBal = roundMoney(currentBal - totalDebit);
-    const debitRes = await supabaseRest(
-      `profiles?id=eq.${encodeURIComponent(authUser.id)}&balance=eq.${encodeURIComponent(String(sender.balance))}`,
-      {
-        method: "PATCH",
-        headers: { Prefer: "return=representation" },
-        body: JSON.stringify({ balance: nextBal }),
-      },
-    );
-    if (!debitRes.ok) return res.status(503).json({ message: "Could not debit wallet." });
-    const updated = (await debitRes.json().catch(() => [])) as Array<unknown>;
-    if (updated.length === 0) return res.status(409).json({ message: "Balance changed. Please retry." });
-
-    const txRes = await supabaseRest("transactions", {
-      method: "POST",
-      headers: { Prefer: "return=representation" },
-      body: JSON.stringify({
-        user_id: authUser.id,
-        type: "out",
-        name: recipientName,
-        amount,
-        note,
-        recipient_bank: recipientBank,
-        recipient_account: recipientAccount,
-        sender_name: String(sender.name || "Vexa User"),
-        sender_account: String(sender.account_number || ""),
-      }),
-    });
-    const txRows = txRes.ok ? ((await txRes.json().catch(() => [])) as Array<Record<string, unknown>>) : [];
-
-    await supabaseRest("notifications", {
-      method: "POST",
-      body: JSON.stringify({
-        user_id: authUser.id,
-        type: "debit",
-        title: "Bank transfer sent",
-        body: `₦${formatNaira(amount)} sent to ${recipientName} (${recipientBank}).`,
-        read: false,
-      }),
-    }).catch(() => {});
-
-    return res.json({ success: true, transaction: txRows[0] ?? null });
+    return res.status(400).json({ message: errBody?.message || "Transfer failed." });
   } catch (err) {
     req.log?.error({ err }, "bank transfer failed");
-    return res.status(500).json({ message: "Transfer could not be completed." });
+    return res.status(503).json({ message: "Transfer service is temporarily unavailable. Please try again later." });
   }
 });
 
@@ -645,102 +515,14 @@ router.post("/wallet/transfer/vexa", pinRateLimiter, async (req: Request, res: R
     }
 
     const errBody = (await rpcRes.json().catch(() => null)) as { code?: string; message?: string } | null;
-    if (!isMissingRpcError(rpcRes.status, errBody)) {
-      return res.status(400).json({ message: errBody?.message || "Transfer failed." });
+    if (isMissingRpcError(rpcRes.status, errBody) || rpcRes.status >= 500) {
+      req.log?.error({ status: rpcRes.status, code: errBody?.code }, "transfer_vexa_money_srv unavailable");
+      return res.status(503).json({ message: "Transfer service is temporarily unavailable. Please try again later." });
     }
-
-    // Atomic CAS fallback
-    const [senderRes, recRes] = await Promise.all([
-      supabaseRest(`profiles?id=eq.${encodeURIComponent(authUser.id)}&select=id,name,account_number,balance&limit=1`),
-      supabaseRest(`profiles?account_number=eq.${encodeURIComponent(recipientAccount)}&select=id,name,account_number,balance&limit=1`),
-    ]);
-    const senders = senderRes.ok ? ((await senderRes.json().catch(() => [])) as Array<Record<string, unknown>>) : [];
-    const recipients = recRes.ok ? ((await recRes.json().catch(() => [])) as Array<Record<string, unknown>>) : [];
-    const sender = senders[0];
-    const recipient = recipients[0];
-
-    if (!sender) return res.status(404).json({ message: "Sender account not found." });
-    if (!recipient) return res.status(404).json({ message: "No Vexa user was found for that account number." });
-    if (sender.id === recipient.id) return res.status(400).json({ message: "You cannot transfer money to your own account." });
-
-    const senderBal = Number(sender.balance ?? 0);
-    if (senderBal < amount) return res.status(400).json({ message: "Insufficient Vexa balance." });
-
-    const debitRes = await supabaseRest(
-      `profiles?id=eq.${encodeURIComponent(String(sender.id))}&balance=eq.${encodeURIComponent(String(sender.balance))}`,
-      {
-        method: "PATCH",
-        headers: { Prefer: "return=representation" },
-        body: JSON.stringify({ balance: roundMoney(senderBal - amount) }),
-      },
-    );
-    const updatedSender = debitRes.ok ? ((await debitRes.json().catch(() => [])) as Array<unknown>) : [];
-    if (updatedSender.length === 0) return res.status(409).json({ message: "Balance changed. Please retry." });
-
-    await supabaseRest(`profiles?id=eq.${encodeURIComponent(String(recipient.id))}`, {
-      method: "PATCH",
-      headers: { Prefer: "return=minimal" },
-      body: JSON.stringify({ balance: roundMoney(Number(recipient.balance ?? 0) + amount) }),
-    });
-
-    const peerRes = await supabaseRest("transactions", {
-      method: "POST",
-      headers: { Prefer: "return=representation" },
-      body: JSON.stringify([
-        {
-          user_id: sender.id,
-          type: "out",
-          name: String(recipient.name || "Vexa user"),
-          amount,
-          note: note || "Vexa-to-Vexa transfer",
-          recipient_bank: "Vexa",
-          recipient_account: String(recipient.account_number || ""),
-          sender_name: String(sender.name || "Vexa user"),
-          sender_account: String(sender.account_number || ""),
-        },
-        {
-          user_id: recipient.id,
-          type: "in",
-          name: String(sender.name || "Vexa user"),
-          amount,
-          note: note || "Received from Vexa user",
-          recipient_bank: "Vexa",
-          recipient_account: String(recipient.account_number || ""),
-          sender_name: String(sender.name || "Vexa user"),
-          sender_account: String(sender.account_number || ""),
-        },
-      ]),
-    });
-    const insertedTxs = peerRes.ok ? ((await peerRes.json().catch(() => [])) as Array<{ id?: string }>) : [];
-
-    await supabaseRest("notifications", {
-      method: "POST",
-      body: JSON.stringify([
-        {
-          user_id: sender.id,
-          type: "debit",
-          title: "Vexa transfer sent",
-          body: `₦${formatNaira(amount)} sent to ${String(recipient.name || "Vexa user")}`,
-          read: false,
-        },
-        {
-          user_id: recipient.id,
-          type: "credit",
-          title: "Money received",
-          body: `₦${formatNaira(amount)} received from ${String(sender.name || "Vexa user")}`,
-          read: false,
-        },
-      ]),
-    }).catch(() => {});
-
-    return res.json({
-      success: true,
-      transactionId: insertedTxs[0]?.id ?? "",
-      recipientName: String(recipient.name || "Vexa user"),
-    });
+    return res.status(400).json({ message: errBody?.message || "Transfer failed." });
   } catch (err) {
     req.log?.error({ err }, "vexa transfer failed");
-    return res.status(500).json({ message: "Transfer could not be completed." });
+    return res.status(503).json({ message: "Transfer service is temporarily unavailable. Please try again later." });
   }
 });
 
@@ -778,72 +560,14 @@ router.post("/wallet/crypto/deposit-fiat", async (req: Request, res: Response) =
     }
 
     const errBody = (await rpcRes.json().catch(() => null)) as { code?: string; message?: string } | null;
-    if (!isMissingRpcError(rpcRes.status, errBody)) {
-      return res.status(400).json({ message: errBody?.message || "Deposit failed." });
+    if (isMissingRpcError(rpcRes.status, errBody) || rpcRes.status >= 500) {
+      req.log?.error({ status: rpcRes.status, code: errBody?.code }, "deposit_to_crypto_srv unavailable");
+      return res.status(503).json({ message: "Crypto deposit service is temporarily unavailable. Please try again later." });
     }
-
-    // CAS fallback
-    const profileRes = await supabaseRest(`profiles?id=eq.${encodeURIComponent(authUser.id)}&select=id,balance&limit=1`);
-    const profiles = profileRes.ok ? ((await profileRes.json().catch(() => [])) as Array<{ balance: number }>) : [];
-    const profile = profiles[0];
-    if (!profile) return res.status(404).json({ message: "Profile not found." });
-    if (Number(profile.balance) < amount) return res.status(400).json({ message: "Insufficient Vexa balance." });
-
-    const debit = await supabaseRest(
-      `profiles?id=eq.${encodeURIComponent(authUser.id)}&balance=eq.${encodeURIComponent(String(profile.balance))}`,
-      {
-        method: "PATCH",
-        headers: { Prefer: "return=representation" },
-        body: JSON.stringify({ balance: roundMoney(Number(profile.balance) - amount) }),
-      },
-    );
-    const updated = debit.ok ? ((await debit.json().catch(() => [])) as Array<unknown>) : [];
-    if (updated.length === 0) return res.status(409).json({ message: "Balance changed. Please retry." });
-
-    const acctRes = await supabaseRest(
-      `crypto_accounts?user_id=eq.${encodeURIComponent(authUser.id)}&select=naira_balance&limit=1`,
-    );
-    const acctRows = acctRes.ok ? ((await acctRes.json().catch(() => [])) as Array<{ naira_balance: number }>) : [];
-    if (acctRows[0]) {
-      await supabaseRest(`crypto_accounts?user_id=eq.${encodeURIComponent(authUser.id)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ naira_balance: roundMoney(Number(acctRows[0].naira_balance) + amount) }),
-      });
-    } else {
-      await supabaseRest("crypto_accounts", {
-        method: "POST",
-        body: JSON.stringify({ user_id: authUser.id, naira_balance: amount }),
-      });
-    }
-
-    await Promise.all([
-      supabaseRest("crypto_transactions", {
-        method: "POST",
-        body: JSON.stringify({
-          user_id: authUser.id,
-          kind: "deposit",
-          asset: "NGN",
-          amount,
-          naira_amount: amount,
-          note: "Funded from Vexa balance",
-        }),
-      }),
-      supabaseRest("notifications", {
-        method: "POST",
-        body: JSON.stringify({
-          user_id: authUser.id,
-          type: "crypto",
-          title: "Exchange wallet funded",
-          body: `₦${formatNaira(amount)} moved from your Vexa balance to your Exchange wallet.`,
-          read: false,
-        }),
-      }),
-    ]);
-
-    return res.json({ success: true });
+    return res.status(400).json({ message: errBody?.message || "Deposit failed." });
   } catch (err) {
     req.log?.error({ err }, "crypto deposit-fiat failed");
-    return res.status(500).json({ message: "Deposit failed." });
+    return res.status(503).json({ message: "Crypto deposit service is temporarily unavailable. Please try again later." });
   }
 });
 
@@ -902,104 +626,14 @@ router.post("/wallet/crypto/exchange", async (req: Request, res: Response) => {
     }
 
     const errBody = (await rpcRes.json().catch(() => null)) as { code?: string; message?: string } | null;
-    if (!isMissingRpcError(rpcRes.status, errBody)) {
-      return res.status(400).json({ message: errBody?.message || "Exchange failed." });
+    if (isMissingRpcError(rpcRes.status, errBody) || rpcRes.status >= 500) {
+      req.log?.error({ status: rpcRes.status, code: errBody?.code }, "exchange_crypto_srv unavailable");
+      return res.status(503).json({ message: "Crypto exchange service is temporarily unavailable. Please try again later." });
     }
-
-    // CAS fallback
-    const [acctRes, balRes] = await Promise.all([
-      supabaseRest(`crypto_accounts?user_id=eq.${encodeURIComponent(authUser.id)}&select=naira_balance&limit=1`),
-      supabaseRest(`crypto_balances?user_id=eq.${encodeURIComponent(authUser.id)}&asset=eq.${asset}&select=amount&limit=1`),
-    ]);
-    const acctRows = acctRes.ok ? ((await acctRes.json().catch(() => [])) as Array<{ naira_balance: number }>) : [];
-    const balRows = balRes.ok ? ((await balRes.json().catch(() => [])) as Array<{ amount: number }>) : [];
-
-    const walletNaira = Number(acctRows[0]?.naira_balance ?? 0);
-    const assetBal = Number(balRows[0]?.amount ?? 0);
-    const cryptoAmount = roundCrypto(nairaAmount / authoritativeRate);
-
-    if (side === "buy") {
-      if (walletNaira < nairaAmount) return res.status(400).json({ message: "Insufficient exchange Naira balance." });
-      const patchAcct = await supabaseRest(
-        `crypto_accounts?user_id=eq.${encodeURIComponent(authUser.id)}&naira_balance=eq.${encodeURIComponent(String(acctRows[0].naira_balance))}`,
-        {
-          method: "PATCH",
-          headers: { Prefer: "return=representation" },
-          body: JSON.stringify({ naira_balance: roundMoney(walletNaira - nairaAmount) }),
-        },
-      );
-      const updatedAcct = patchAcct.ok ? ((await patchAcct.json().catch(() => [])) as Array<unknown>) : [];
-      if (updatedAcct.length === 0) return res.status(409).json({ message: "Balance changed. Please retry." });
-
-      if (balRows[0]) {
-        await supabaseRest(`crypto_balances?user_id=eq.${encodeURIComponent(authUser.id)}&asset=eq.${asset}`, {
-          method: "PATCH",
-          body: JSON.stringify({ amount: roundCrypto(assetBal + cryptoAmount), updated_at: new Date().toISOString() }),
-        });
-      } else {
-        await supabaseRest("crypto_balances", {
-          method: "POST",
-          body: JSON.stringify({ user_id: authUser.id, asset, amount: cryptoAmount }),
-        });
-      }
-    } else {
-      if (assetBal < cryptoAmount || !balRows[0]) return res.status(400).json({ message: "Insufficient crypto balance." });
-      const patchBal = await supabaseRest(
-        `crypto_balances?user_id=eq.${encodeURIComponent(authUser.id)}&asset=eq.${asset}&amount=eq.${encodeURIComponent(String(balRows[0].amount))}`,
-        {
-          method: "PATCH",
-          headers: { Prefer: "return=representation" },
-          body: JSON.stringify({ amount: roundCrypto(assetBal - cryptoAmount), updated_at: new Date().toISOString() }),
-        },
-      );
-      const updatedBal = patchBal.ok ? ((await patchBal.json().catch(() => [])) as Array<unknown>) : [];
-      if (updatedBal.length === 0) return res.status(409).json({ message: "Balance changed. Please retry." });
-
-      if (acctRows[0]) {
-        await supabaseRest(`crypto_accounts?user_id=eq.${encodeURIComponent(authUser.id)}`, {
-          method: "PATCH",
-          body: JSON.stringify({ naira_balance: roundMoney(walletNaira + nairaAmount) }),
-        });
-      } else {
-        await supabaseRest("crypto_accounts", {
-          method: "POST",
-          body: JSON.stringify({ user_id: authUser.id, naira_balance: nairaAmount }),
-        });
-      }
-    }
-
-    await Promise.all([
-      supabaseRest("crypto_transactions", {
-        method: "POST",
-        body: JSON.stringify({
-          user_id: authUser.id,
-          kind: side,
-          asset,
-          amount: cryptoAmount,
-          naira_amount: nairaAmount,
-          rate: authoritativeRate,
-          note: side === "buy" ? "Bought with exchange balance" : "Sold to exchange balance",
-        }),
-      }),
-      supabaseRest("notifications", {
-        method: "POST",
-        body: JSON.stringify({
-          user_id: authUser.id,
-          type: "crypto",
-          title: side === "buy" ? `${asset} purchase successful` : `${asset} sale successful`,
-          body:
-            side === "buy"
-              ? `Bought ${formatCrypto(cryptoAmount)} ${asset} for ₦${formatNaira(nairaAmount)}.`
-              : `Sold ${formatCrypto(cryptoAmount)} ${asset} for ₦${formatNaira(nairaAmount)} to your Exchange balance.`,
-          read: false,
-        }),
-      }),
-    ]);
-
-    return res.json({ success: true, asset_amount: cryptoAmount, rate: authoritativeRate });
+    return res.status(400).json({ message: errBody?.message || "Exchange failed." });
   } catch (err) {
     req.log?.error({ err }, "crypto exchange failed");
-    return res.status(500).json({ message: "Exchange failed." });
+    return res.status(503).json({ message: "Crypto exchange service is temporarily unavailable. Please try again later." });
   }
 });
 
@@ -1044,116 +678,14 @@ router.post("/wallet/crypto/transfer", async (req: Request, res: Response) => {
     }
 
     const errBody = (await rpcRes.json().catch(() => null)) as { code?: string; message?: string } | null;
-    if (!isMissingRpcError(rpcRes.status, errBody)) {
-      return res.status(400).json({ message: errBody?.message || "Crypto transfer failed." });
+    if (isMissingRpcError(rpcRes.status, errBody) || rpcRes.status >= 500) {
+      req.log?.error({ status: rpcRes.status, code: errBody?.code }, "transfer_crypto_srv unavailable");
+      return res.status(503).json({ message: "Crypto transfer service is temporarily unavailable. Please try again later." });
     }
-
-    // CAS fallback
-    const [senderRes, recRes, balRes] = await Promise.all([
-      supabaseRest(`profiles?id=eq.${encodeURIComponent(authUser.id)}&select=id,name,account_number&limit=1`),
-      supabaseRest(`profiles?account_number=eq.${encodeURIComponent(accountNumber)}&select=id,name,account_number&limit=1`),
-      supabaseRest(`crypto_balances?user_id=eq.${encodeURIComponent(authUser.id)}&asset=eq.${asset}&select=amount&limit=1`),
-    ]);
-
-    const senders = senderRes.ok ? ((await senderRes.json().catch(() => [])) as Array<Record<string, unknown>>) : [];
-    const recipients = recRes.ok ? ((await recRes.json().catch(() => [])) as Array<Record<string, unknown>>) : [];
-    const balRows = balRes.ok ? ((await balRes.json().catch(() => [])) as Array<{ amount: number }>) : [];
-    const sender = senders[0];
-    const recipient = recipients[0];
-
-    if (!sender) return res.status(404).json({ message: "Sender account not found." });
-    if (!recipient) return res.status(404).json({ message: "No Vexa user was found for that account number." });
-    if (sender.id === recipient.id) return res.status(400).json({ message: "You cannot transfer to your own account." });
-
-    const senderBal = Number(balRows[0]?.amount ?? 0);
-    if (!balRows[0] || senderBal < amount) {
-      return res.status(400).json({ message: "Insufficient crypto balance." });
-    }
-
-    const debit = await supabaseRest(
-      `crypto_balances?user_id=eq.${encodeURIComponent(authUser.id)}&asset=eq.${asset}&amount=eq.${encodeURIComponent(String(balRows[0].amount))}`,
-      {
-        method: "PATCH",
-        headers: { Prefer: "return=representation" },
-        body: JSON.stringify({ amount: roundCrypto(senderBal - amount), updated_at: new Date().toISOString() }),
-      },
-    );
-    const debitedRows = debit.ok ? ((await debit.json().catch(() => [])) as Array<unknown>) : [];
-    if (debitedRows.length === 0) return res.status(409).json({ message: "Balance changed. Please retry." });
-
-    const recBalRes = await supabaseRest(
-      `crypto_balances?user_id=eq.${encodeURIComponent(String(recipient.id))}&asset=eq.${asset}&select=amount&limit=1`,
-    );
-    const recBalRows = recBalRes.ok ? ((await recBalRes.json().catch(() => [])) as Array<{ amount: number }>) : [];
-    if (recBalRows[0]) {
-      await supabaseRest(
-        `crypto_balances?user_id=eq.${encodeURIComponent(String(recipient.id))}&asset=eq.${asset}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({
-            amount: roundCrypto(Number(recBalRows[0].amount) + amount),
-            updated_at: new Date().toISOString(),
-          }),
-        },
-      );
-    } else {
-      await supabaseRest("crypto_balances", {
-        method: "POST",
-        body: JSON.stringify({ user_id: recipient.id, asset, amount }),
-      });
-    }
-
-    await Promise.all([
-      supabaseRest("crypto_transactions", {
-        method: "POST",
-        body: JSON.stringify([
-          {
-            user_id: authUser.id,
-            kind: "transfer_out",
-            asset,
-            amount,
-            counterparty_account: String(recipient.account_number || ""),
-            note: "Crypto sent to Vexa user",
-          },
-          {
-            user_id: recipient.id,
-            kind: "transfer_in",
-            asset,
-            amount,
-            counterparty_account: String(sender.account_number || ""),
-            note: "Crypto received from Vexa user",
-          },
-        ]),
-      }),
-      supabaseRest("notifications", {
-        method: "POST",
-        body: JSON.stringify([
-          {
-            user_id: authUser.id,
-            type: "crypto",
-            title: `${asset} transfer sent`,
-            body: `${formatCrypto(amount)} ${asset} sent to ${String(recipient.name || "Vexa user")} (${String(recipient.account_number || accountNumber)}).`,
-            read: false,
-          },
-          {
-            user_id: recipient.id,
-            type: "crypto",
-            title: `${asset} received`,
-            body: `${formatCrypto(amount)} ${asset} received from ${String(sender.name || "Vexa user")}.`,
-            read: false,
-          },
-        ]),
-      }),
-    ]);
-
-    return res.json({
-      success: true,
-      recipient_name: String(recipient.name || "Vexa user"),
-      recipient_account: String(recipient.account_number || accountNumber),
-    });
+    return res.status(400).json({ message: errBody?.message || "Crypto transfer failed." });
   } catch (err) {
     req.log?.error({ err }, "crypto transfer failed");
-    return res.status(500).json({ message: "Crypto transfer failed." });
+    return res.status(503).json({ message: "Crypto transfer service is temporarily unavailable. Please try again later." });
   }
 });
 
